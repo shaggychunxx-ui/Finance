@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>World Events Tracker – Finance</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header>
+  <h1>🌐 World Events Tracker</h1>
+  <span class="subtitle">Log and monitor global events that move markets</span>
+</header>
+
+<main>
+
+  <!-- Add Event Form -->
+  <div class="add-event-card">
+    <h2>Add Event</h2>
+    <form id="event-form" autocomplete="off">
+      <div class="form-row">
+        <input
+          class="input-title"
+          type="text"
+          name="title"
+          id="input-title"
+          placeholder="Event title *"
+          required
+          maxlength="200"
+        />
+        <input
+          class="input-date"
+          type="date"
+          name="date"
+          id="input-date"
+          required
+        />
+        <input
+          class="input-region"
+          type="text"
+          name="region"
+          id="input-region"
+          placeholder="Region / Country"
+          maxlength="100"
+        />
+      </div>
+      <div class="form-row">
+        <select class="input-category" name="category" id="input-category">
+          <option value="geopolitical">Geopolitical</option>
+          <option value="economic">Economic</option>
+          <option value="monetary-policy">Monetary Policy</option>
+          <option value="trade">Trade</option>
+          <option value="energy">Energy</option>
+          <option value="natural-disaster">Natural Disaster</option>
+          <option value="pandemic">Pandemic / Health</option>
+          <option value="technology">Technology</option>
+          <option value="other">Other</option>
+        </select>
+        <select class="input-impact" name="impact" id="input-impact">
+          <option value="low">Low Impact</option>
+          <option value="medium" selected>Medium Impact</option>
+          <option value="high">High Impact</option>
+          <option value="critical">Critical</option>
+        </select>
+        <button type="submit" class="btn-add">＋ Add Event</button>
+      </div>
+      <div class="form-row">
+        <textarea
+          class="input-notes"
+          name="notes"
+          id="input-notes"
+          placeholder="Notes / Market implications (optional)"
+          maxlength="1000"
+        ></textarea>
+      </div>
+    </form>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <label for="filter-search">Search</label>
+    <input
+      type="search"
+      id="filter-search"
+      placeholder="Title, region, notes…"
+      style="min-width:180px"
+    />
+
+    <label for="filter-category">Category</label>
+    <select id="filter-category">
+      <option value="">All Categories</option>
+      <option value="geopolitical">Geopolitical</option>
+      <option value="economic">Economic</option>
+      <option value="monetary-policy">Monetary Policy</option>
+      <option value="trade">Trade</option>
+      <option value="energy">Energy</option>
+      <option value="natural-disaster">Natural Disaster</option>
+      <option value="pandemic">Pandemic / Health</option>
+      <option value="technology">Technology</option>
+      <option value="other">Other</option>
+    </select>
+
+    <label for="filter-impact">Impact</label>
+    <select id="filter-impact">
+      <option value="">All Impacts</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+
+    <span class="event-count" id="event-count"></span>
+  </div>
+
+  <!-- Events List -->
+  <div class="events-list" id="events-list"></div>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
