@@ -6,6 +6,7 @@ Intelligence agents for financial market analysis and a client-side world events
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
@@ -18,6 +19,7 @@ Intelligence agents for financial market analysis and a client-side world events
 ## Quick start
 
 ```bat
+run.bat grid
 run.bat transportation
 run.bat patents
 run.bat events
@@ -31,11 +33,23 @@ run.bat meteorology
 Or with options:
 
 ```bat
+run.bat grid -o output/grid.json
 run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
 run.bat geopolitics --json
 ```
+
+## Electrical Grid Analyst
+
+Civil/electrical engineering analysis of live wholesale power markets from [Grid Status Live](https://www.gridstatus.io/live):
+
+- **9 ISO/RTO markets** cataloged (ERCOT, CAISO, PJM, MISO, SPP, NYISO, ISO-NE, IESO, AESO)
+- Live fuel mix from ERCOT and CAISO public dashboards
+- Hourly regional demand from EIA RTO API
+- CAISO net demand and battery dispatch visibility
+- Grid stress score, renewable index, and electrical assessment
+- Optional `gridstatus_api_key` for hub LMP pricing via [Grid Status API](https://www.gridstatus.io/)
 
 ## Civil Transportation Analyst
 
