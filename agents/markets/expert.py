@@ -23,6 +23,9 @@ TRENDING_API = "https://query1.finance.yahoo.com/v1/finance/trending/US"
 SCREENER_API = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
 HEADERS = {"User-Agent": "Finance-Market-Analyst/1.0 (shaggychunxx@gmail.com)"}
 
+TRADING_DAYS_PER_YEAR = 253
+MIN_DAYS_FOR_YEAR_CALC = 200
+
 US_INDICES = ["^GSPC", "^DJI", "^IXIC", "^RUT"]
 RISK_SYMBOLS = ["^VIX"]
 SECTOR_ETFS = {
@@ -151,8 +154,12 @@ class MarketAnalystExpert:
             # ~1 trading year of daily bars (roughly 252). Fall back to the
             # oldest available close when a full year of history isn't returned.
             year_chg: float | None = None
-            if len(valid) >= 200:
-                anchor = valid[-253] if len(valid) >= 253 else valid[0]
+            if len(valid) >= MIN_DAYS_FOR_YEAR_CALC:
+                anchor = (
+                    valid[-TRADING_DAYS_PER_YEAR]
+                    if len(valid) >= TRADING_DAYS_PER_YEAR
+                    else valid[0]
+                )
                 year_chg = round(((valid[-1] - anchor) / anchor) * 100, 2)
 
             return Quote(
