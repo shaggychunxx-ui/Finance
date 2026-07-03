@@ -13,6 +13,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
+| **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
@@ -28,6 +29,7 @@ run.bat patents
 run.bat events
 run.bat datascience
 run.bat finance
+run.bat financial-data
 run.bat markets
 run.bat geopolitics
 run.bat logistics
@@ -154,6 +156,28 @@ Outputs:
 
 - `output/finance.json` — full analysis with trading opportunities and market signals
 - `output/google_finance_views.json` — dashboard view catalog
+
+## Yahoo Finance Statistical Analyst
+
+Mathematician/market analyst statistical analysis of [Yahoo Finance](https://finance.yahoo.com/):
+
+- **Cross-sectional statistics** — mean, median, σ, skewness, and kurtosis of sector returns
+- **Breadth metrics** — advance/decline ratio from gainers/losers, % sectors positive
+- **Sector z-scores** — relative performance vs peer distribution (distinct from time-series z)
+- **3-month correlation matrix** among SPDR sector ETFs
+- **Beta estimates** vs SPY and 20-day realized volatility regime
+- **Statistical outlier detection** on Yahoo top movers (mover z-scores)
+- **Linear trend regression** on S&P 500 (slope and R²)
+- Statistical regime labels and mathematical edge assessment
+
+```bat
+run.bat financial-data -o output/financial_data.json
+```
+
+Outputs:
+
+- `output/financial_data.json` — full statistical analysis with market signals
+- `output/yahoo_finance_views.json` — Yahoo Finance dashboard view catalog
 
 ## Market Analyst Expert
 
