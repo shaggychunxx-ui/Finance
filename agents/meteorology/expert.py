@@ -209,7 +209,7 @@ class MeteorologyExpert:
         count_data = self._fetch_alert_count()
         return AlertSummary(
             total_active=int(count_data.get("total", len(features))),
-            land_alerts=int(count_data.get("land", len(features))),
+            land_alerts=int(count_data.get("land", 0)),
             marine_alerts=int(count_data.get("marine", 0)),
             by_event=dict(sorted(by_event.items(), key=lambda x: -x[1])),
             by_state=dict(sorted(by_state.items(), key=lambda x: -x[1])[:15]),
