@@ -23,6 +23,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
+| **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -45,6 +46,7 @@ run.bat combined-conditional
 run.bat research-statistics
 run.bat sales-analytics
 run.bat data-steward
+run.bat records-management
 run.bat meteorology
 ```
 
@@ -365,6 +367,27 @@ Outputs:
 - `output/data_steward.json` — full stewardship report with market signals
 - `output/data_catalog.json` — data source catalog
 - `output/data_lineage.json` — agent registry and lineage map
+
+## Records Management Expert
+
+Expert records manager / archivist for the Finance intelligence platform:
+
+- **Archive inventory** — SHA-256 checksums, classification, and integrity verification
+- **Retention schedule** — policy by record series (reports, catalogs, dashboard feeds)
+- **Disposition actions** — retain, archive, dispose, and quarantine recommendations
+- **Snapshot archiving** — timestamped copies to `output/archive/snapshots/` with manifest
+- **Compliance scoring** — retention adherence and archive coverage metrics
+
+```bat
+run.bat records-management -o output/records_management.json
+```
+
+Outputs:
+
+- `output/records_management.json` — full archivist report with market signals
+- `output/archive_catalog.json` — inventory of all output records
+- `output/retention_schedule.json` — retention and disposition policies
+- `output/archive/snapshots/YYYYMMDD_HHMMSS/` — point-in-time archive snapshot
 
 ## Meteorology Expert
 

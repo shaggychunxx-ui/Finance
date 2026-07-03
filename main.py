@@ -23,6 +23,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
@@ -321,6 +322,62 @@ def _print_data_steward(data: dict[str, Any]) -> None:
     if assessment:
         print("  Stewardship assessment:")
         for key in ("stewardship_priority", "governance_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_records_management(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("archivist_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(archive {metrics.get('archive_score')}, "
+        f"compliance {metrics.get('compliance_score')})"
+    )
+    print(
+        f"  Records: {meta.get('record_count')} files, "
+        f"{meta.get('volume_bytes', 0):,} bytes | "
+        f"Pending actions: {metrics.get('pending_actions')}"
+    )
+    print()
+    snaps = data.get("snapshots_created", [])
+    if snaps:
+        print("  Snapshots created:")
+        for s in snaps:
+            print(
+                f"    • {s.get('snapshot_id')}: {s.get('files_copied')} files "
+                f"({s.get('total_bytes', 0):,} bytes)"
+            )
+        print()
+    by_series: dict[str, int] = {}
+    for r in data.get("archive_inventory", []):
+        by_series[r.get("series", "?")] = by_series.get(r.get("series", "?"), 0) + 1
+    if by_series:
+        print("  Inventory by series:")
+        for series, count in sorted(by_series.items(), key=lambda x: -x[1]):
+            print(f"    • {series}: {count} records")
+        print()
+    actions = data.get("disposition_actions", [])
+    if actions:
+        print("  Disposition actions:")
+        for a in actions[:5]:
+            print(f"    • [{a.get('priority')}] {a.get('action')} {a.get('filename')}")
+        print()
+    if assessment:
+        print("  Archivist assessment:")
+        for key in ("archival_priority", "archive_coverage"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -875,6 +932,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
     "theoretical-probability": _print_theoretical_probability,
@@ -896,6 +954,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
@@ -991,6 +1050,13 @@ def main() -> int:
                 lineage = args.output.parent / "data_lineage.json"
                 if lineage.exists():
                     print(f"  Data lineage: {lineage}")
+            if args.agent == "records-management":
+                catalog = args.output.parent / "archive_catalog.json"
+                if catalog.exists():
+                    print(f"  Archive catalog: {catalog}")
+                retention = args.output.parent / "retention_schedule.json"
+                if retention.exists():
+                    print(f"  Retention schedule: {retention}")
             print()
 
     return 0
