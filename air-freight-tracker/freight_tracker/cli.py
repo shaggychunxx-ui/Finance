@@ -43,8 +43,13 @@ def _print_shipment(shipment: Shipment, verbose: bool = False) -> None:
 
 
 def cmd_add(args: argparse.Namespace, db: FreightDatabase) -> None:
-    if not validate_awb_check_digit(args.awb):
-        print(f"\n  ✗ Warning: AWB {args.awb} failed mod-7 check digit validation.\n", file=sys.stderr)
+    if not validate_awb_check_digit(args.awb) and not args.force:
+        print(
+            f"\n  ✗ Error: AWB {args.awb} failed mod-7 check digit validation. "
+            "Re-check the AWB number, or pass --force to add it anyway.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     eta = datetime.fromisoformat(args.eta) if args.eta else None
     shipment = db.create_shipment(
@@ -149,6 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--reference", help="Customer reference / booking number")
     p_add.add_argument("--notes", help="Free-text notes")
     p_add.add_argument("--eta", help="Estimated arrival time, ISO 8601")
+    p_add.add_argument(
+        "--force",
+        action="store_true",
+        help="Add the shipment even if the AWB fails mod-7 check digit validation.",
+    )
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="Add a tracking event / update shipment status.")

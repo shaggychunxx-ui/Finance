@@ -251,6 +251,10 @@ body {
   color: var(--muted);
 }
 
+.empty-padded {
+  padding: 1rem;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

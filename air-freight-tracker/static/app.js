@@ -11,7 +11,12 @@ async function api(path, opts = {}) {
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
-  const data = await res.json().catch(() => ({}));
+  let data = {};
+  try {
+    data = await res.json();
+  } catch (parseErr) {
+    if (res.ok) console.warn(`Failed to parse JSON response for ${path}:`, parseErr);
+  }
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
@@ -65,7 +70,7 @@ async function loadShipments() {
 function renderShipments() {
   const list = $("#shipment-list");
   if (!shipments.length) {
-    list.innerHTML = `<p class="empty" style="padding: 1rem;">No shipments found</p>`;
+    list.innerHTML = `<p class="empty empty-padded">No shipments found</p>`;
     return;
   }
   list.innerHTML = shipments
