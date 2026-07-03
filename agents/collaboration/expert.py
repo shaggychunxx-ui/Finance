@@ -18,6 +18,7 @@ meteorology, etc.) as the underlying data sources.
 from __future__ import annotations
 
 import json
+import math
 import random
 from collections import Counter
 from dataclasses import dataclass, field
@@ -68,13 +69,26 @@ def _group_sizes(n: int) -> list[int]:
         return []
     if n <= 4:
         return [n]
-    lo = -(-n // 4)  # ceil(n / 4)
+    lo = math.ceil(n / 4)
     hi = max(lo, n // 3)
     for k in range(lo, hi + 1):
         if 3 * k <= n <= 4 * k:
             base, rem = divmod(n, k)
             return [base + 1] * rem + [base] * (k - rem)
     return [n]
+
+
+DEFAULT_CONFIDENCE = 0.5
+MAX_SUMMARIES_IN_GROUP_ANALYSIS = 4
+MAX_GROUP_RECOMMENDATIONS = 6
+MAX_FINAL_RECOMMENDATIONS = 10
+MAX_OUTPUT_RECOMMENDATIONS = 15
+
+# Peer-review correction scoring deltas.
+CORRECTION_IMPROVED_REVIEWER_DELTA = 0.5
+CORRECTION_IMPROVED_CORRECTED_DELTA = -1.0
+CORRECTION_NOT_IMPROVED_REVIEWER_DELTA = -1.0
+CORRECTION_NOT_IMPROVED_CORRECTED_DELTA = 2.0
 
 
 @dataclass
@@ -100,7 +114,7 @@ class GroupAnalysis:
     aggregated_signals: dict[str, str]
     top_recommendations: list[str]
     errors: list[str]
-    baseline_confidence: float = 0.5
+    baseline_confidence: float = DEFAULT_CONFIDENCE
 
 
 @dataclass
@@ -219,7 +233,7 @@ class CollaborationCoordinator:
         summaries = [f"{o.name}: {o.summary}" for o in members_out if o.summary]
         combined_summary = (
             f"Group {group.group_id} ({', '.join(group.members)}) combined view — "
-            + " | ".join(summaries[:4])
+            + " | ".join(summaries[:MAX_SUMMARIES_IN_GROUP_ANALYSIS])
         )
         all_signals = [sig for o in members_out for sig in o.signals]
         aggregated = self._aggregate_signals(all_signals)
@@ -229,7 +243,9 @@ class CollaborationCoordinator:
             member_total += 1
             if aggregated.get(sig.get("sector", "Unknown")) == sig.get("bias", "NEUTRAL"):
                 member_matches += 1
-        baseline_confidence = round(member_matches / member_total, 4) if member_total else 0.5
+        baseline_confidence = (
+            round(member_matches / member_total, 4) if member_total else DEFAULT_CONFIDENCE
+        )
         recs: list[str] = []
         seen: set[str] = set()
         for o in members_out:
@@ -242,7 +258,7 @@ class CollaborationCoordinator:
             members=group.members,
             combined_summary=combined_summary,
             aggregated_signals=aggregated,
-            top_recommendations=recs[:6],
+            top_recommendations=recs[:MAX_GROUP_RECOMMENDATIONS],
             errors=errors,
             baseline_confidence=baseline_confidence,
         )
@@ -285,7 +301,9 @@ class CollaborationCoordinator:
                             )
                     elif target_bias:
                         comments.append(f"No independent view on {sector} ({target_bias})")
-                agreement_score = round(matches / len(sectors), 2) if sectors else 0.5
+                agreement_score = (
+                    round(matches / len(sectors), 2) if sectors else DEFAULT_CONFIDENCE
+                )
                 has_correction = any(c.startswith("Disagree on") for c in comments)
                 if self_review:
                     comments.append(
@@ -329,8 +347,16 @@ class CollaborationCoordinator:
                 sum(r.agreement_score for r in reviews) / len(reviews), 4
             )
             better = post_review_confidence > baseline
-            reviewer_delta = 0.5 if better else -1.0
-            corrected_delta = -1.0 if better else 2.0
+            reviewer_delta = (
+                CORRECTION_IMPROVED_REVIEWER_DELTA
+                if better
+                else CORRECTION_NOT_IMPROVED_REVIEWER_DELTA
+            )
+            corrected_delta = (
+                CORRECTION_IMPROVED_CORRECTED_DELTA
+                if better
+                else CORRECTION_NOT_IMPROVED_CORRECTED_DELTA
+            )
             outcome = "better" if better else "same_or_worse"
             for review in reviews:
                 if not review.has_correction:
@@ -391,7 +417,7 @@ class CollaborationCoordinator:
                 sum(r.agreement_score for r in relevant_reviews) / len(relevant_reviews), 2
             )
         else:
-            confidence = 0.5
+            confidence = DEFAULT_CONFIDENCE
 
         final_summary = (
             f"Group {group.group_id} ({', '.join(group.members)}) finalized analysis for "
@@ -406,7 +432,7 @@ class CollaborationCoordinator:
             final_summary=final_summary,
             consensus_signals=consensus_signals,
             confidence_score=confidence,
-            final_recommendations=recs[:10],
+            final_recommendations=recs[:MAX_FINAL_RECOMMENDATIONS],
             peer_reviews_considered=len(relevant_reviews),
         )
 
@@ -541,7 +567,7 @@ class CollaborationCoordinator:
             ],
             "recommendations": [
                 r for f in report.final_analyses for r in f.final_recommendations
-            ][:15],
+            ][:MAX_OUTPUT_RECOMMENDATIONS],
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
