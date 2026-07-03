@@ -24,6 +24,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
+| **Database Administrator Expert** | `run.bat database-admin` | Schema inventory, integrity, backup posture, index tuning |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -47,6 +48,7 @@ run.bat research-statistics
 run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
+run.bat database-admin
 run.bat meteorology
 ```
 
@@ -388,6 +390,27 @@ Outputs:
 - `output/archive_catalog.json` — inventory of all output records
 - `output/retention_schedule.json` — retention and disposition policies
 - `output/archive/snapshots/YYYYMMDD_HHMMSS/` — point-in-time archive snapshot
+
+## Database Administrator Expert
+
+Expert database administrator for the Finance intelligence platform:
+
+- **Schema inventory** — logical table catalog, column inference, nesting depth
+- **Storage metrics** — byte sizing, row estimates, large-table warnings
+- **Index recommendations** — btree/hash/composite indexes for common query paths
+- **Referential integrity** — parent/child links between reports and sidecars
+- **Backup posture** — archive snapshot count and recovery readiness
+- **Connection health** — external API endpoint latency and availability
+
+```bat
+run.bat database-admin -o output/database_admin.json
+```
+
+Outputs:
+
+- `output/database_admin.json` — full DBA report with market signals
+- `output/database_schema.json` — schema inventory for all logical tables
+- `output/database_indexes.json` — recommended and candidate indexes
 
 ## Meteorology Expert
 

@@ -160,6 +160,30 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "data-steward",
+        "agent": "Data Steward Expert",
+        "primary_output": "data_steward.json",
+        "sidecars": ["data_catalog.json", "data_lineage.json"],
+        "sources": ["Platform catalog", "output/ artifacts"],
+        "owner": "platform",
+    },
+    {
+        "command": "records-management",
+        "agent": "Records Management / Archivist Expert",
+        "primary_output": "records_management.json",
+        "sidecars": ["archive_catalog.json", "retention_schedule.json"],
+        "sources": ["output/ archive inventory"],
+        "owner": "platform",
+    },
+    {
+        "command": "database-admin",
+        "agent": "Database Administrator Expert",
+        "primary_output": "database_admin.json",
+        "sidecars": ["database_schema.json", "database_indexes.json"],
+        "sources": ["output/ JSON stores", "external APIs"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

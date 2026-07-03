@@ -13,6 +13,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.database_admin import run_database_admin_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -322,6 +323,71 @@ def _print_data_steward(data: dict[str, Any]) -> None:
     if assessment:
         print("  Stewardship assessment:")
         for key in ("stewardship_priority", "governance_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_database_admin(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("dba_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(storage {metrics.get('storage_score')}, "
+        f"integrity {metrics.get('integrity_score')}, "
+        f"performance {metrics.get('performance_score')})"
+    )
+    print(
+        f"  Tables: {meta.get('tables_cataloged')} cataloged | "
+        f"Open issues: {metrics.get('open_issues')}"
+    )
+    print()
+    backup = data.get("backup_status", {})
+    if backup:
+        print("  Backup posture:")
+        print(
+            f"    • Snapshots: {backup.get('snapshot_count')} | "
+            f"Recovery ready: {backup.get('recovery_ready')}"
+        )
+        if backup.get("latest_snapshot"):
+            print(f"    • Latest: {backup.get('latest_snapshot')}")
+        print()
+    present = [s for s in data.get("schema_inventory", []) if s.get("exists")][:6]
+    if present:
+        print("  Schema inventory:")
+        for s in present:
+            rows = f", ~{s['row_estimate']} rows" if s.get("row_estimate") else ""
+            print(
+                f"    • {s.get('table_name')}: {s.get('size_bytes', 0):,} bytes, "
+                f"depth {s.get('max_depth')}{rows}"
+            )
+        print()
+    conns = data.get("connection_status", [])
+    if conns:
+        print("  Connections:")
+        for c in conns[:5]:
+            print(f"    • {c.get('name')}: {c.get('status')} — {c.get('message')}")
+        print()
+    issues = data.get("dba_issues", [])
+    if issues:
+        print("  DBA issues:")
+        for i in issues[:5]:
+            print(f"    • [{i.get('severity')}] {i.get('message')}")
+        print()
+    if assessment:
+        print("  DBA assessment:")
+        for key in ("maintenance_priority", "backup_posture"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -919,6 +985,7 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
+    "database-admin": _print_database_admin,
     "data-steward": _print_data_steward,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
@@ -941,6 +1008,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "combined-conditional": run_combined_conditional_analysis,
+    "database-admin": run_database_admin_analysis,
     "data-steward": run_data_steward_analysis,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
@@ -1050,6 +1118,13 @@ def main() -> int:
                 lineage = args.output.parent / "data_lineage.json"
                 if lineage.exists():
                     print(f"  Data lineage: {lineage}")
+            if args.agent == "database-admin":
+                schema = args.output.parent / "database_schema.json"
+                if schema.exists():
+                    print(f"  Database schema: {schema}")
+                indexes = args.output.parent / "database_indexes.json"
+                if indexes.exists():
+                    print(f"  Index recommendations: {indexes}")
             if args.agent == "records-management":
                 catalog = args.output.parent / "archive_catalog.json"
                 if catalog.exists():
