@@ -17,6 +17,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
+| **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -33,6 +34,7 @@ run.bat financial-data
 run.bat markets
 run.bat geopolitics
 run.bat logistics
+run.bat theoretical-probability
 run.bat meteorology
 ```
 
@@ -226,6 +228,27 @@ Writes:
 - `output/marine_traffic_corridors.json` — corridor dashboard catalog
 
 Optional: copy `config.example.json` to `config.json` and set `marinetraffic_api_key` for live AIS data.
+
+## Theoretical Probability Expert
+
+Expert in theoretical probability applied to US market data:
+
+- **Markov chain** — 3-state (bull/bear/neutral) transition matrix and 1-step forecast
+- **Bayesian inference** — posterior regime probabilities updated with return and breadth evidence
+- **Conditional probability** — P(sector up | SPY up/down), P(VIX up | SPY down), etc.
+- **Binomial streak model** — theoretical vs empirical consecutive up/down streaks
+- **GBM barrier probability** — first-passage risk of −5% drawdown within 5 days
+- **Expected value & Kelly criterion** — EV and optimal sizing for momentum/mean-reversion bets
+- **Law of large numbers** — sample size guidance for win-rate precision
+
+```bat
+run.bat theoretical-probability -o output/theoretical_probability.json
+```
+
+Outputs:
+
+- `output/theoretical_probability.json` — full probability analysis with market signals
+- `output/probability_models.json` — catalog of theoretical models and formulas
 
 ## Meteorology Expert
 

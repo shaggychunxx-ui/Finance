@@ -20,6 +20,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 
 
@@ -412,6 +413,61 @@ def _print_electricity(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_theoretical_probability(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    markov = data.get("markov_chain", {})
+    bayes = data.get("bayesian_inference", {})
+    assessment = data.get("probability_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(conviction {metrics.get('conviction_score')})"
+    )
+    print(
+        f"  Markov state: {markov.get('current_state')} → "
+        f"forecast bull {markov.get('one_step_forecast', {}).get('bull')}"
+    )
+    print(
+        f"  Bayesian posterior: {bayes.get('dominant_regime')} "
+        f"({bayes.get('posterior', {}).get(bayes.get('dominant_regime', ''), 0)})"
+    )
+    print(f"  Models: {', '.join(meta.get('models_applied', []))}")
+    print()
+    print("  Conditional probabilities:")
+    for c in data.get("conditional_probabilities", [])[:5]:
+        print(
+            f"    • P({c.get('event')}|{c.get('condition')}) = "
+            f"{c.get('probability'):.0%} ({c.get('label')})"
+        )
+    print()
+    evs = data.get("expected_values", [])
+    if evs:
+        print("  Expected value / Kelly:")
+        for e in evs[:4]:
+            print(
+                f"    • {e.get('symbol')} {e.get('strategy')}: "
+                f"EV {e.get('expected_value_pct'):+.3f}% | "
+                f"Kelly {e.get('kelly_fraction'):.1%}"
+            )
+        print()
+    if assessment:
+        print("  Probability assessment:")
+        for key in ("bayesian_signal", "barrier_risk", "theoretical_edge"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_transportation(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -559,6 +615,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
 
@@ -574,6 +631,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
 
@@ -635,6 +693,10 @@ def main() -> int:
                 catalog = args.output.parent / "google_finance_views.json"
                 if catalog.exists():
                     print(f"  Google Finance views: {catalog}")
+            if args.agent == "theoretical-probability":
+                catalog = args.output.parent / "probability_models.json"
+                if catalog.exists():
+                    print(f"  Probability models catalog: {catalog}")
             print()
 
     return 0
