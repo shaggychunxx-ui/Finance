@@ -25,6 +25,8 @@ HEADERS = {"User-Agent": "Finance-Market-Analyst/1.0 (shaggychunxx@gmail.com)"}
 
 TRADING_DAYS_PER_YEAR = 253
 MIN_DAYS_FOR_YEAR_CALC = 200
+TRADING_DAYS_PER_5_YEARS = 1258
+MIN_DAYS_FOR_5_YEAR_CALC = 1000
 
 US_INDICES = ["^GSPC", "^DJI", "^IXIC", "^RUT"]
 RISK_SYMBOLS = ["^VIX"]
@@ -56,6 +58,7 @@ class Quote:
     day_chg_pct: float | None
     week_chg_pct: float | None = None
     year_chg_pct: float | None = None
+    five_year_chg_pct: float | None = None
     volume: int | None = None
 
 
@@ -66,6 +69,7 @@ class SectorSnapshot:
     day_chg_pct: float | None
     week_chg_pct: float | None
     year_chg_pct: float | None = None
+    five_year_chg_pct: float | None = None
     rank: int = 0
 
 
@@ -113,7 +117,7 @@ class MarketAnalystExpert:
         try:
             resp = requests.get(
                 CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1y"},
+                params={"interval": "1d", "range": "5y"},
                 headers=HEADERS,
                 timeout=25,
             )
@@ -121,7 +125,7 @@ class MarketAnalystExpert:
                 time.sleep(3)
                 resp = requests.get(
                     CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1y"},
+                    params={"interval": "1d", "range": "5y"},
                     headers=HEADERS,
                     timeout=25,
                 )
@@ -162,6 +166,17 @@ class MarketAnalystExpert:
                 )
                 year_chg = round(((valid[-1] - anchor) / anchor) * 100, 2)
 
+            # ~5 trading years of daily bars (roughly 1258). Fall back to the
+            # oldest available close when 5 years of history isn't returned.
+            five_year_chg: float | None = None
+            if len(valid) >= MIN_DAYS_FOR_5_YEAR_CALC:
+                anchor5 = (
+                    valid[-TRADING_DAYS_PER_5_YEARS]
+                    if len(valid) >= TRADING_DAYS_PER_5_YEARS
+                    else valid[0]
+                )
+                five_year_chg = round(((valid[-1] - anchor5) / anchor5) * 100, 2)
+
             return Quote(
                 symbol=symbol,
                 name=meta.get("shortName") or symbol,
@@ -169,6 +184,7 @@ class MarketAnalystExpert:
                 day_chg_pct=day_chg,
                 week_chg_pct=week_chg,
                 year_chg_pct=year_chg,
+                five_year_chg_pct=five_year_chg,
                 volume=meta.get("regularMarketVolume"),
             )
         except Exception:
@@ -233,6 +249,7 @@ class MarketAnalystExpert:
                 day_chg_pct=q.day_chg_pct,
                 week_chg_pct=q.week_chg_pct,
                 year_chg_pct=q.year_chg_pct,
+                five_year_chg_pct=q.five_year_chg_pct,
             ))
         sectors.sort(key=lambda s: s.day_chg_pct or -999, reverse=True)
         for i, s in enumerate(sectors, 1):
@@ -556,6 +573,7 @@ class MarketAnalystExpert:
                     "day_chg_pct": q.day_chg_pct,
                     "week_chg_pct": q.week_chg_pct,
                     "year_chg_pct": q.year_chg_pct,
+                    "five_year_chg_pct": q.five_year_chg_pct,
                 }
                 for q in report.indices
             ],
@@ -567,6 +585,7 @@ class MarketAnalystExpert:
                     "day_chg_pct": s.day_chg_pct,
                     "week_chg_pct": s.week_chg_pct,
                     "year_chg_pct": s.year_chg_pct,
+                    "five_year_chg_pct": s.five_year_chg_pct,
                 }
                 for s in report.sectors
             ],

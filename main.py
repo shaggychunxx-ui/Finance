@@ -86,12 +86,14 @@ def _print_markets(data: dict[str, Any]) -> None:
     for q in data.get("indices", [])[:5]:
         wk = f" / 1w {q.get('week_chg_pct'):+.2f}%" if q.get("week_chg_pct") is not None else ""
         yr = f" / 1y {q.get('year_chg_pct'):+.2f}%" if q.get("year_chg_pct") is not None else ""
-        print(f"  • {q.get('symbol')}: 1d {q.get('day_chg_pct'):+.2f}%{wk}{yr}")
+        y5 = f" / 5y {q.get('five_year_chg_pct'):+.2f}%" if q.get("five_year_chg_pct") is not None else ""
+        print(f"  • {q.get('symbol')}: 1d {q.get('day_chg_pct'):+.2f}%{wk}{yr}{y5}")
     print()
     print("  Sector leaders:")
     for s in data.get("sectors", [])[:5]:
         yr = f" / 1y {s.get('year_chg_pct'):+.2f}%" if s.get("year_chg_pct") is not None else ""
-        print(f"    #{s.get('rank')} {s.get('sector')} ({s.get('etf')}): {s.get('day_chg_pct'):+.2f}%{yr}")
+        y5 = f" / 5y {s.get('five_year_chg_pct'):+.2f}%" if s.get("five_year_chg_pct") is not None else ""
+        print(f"    #{s.get('rank')} {s.get('sector')} ({s.get('etf')}): {s.get('day_chg_pct'):+.2f}%{yr}{y5}")
     print()
     gainers = data.get("top_gainers", [])[:5]
     if gainers:
