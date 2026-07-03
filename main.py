@@ -14,6 +14,7 @@ from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.database_admin import run_database_admin_analysis
+from agents.data_processor import run_data_processor_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -323,6 +324,60 @@ def _print_data_steward(data: dict[str, Any]) -> None:
     if assessment:
         print("  Stewardship assessment:")
         for key in ("stewardship_priority", "governance_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_data_processor(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("processor_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(throughput {metrics.get('throughput_score')}, "
+        f"compliance {metrics.get('compliance_score')}, "
+        f"completion {metrics.get('backlog_score')})"
+    )
+    print(
+        f"  Pipelines: {meta.get('pipelines_cataloged')} cataloged | "
+        f"Open issues: {metrics.get('open_issues')}"
+    )
+    print()
+    healthy = [p for p in data.get("pipeline_status", []) if p.get("overall_status") == "healthy"][:6]
+    backlog = [p for p in data.get("pipeline_status", []) if p.get("overall_status") == "backlog"][:4]
+    if healthy:
+        print("  Healthy pipelines:")
+        for p in healthy:
+            print(
+                f"    • {p.get('pipeline_id')}: {p.get('freshness_label')}, "
+                f"{p.get('sidecars_present')}/{p.get('sidecars_expected')} sidecars"
+            )
+        print()
+    if backlog:
+        print("  Backlog:")
+        for p in backlog:
+            print(f"    • {p.get('pipeline_id')} — run.bat {p.get('command')}")
+        print()
+    issues = data.get("processing_issues", [])
+    if issues:
+        print("  Processing issues:")
+        for i in issues[:5]:
+            print(f"    • [{i.get('severity')}] {i.get('message')}")
+        print()
+    if assessment:
+        print("  Processor assessment:")
+        for key in ("processing_priority", "backlog_summary"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -986,6 +1041,7 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "database-admin": _print_database_admin,
+    "data-processor": _print_data_processor,
     "data-steward": _print_data_steward,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
@@ -1009,6 +1065,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "combined-conditional": run_combined_conditional_analysis,
     "database-admin": run_database_admin_analysis,
+    "data-processor": run_data_processor_analysis,
     "data-steward": run_data_steward_analysis,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
@@ -1118,6 +1175,13 @@ def main() -> int:
                 lineage = args.output.parent / "data_lineage.json"
                 if lineage.exists():
                     print(f"  Data lineage: {lineage}")
+            if args.agent == "data-processor":
+                pipelines = args.output.parent / "processing_pipelines.json"
+                if pipelines.exists():
+                    print(f"  Processing pipelines: {pipelines}")
+                transforms = args.output.parent / "transformation_catalog.json"
+                if transforms.exists():
+                    print(f"  Transformation catalog: {transforms}")
             if args.agent == "database-admin":
                 schema = args.output.parent / "database_schema.json"
                 if schema.exists():

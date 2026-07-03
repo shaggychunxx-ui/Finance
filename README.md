@@ -25,6 +25,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Database Administrator Expert** | `run.bat database-admin` | Schema inventory, integrity, backup posture, index tuning |
+| **Data Processor Expert** | `run.bat data-processor` | ETL pipelines, transformations, batch orchestration |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -49,6 +50,7 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat database-admin
+run.bat data-processor
 run.bat meteorology
 ```
 
@@ -411,6 +413,26 @@ Outputs:
 - `output/database_admin.json` — full DBA report with market signals
 - `output/database_schema.json` — schema inventory for all logical tables
 - `output/database_indexes.json` — recommended and candidate indexes
+
+## Data Processor Expert
+
+Expert data processor for the Finance intelligence platform:
+
+- **ETL pipeline inventory** — extract/transform/load stages for every agent
+- **Pipeline status** — completion, freshness, sidecar generation, dependencies
+- **Transformation catalog** — normalization and feature-engineering transforms
+- **Batch orchestration** — 5-wave parallel/sequential run plan
+- **Format compliance** — platform schema validation for primary outputs
+
+```bat
+run.bat data-processor -o output/data_processor.json
+```
+
+Outputs:
+
+- `output/data_processor.json` — full processing report with market signals
+- `output/processing_pipelines.json` — pipeline registry and live status
+- `output/transformation_catalog.json` — transform definitions and mappings
 
 ## Meteorology Expert
 
