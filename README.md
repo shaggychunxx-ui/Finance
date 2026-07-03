@@ -6,12 +6,14 @@ Intelligence agents for financial market analysis. Each agent pulls live public 
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
 
 ```bat
+run.bat geopolitics
 run.bat logistics
 run.bat meteorology
 ```
@@ -19,9 +21,22 @@ run.bat meteorology
 Or with options:
 
 ```bat
-run.bat logistics --json
-run.bat logistics -o output/logistics.json
+run.bat geopolitics --json
+run.bat geopolitics -o output/geopolitics.json
 ```
+
+## Geopolitics Expert
+
+Monitors global headlines and scores risk across six theaters:
+
+- **Ukraine / Russia**, **Middle East**, **China / Taiwan**
+- **Trade / Sanctions**, **Energy Security**, **Americas**
+
+Outputs:
+
+- Global risk and escalation indices from live news classification
+- Theater-level risk scores with top headlines
+- Sector signals (defense, gold, oil, treasuries, semiconductors, EM)
 
 ## Logistics Expert
 

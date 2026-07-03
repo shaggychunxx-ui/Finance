@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.geopolitics import run_geopolitics_analysis
 from agents.logistics import run_logistics_analysis
 from agents.meteorology import run_meteorology_analysis
 
@@ -55,6 +56,32 @@ def _print_meteorology(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_geopolitics(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('headlines_analyzed', 0)} headlines")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Risk: {metrics.get('risk_label')} ({metrics.get('global_risk_score')})")
+    print(f"  Escalation index: {metrics.get('escalation_index')}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for t in data.get("theaters", []):
+        if t.get("article_count", 0) > 0:
+            print(
+                f"  • {t.get('name')}: risk {t.get('risk_score')} "
+                f"({t.get('article_count')} articles)"
+            )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_logistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -82,11 +109,13 @@ def _print_logistics(data: dict[str, Any]) -> None:
 
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "geopolitics": _print_geopolitics,
     "meteorology": _print_meteorology,
     "logistics": _print_logistics,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "geopolitics": run_geopolitics_analysis,
     "meteorology": run_meteorology_analysis,
     "logistics": run_logistics_analysis,
 }
@@ -97,7 +126,7 @@ def main() -> int:
     parser.add_argument(
         "agent",
         nargs="?",
-        default="logistics",
+        default="geopolitics",
         choices=sorted(RUNNERS.keys()),
         help="Agent to run (default: logistics)",
     )
