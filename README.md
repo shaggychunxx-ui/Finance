@@ -6,6 +6,7 @@ Intelligence agents for financial market analysis and a client-side world events
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
@@ -16,6 +17,7 @@ Intelligence agents for financial market analysis and a client-side world events
 ## Quick start
 
 ```bat
+run.bat patents
 run.bat events
 run.bat datascience
 run.bat markets
@@ -27,9 +29,22 @@ run.bat meteorology
 Or with options:
 
 ```bat
+run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
 run.bat geopolitics --json
 ```
+
+## Patent Landscape Analyst
+
+Tracks global patent databases, APIs, and monitoring resources while surfacing recent innovation activity:
+
+- **16 patent resources** cataloged (USPTO ODP, PatentsView, Espacenet, PATENTSCOPE, Google Patents, Lens.org, etc.)
+- Resource health checks (online / restricted / offline)
+- Live innovation signals from OpenAlex, IPWatchdog, and USPTO trademark feed
+- Sector classification: semiconductor, AI, biotech, energy, automotive, telecom
+- Innovation velocity score and sector market signals
+
+Optional: copy `config.example.json` to `config.json` and set `uspto_api_key` from [data.uspto.gov](https://data.uspto.gov/) for live US application search.
 
 ## World Events Tracker
 

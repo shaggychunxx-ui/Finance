@@ -15,6 +15,7 @@ from agents.geopolitics import run_geopolitics_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
+from agents.patents import run_patents_analysis
 
 
 def _print_signals(signals: list[dict[str, Any]]) -> None:
@@ -177,6 +178,48 @@ def _print_events(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_patents(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_tracked', 0)} resources, "
+        f"{meta.get('findings_count', 0)} findings"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Landscape: {summary.get('landscape_label')} "
+        f"(score {summary.get('innovation_score')})"
+    )
+    print(
+        f"  Resources online: {summary.get('resources_online', 0)}/"
+        f"{meta.get('resources_tracked', 0)}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Top sectors:")
+    for sector, count in sorted(
+        summary.get("by_sector", {}).items(), key=lambda x: -x[1]
+    )[:5]:
+        print(f"    • {sector.replace('-', ' ').title()}: {count}")
+    print()
+    print("  Recent findings:")
+    for f in data.get("findings", [])[:8]:
+        print(
+            f"    • [{f.get('sector', '?')}] {f.get('title', '')[:68]} "
+            f"— {f.get('source', '')}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_logistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -207,18 +250,20 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
     "events": _print_events,
     "geopolitics": _print_geopolitics,
+    "logistics": _print_logistics,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
-    "logistics": _print_logistics,
+    "patents": _print_patents,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
     "events": run_events_analysis,
     "geopolitics": run_geopolitics_analysis,
+    "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
-    "logistics": run_logistics_analysis,
+    "patents": run_patents_analysis,
 }
 
 
@@ -251,6 +296,10 @@ def main() -> int:
                 tracker = args.output.parent / "world_events_tracker.json"
                 if tracker.exists():
                     print(f"  Web tracker import file: {tracker}")
+            if args.agent == "patents":
+                catalog = args.output.parent / "patent_resources.json"
+                if catalog.exists():
+                    print(f"  Resource catalog: {catalog}")
             print()
 
     return 0
