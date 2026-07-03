@@ -22,6 +22,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.research_statistics import run_research_statistics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 
@@ -705,6 +706,56 @@ def _print_logistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_research_statistics(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("research_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(significance {metrics.get('significance_score')}, "
+        f"quality {metrics.get('research_quality_score')})"
+    )
+    print(f"  α = {meta.get('alpha_level', 0.05)} | Methods: {', '.join(meta.get('methods_applied', []))}")
+    print()
+    print("  Hypothesis tests:")
+    for t in data.get("hypothesis_tests", [])[:6]:
+        sig = "*" if t.get("significant") else ""
+        print(
+            f"    • {t.get('symbol')} {t.get('test_id')}: "
+            f"t={t.get('statistic'):.3f}, p={t.get('p_value'):.4f}{sig}"
+        )
+    print()
+    print("  OLS regressions (vs SPY):")
+    for r in data.get("regressions", [])[:5]:
+        print(
+            f"    • {r.get('symbol')}: β={r.get('beta'):.2f}, "
+            f"R²={r.get('r_squared'):.2f}, α={r.get('alpha_daily'):+.4f}%/day"
+        )
+    print()
+    findings = data.get("research_findings", [])
+    if findings:
+        print("  Research findings:")
+        for f in findings[:5]:
+            print(f"    • {f.get('title')} (p={f.get('p_value'):.3f})")
+        print()
+    if assessment:
+        print("  Research assessment:")
+        for key in ("research_conclusion", "statistical_edge"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "datascience": _print_datascience,
@@ -719,6 +770,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "research-statistics": _print_research_statistics,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
@@ -737,6 +789,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "research-statistics": run_research_statistics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
@@ -811,6 +864,10 @@ def main() -> int:
                 catalog = args.output.parent / "probability_concepts.json"
                 if catalog.exists():
                     print(f"  Probability concepts catalog: {catalog}")
+            if args.agent == "research-statistics":
+                catalog = args.output.parent / "statistical_methods.json"
+                if catalog.exists():
+                    print(f"  Statistical methods catalog: {catalog}")
             print()
 
     return 0
