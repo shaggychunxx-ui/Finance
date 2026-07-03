@@ -19,6 +19,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
+| **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -37,6 +38,7 @@ run.bat geopolitics
 run.bat logistics
 run.bat theoretical-probability
 run.bat empirical-probability
+run.bat combined-conditional
 run.bat meteorology
 ```
 
@@ -272,6 +274,27 @@ Outputs:
 
 - `output/empirical_probability.json` — full empirical analysis with market signals
 - `output/empirical_experiments.json` — catalog of experimental methods
+
+## Combined & Conditional Probability Expert
+
+Expert in combined and conditional probabilities applied to US market data:
+
+- **Joint probability** P(A∩B) — same-day co-occurrence of market events
+- **Union probability** P(A∪B) — at least one event occurs
+- **Conditional probability** P(A|B) — sector/index moves given benchmark state
+- **Multi-condition** P(A|B∩C) — e.g., P(Tech up | SPY up AND VIX down)
+- **Independence tests** — compare P(A∩B) vs P(A)·P(B)
+- **Chain rule** — decompose P(A∩B∩C) = P(A)·P(B|A)·P(C|A∩B)
+- **Combined scenarios** — ranked multi-asset outcome probabilities
+
+```bat
+run.bat combined-conditional -o output/combined_conditional.json
+```
+
+Outputs:
+
+- `output/combined_conditional.json` — full combined/conditional analysis
+- `output/probability_concepts.json` — probability concepts and formulas catalog
 
 ## Meteorology Expert
 

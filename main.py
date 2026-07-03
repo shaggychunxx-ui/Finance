@@ -12,6 +12,7 @@ from typing import Any, Callable
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
+from agents.combined_conditional import run_combined_conditional_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
@@ -267,6 +268,58 @@ def _print_datascience(data: dict[str, Any]) -> None:
             f"MC P(up) {t.get('mc_prob_up_5d'):.0%}"
         )
     print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_combined_conditional(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("combined_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(coherence {metrics.get('coherence_score')}, "
+        f"dependence {metrics.get('dependence_score')})"
+    )
+    print(f"  Concepts: {', '.join(meta.get('concepts_applied', []))}")
+    print()
+    print("  Joint probabilities P(A∩B):")
+    for j in data.get("joint_probabilities", [])[:5]:
+        print(
+            f"    • P({j.get('event_a')}∩{j.get('event_b')}) = "
+            f"{j.get('joint_prob'):.0%} ({j.get('label')})"
+        )
+    print()
+    print("  Conditional probabilities P(A|B):")
+    for c in data.get("conditional_probabilities", [])[:5]:
+        print(
+            f"    • P({c.get('event')}|{c.get('condition')}) = "
+            f"{c.get('conditional_prob'):.0%} ({c.get('label')})"
+        )
+    print()
+    multi = data.get("multi_conditionals", [])
+    if multi:
+        print("  Multi-condition P(A|B∩C):")
+        for m in multi[:3]:
+            print(
+                f"    • P({m.get('event')}|{m.get('conditions')}) = "
+                f"{m.get('conditional_prob'):.0%}"
+            )
+        print()
+    if assessment:
+        print("  Combined assessment:")
+        for key in ("independence_signal", "chain_rule_signal", "combined_edge"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -653,6 +706,7 @@ def _print_logistics(data: dict[str, Any]) -> None:
 
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "combined-conditional": _print_combined_conditional,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
@@ -670,6 +724,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "combined-conditional": run_combined_conditional_analysis,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
@@ -752,6 +807,10 @@ def main() -> int:
                 catalog = args.output.parent / "empirical_experiments.json"
                 if catalog.exists():
                     print(f"  Empirical experiments catalog: {catalog}")
+            if args.agent == "combined-conditional":
+                catalog = args.output.parent / "probability_concepts.json"
+                if catalog.exists():
+                    print(f"  Probability concepts catalog: {catalog}")
             print()
 
     return 0
