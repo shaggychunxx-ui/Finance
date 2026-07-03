@@ -12,6 +12,8 @@ from typing import Any, Callable
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.events import run_events_analysis
+from agents.finance import run_finance_analysis
+from agents.financial_data import run_financial_data_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
@@ -90,6 +92,123 @@ def _print_markets(data: dict[str, Any]) -> None:
         print("  Top gainers: " + ", ".join(
             f"{g.get('symbol')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
         ))
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_financial_data(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    cs = data.get("cross_section", {})
+    assessment = data.get("statistical_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — Yahoo Finance")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(statistical score {metrics.get('statistical_score')})"
+    )
+    print(
+        f"  Breadth: {metrics.get('breadth_score')} | "
+        f"Volatility: {metrics.get('volatility_score')}"
+    )
+    print(
+        f"  Cross-section: μ {cs.get('mean_return_pct'):+.2f}% | "
+        f"σ {cs.get('stdev_pct'):.2f}% | "
+        f"skew {cs.get('skewness'):+.2f} | "
+        f"A/D {cs.get('advance_decline_ratio'):.1f}x"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Sector statistics (cross-section z):")
+    for s in data.get("sectors", [])[:6]:
+        print(
+            f"    • {s.get('name')} ({s.get('symbol')}): "
+            f"{s.get('return_1d_pct'):+.2f}% day | "
+            f"z_cs {s.get('cross_section_z')} | β {s.get('beta_spy')}"
+        )
+    print()
+    outliers = data.get("statistical_outliers", [])
+    if outliers:
+        print("  Statistical outliers:")
+        for o in outliers[:5]:
+            print(
+                f"    • {o.get('symbol')} [{o.get('direction')}]: "
+                f"z {o.get('z_score_mover')} ({o.get('day_chg_pct'):+.2f}%)"
+            )
+        print()
+    if assessment:
+        print("  Statistical assessment:")
+        for key in (
+            "market_regime",
+            "volatility_regime",
+            "trend_signal",
+            "mathematical_edge",
+        ):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_finance(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("trader_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — Google Finance Beta")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Tape: {metrics.get('trend_label')} "
+        f"(opportunity {metrics.get('opportunity_score')})"
+    )
+    print(
+        f"  Momentum: {metrics.get('momentum_score')} | "
+        f"Dispersion: {metrics.get('dispersion_score')} | "
+        f"Risk/reward: {metrics.get('risk_reward_score')}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Equity sectors (Google Finance beta):")
+    for s in sorted(data.get("sectors", []), key=lambda x: -(x.get("day_chg_pct") or -999))[:6]:
+        print(
+            f"    • {s.get('google_symbol')} {s.get('name')}: "
+            f"{s.get('day_chg_pct'):+.2f}% day | z {s.get('z_score_5d')}"
+        )
+    print()
+    print("  US indices:")
+    for i in data.get("indices", [])[:5]:
+        print(
+            f"    • {i.get('name')}: {i.get('price')} "
+            f"({i.get('day_chg_pct'):+.2f}%)"
+        )
+    print()
+    opps = data.get("trading_opportunities", [])
+    if opps:
+        print("  Top trading opportunities:")
+        for o in opps[:6]:
+            print(
+                f"    • {o.get('symbol')} [{o.get('strategy')}]: "
+                f"score {o.get('opportunity_score')} — {o.get('rationale')}"
+            )
+        print()
+    if assessment:
+        print("  Trader assessment:")
+        for key in ("regime", "sector_rotation", "mathematical_edge", "crypto_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
         print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -399,7 +518,24 @@ def _print_logistics(data: dict[str, Any]) -> None:
     print(f"  Stress: {metrics.get('stress_label')} ({metrics.get('supply_chain_stress_score')})")
     print(f"  Freight momentum: {metrics.get('freight_momentum_score')}")
     print(f"  Peak congestion: {metrics.get('congestion_score')}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
     print()
+    primary = data.get("primary_corridor")
+    if primary:
+        print(
+            f"  Primary view — {primary.get('name')}: "
+            f"{primary.get('total_vessels')} vessels | "
+            f"density {primary.get('lane_density_score')} | "
+            f"congestion {primary.get('congestion_score')}"
+        )
+        print()
+    strategies = data.get("marine_traffic_strategies", {})
+    if strategies:
+        print("  Marine traffic strategies:")
+        for key in ("routing", "anchorage", "freight_mix", "port_priority"):
+            if strategies.get(key):
+                print(f"    • {strategies[key]}")
+        print()
     for c in data.get("corridors", []):
         m = c.get("metrics", {})
         print(
@@ -415,6 +551,8 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "events": _print_events,
+    "financial-data": _print_financial_data,
+    "finance": _print_finance,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
@@ -428,6 +566,8 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "events": run_events_analysis,
+    "financial-data": run_financial_data_analysis,
+    "finance": run_finance_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
@@ -483,6 +623,18 @@ def main() -> int:
                 catalog = args.output.parent / "eia_grid_monitor_views.json"
                 if catalog.exists():
                     print(f"  EIA Grid Monitor views: {catalog}")
+            if args.agent == "logistics":
+                catalog = args.output.parent / "marine_traffic_corridors.json"
+                if catalog.exists():
+                    print(f"  MarineTraffic corridor catalog: {catalog}")
+            if args.agent == "financial-data":
+                catalog = args.output.parent / "yahoo_finance_views.json"
+                if catalog.exists():
+                    print(f"  Yahoo Finance views: {catalog}")
+            if args.agent == "finance":
+                catalog = args.output.parent / "google_finance_views.json"
+                if catalog.exists():
+                    print(f"  Google Finance views: {catalog}")
             print()
 
     return 0

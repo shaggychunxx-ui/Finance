@@ -12,6 +12,8 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
+| **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
+| **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
@@ -26,6 +28,8 @@ run.bat transportation
 run.bat patents
 run.bat events
 run.bat datascience
+run.bat finance
+run.bat financial-data
 run.bat markets
 run.bat geopolitics
 run.bat logistics
@@ -40,6 +44,7 @@ run.bat grid -o output/grid.json
 run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
+run.bat finance -o output/finance.json
 run.bat geopolitics --json
 ```
 
@@ -131,6 +136,49 @@ Quantitative factor analysis on 10 US ETFs (SPY, QQQ, IWM, sectors, GLD, TLT, HY
 - SPY correlation structure across factors
 - Mean-reversion and momentum signals
 
+## Google Finance Beta Analyst
+
+Mathematician/trader analysis of [Google Finance Beta](https://www.google.com/finance/beta):
+
+- **Equity sectors** (SIXB–SIXY) mapped to SPDR sector ETFs
+- **US indices** — Dow, S&P 500, Nasdaq, Russell, VIX
+- **Futures & crypto** — Dow/ES/NQ, gold, crude, BTC/ETH/SOL
+- **Most active** stocks and day gainers/losers
+- Mathematical opportunity scoring (momentum, dispersion, z-scores)
+- Ranked trading setups: momentum continuation, mean reversion, swing trades
+- Calibrated proxy fallback when live quotes are unavailable
+
+```bat
+run.bat finance -o output/finance.json
+```
+
+Outputs:
+
+- `output/finance.json` — full analysis with trading opportunities and market signals
+- `output/google_finance_views.json` — dashboard view catalog
+
+## Yahoo Finance Statistical Analyst
+
+Mathematician/market analyst statistical analysis of [Yahoo Finance](https://finance.yahoo.com/):
+
+- **Cross-sectional statistics** — mean, median, σ, skewness, and kurtosis of sector returns
+- **Breadth metrics** — advance/decline ratio from gainers/losers, % sectors positive
+- **Sector z-scores** — relative performance vs peer distribution (distinct from time-series z)
+- **3-month correlation matrix** among SPDR sector ETFs
+- **Beta estimates** vs SPY and 20-day realized volatility regime
+- **Statistical outlier detection** on Yahoo top movers (mover z-scores)
+- **Linear trend regression** on S&P 500 (slope and R²)
+- Statistical regime labels and mathematical edge assessment
+
+```bat
+run.bat financial-data -o output/financial_data.json
+```
+
+Outputs:
+
+- `output/financial_data.json` — full statistical analysis with market signals
+- `output/yahoo_finance_views.json` — Yahoo Finance dashboard view catalog
+
 ## Market Analyst Expert
 
 Live US market analysis from Yahoo Finance:
@@ -155,17 +203,27 @@ Outputs:
 
 ## Logistics Expert
 
-Monitors three global trade corridors and assesses supply-chain stress:
+Evaluates logistics strategies from [MarineTraffic](https://www.marinetraffic.com/) AIS patterns across three global trade corridors:
 
-- **North Sea / English Channel** — Rotterdam, Antwerp, Dover
+- **North Sea / English Channel** (primary) — [MarineTraffic view](https://www.marinetraffic.com/en/ais/home/centerx:2.7/centery:51.2/zoom:6) — Rotterdam, Antwerp, Dover
 - **US West Coast** — LA/Long Beach, Oakland
 - **Singapore Strait** — Asia export chokepoint
 
 Outputs:
 
+- Marine traffic strategy evaluation (routing, anchorage, freight mix, port priority)
 - Lane density, freight momentum, and port congestion scores
 - Chokepoint, container backlog, retail lead-time, and manufacturing flow signals
 - Sector signals (dry bulk, container shipping, retail, tankers, freight brokers)
+
+```bat
+run.bat logistics -o output/logistics.json
+```
+
+Writes:
+
+- `output/logistics.json` — full analysis with market signals and recommendations
+- `output/marine_traffic_corridors.json` — corridor dashboard catalog
 
 Optional: copy `config.example.json` to `config.json` and set `marinetraffic_api_key` for live AIS data.
 
