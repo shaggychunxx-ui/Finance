@@ -6,6 +6,7 @@ Intelligence agents for financial market analysis and a client-side world events
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **EIA Grid Monitor Analyst** | `run.bat electricity` | [EIA Grid Monitor US48](https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overview/US48/US48) |
 | **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
@@ -19,6 +20,7 @@ Intelligence agents for financial market analysis and a client-side world events
 ## Quick start
 
 ```bat
+run.bat electricity
 run.bat grid
 run.bat transportation
 run.bat patents
@@ -33,12 +35,29 @@ run.bat meteorology
 Or with options:
 
 ```bat
+run.bat electricity -o output/electricity.json
 run.bat grid -o output/grid.json
 run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
 run.bat geopolitics --json
 ```
+
+## EIA Grid Monitor Analyst
+
+Civil/electrical engineering analysis of the [EIA Grid Monitor electric overview](https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overview/US48/US48) for the U.S. lower 48 (US48):
+
+- Hourly **demand** and **net generation** from EIA RTO region-data API
+- **Fuel-type mix** (coal, gas, nuclear, solar, wind, hydro) from EIA fuel-type-data API
+- ISO demand breakdown for Texas (ERCOT), California (CAISO), PJM, MISO, and NYISO
+- Grid balance score, supply-demand gap, and electrical assessment
+- Calibrated proxy fallback when the EIA API is unavailable or rate-limited
+- Optional `eia_api_key` in `config.json` for live EIA Open Data API v2 access
+
+Outputs:
+
+- `output/electricity.json` — full analysis with market signals and recommendations
+- `output/eia_grid_monitor_views.json` — dashboard view catalog
 
 ## Electrical Grid Analyst
 
