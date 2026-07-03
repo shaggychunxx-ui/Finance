@@ -20,6 +20,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
+| **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -39,6 +40,7 @@ run.bat logistics
 run.bat theoretical-probability
 run.bat empirical-probability
 run.bat combined-conditional
+run.bat research-statistics
 run.bat meteorology
 ```
 
@@ -295,6 +297,28 @@ Outputs:
 
 - `output/combined_conditional.json` — full combined/conditional analysis
 - `output/probability_concepts.json` — probability concepts and formulas catalog
+
+## Research Statistics Expert
+
+Research scientist / statistician analysis of US market return data:
+
+- **One-sample t-test** — H₀: mean daily return = 0
+- **Two-sample t-test** — compare asset vs SPY mean returns
+- **95% confidence intervals** — for expected daily returns
+- **OLS regression** — α, β, R² vs SPY with slope significance
+- **Lag-1 autocorrelation** — momentum vs mean-reversion serial dependence
+- **Jarque-Bera normality test** — skewness and kurtosis diagnostics
+- **F-test** — equal variance comparison vs benchmark
+- **Research findings** — ranked significant results at α = 0.05
+
+```bat
+run.bat research-statistics -o output/research_statistics.json
+```
+
+Outputs:
+
+- `output/research_statistics.json` — full statistical research report
+- `output/statistical_methods.json` — methods and formulas catalog
 
 ## Meteorology Expert
 
