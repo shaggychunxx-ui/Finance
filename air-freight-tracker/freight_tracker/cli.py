@@ -110,9 +110,10 @@ def cmd_list(args: argparse.Namespace, db: FreightDatabase) -> None:
 
     print(f"\n  {len(shipments)} shipment(s) found:\n")
     for shipment in shipments:
-        print(f"  {shipment.awb_number}  {shipment.status_label:<24} "
-              f"{shipment.origin_airport} -> {shipment.destination_airport}  "
-              f"{shipment.shipper} -> {shipment.consignee}")
+        route = f"{shipment.origin_airport} -> {shipment.destination_airport}"
+        parties = f"{shipment.shipper} -> {shipment.consignee}"
+        line = f"  {shipment.awb_number}  {shipment.status_label:<24} {route}  {parties}"
+        print(line)
     print()
 
 

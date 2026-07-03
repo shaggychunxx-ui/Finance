@@ -60,6 +60,19 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _normalize_event_location(location: str) -> str:
+    """Normalize a tracking event location.
+
+    3-letter tokens are treated as IATA airport codes and validated/upper-cased;
+    anything else (e.g. a city name, warehouse, or customs facility) is passed
+    through as free text.
+    """
+    stripped = location.strip()
+    if len(stripped) == 3:
+        return validate_airport_code(stripped)
+    return stripped
+
+
 class FreightDatabase:
     """Manages persistence of shipments and tracking events in SQLite."""
 
@@ -295,7 +308,7 @@ class FreightDatabase:
         if status not in {s.value for s in ShipmentStatus}:
             raise ValueError(f"Invalid status: {status}")
 
-        location = validate_airport_code(location) if len(location.strip()) == 3 else location.strip()
+        location = _normalize_event_location(location)
         now = _utcnow()
         event_dt = event_time or now
 

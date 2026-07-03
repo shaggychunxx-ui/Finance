@@ -146,9 +146,26 @@ body {
   border: 1px solid var(--border);
 }
 
-.status-delivered { background: rgba(34,197,94,0.15); color: var(--success); border-color: var(--success); }
-.status-exception, .status-cancelled { background: rgba(239,68,68,0.15); color: var(--danger); border-color: var(--danger); }
-.status-in_transit, .status-departed, .status-out_for_delivery { background: rgba(59,130,246,0.15); color: var(--accent); border-color: var(--accent); }
+.status-delivered {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.status-exception,
+.status-cancelled {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.status-in_transit,
+.status-departed,
+.status-out_for_delivery {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
 .meta-grid {
   display: grid;

@@ -56,7 +56,11 @@ def validate_awb_check_digit(awb: str) -> bool:
 
 
 def validate_airport_code(code: str) -> str:
-    """Validate and normalize a 3-letter IATA airport code."""
+    """Validate and normalize a 3-letter IATA airport code.
+
+    This only checks the format (3 uppercase letters); it does not verify
+    that the code corresponds to a real, currently operating airport.
+    """
     cleaned = code.strip().upper()
     if not AIRPORT_PATTERN.match(cleaned):
         raise ValueError(f"Invalid airport code: {code!r}. Expected a 3-letter IATA code (e.g. JFK).")
