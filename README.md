@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
+| **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -43,6 +44,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat sales-analytics
+run.bat data-steward
 run.bat meteorology
 ```
 
@@ -342,6 +344,27 @@ Outputs:
 - `output/sales_analytics.json` — full BI analysis with market signals
 - `output/sales_dashboard_data.json` — dashboard feed (auto-loaded by `sales_dashboard.html`)
 - `output/sales_dashboard_panels.json` — dashboard panel catalog
+
+## Data Steward Expert
+
+Expert data stewardship and management for the Finance intelligence platform:
+
+- **Data catalog** — 8 external sources with refresh policies and SLA metadata
+- **Agent registry** — 17 agents with lineage (source → agent → output)
+- **Health checks** — live endpoint monitoring (Yahoo Finance, OpenAlex, BBC RSS, NWS)
+- **Artifact validation** — schema, completeness, and freshness of `output/*.json`
+- **Stewardship issues** — severity-ranked gaps with remediation steps
+- **Governance** — config.json key audit and data quality scoring
+
+```bat
+run.bat data-steward -o output/data_steward.json
+```
+
+Outputs:
+
+- `output/data_steward.json` — full stewardship report with market signals
+- `output/data_catalog.json` — data source catalog
+- `output/data_lineage.json` — agent registry and lineage map
 
 ## Meteorology Expert
 
