@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>International Air Freight Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>✈ Air Freight Tracker</h1>
+    <button id="new-shipment-btn" class="btn btn-primary">+ New Shipment</button>
+  </header>
+
+  <main class="layout">
+    <section class="sidebar">
+      <div class="filters">
+        <input id="search-input" type="text" placeholder="Search AWB, shipper, consignee…" />
+        <select id="status-filter">
+          <option value="">All statuses</option>
+        </select>
+      </div>
+      <div id="shipment-list" class="shipment-list"></div>
+    </section>
+
+    <section class="detail">
+      <div id="detail-empty" class="empty-state">
+        <p>Select a shipment to view details</p>
+      </div>
+      <div id="detail-content" class="hidden">
+        <div class="detail-header">
+          <h2 id="detail-awb"></h2>
+          <span id="detail-status" class="status-badge"></span>
+        </div>
+        <div id="detail-meta" class="meta-grid"></div>
+
+        <div class="add-event">
+          <h3>Add Tracking Event</h3>
+          <form id="event-form">
+            <select id="event-status" required></select>
+            <input id="event-location" type="text" placeholder="Location (e.g. JFK)" required />
+            <input id="event-flight" type="text" placeholder="Flight # (optional)" />
+            <input id="event-description" type="text" placeholder="Description" required />
+            <button type="submit" class="btn btn-primary">Add Event</button>
+          </form>
+        </div>
+
+        <h3>Tracking History</h3>
+        <div id="timeline" class="timeline"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>New Shipment</h2>
+      <form id="shipment-form">
+        <label>AWB Number <input name="awb_number" placeholder="020-12345675" required /></label>
+        <label>Origin Airport <input name="origin_airport" placeholder="JFK" maxlength="3" required /></label>
+        <label>Destination Airport <input name="destination_airport" placeholder="LHR" maxlength="3" required /></label>
+        <label>Shipper <input name="shipper" required /></label>
+        <label>Consignee <input name="consignee" required /></label>
+        <label>Pieces <input name="pieces" type="number" min="1" value="1" /></label>
+        <label>Weight (kg) <input name="weight_kg" type="number" step="0.1" min="0" value="0" /></label>
+        <label>Commodity <input name="commodity" /></label>
+        <label>Carrier <input name="carrier_name" placeholder="auto-detected if blank" /></label>
+        <label>Flight # <input name="flight_number" /></label>
+        <label>Reference <input name="reference" /></label>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
