@@ -85,11 +85,13 @@ def _print_markets(data: dict[str, Any]) -> None:
     print()
     for q in data.get("indices", [])[:5]:
         wk = f" / 1w {q.get('week_chg_pct'):+.2f}%" if q.get("week_chg_pct") is not None else ""
-        print(f"  • {q.get('symbol')}: {q.get('day_chg_pct'):+.2f}%{wk}")
+        yr = f" / 1y {q.get('year_chg_pct'):+.2f}%" if q.get("year_chg_pct") is not None else ""
+        print(f"  • {q.get('symbol')}: 1d {q.get('day_chg_pct'):+.2f}%{wk}{yr}")
     print()
     print("  Sector leaders:")
     for s in data.get("sectors", [])[:5]:
-        print(f"    #{s.get('rank')} {s.get('sector')} ({s.get('etf')}): {s.get('day_chg_pct'):+.2f}%")
+        yr = f" / 1y {s.get('year_chg_pct'):+.2f}%" if s.get("year_chg_pct") is not None else ""
+        print(f"    #{s.get('rank')} {s.get('sector')} ({s.get('etf')}): {s.get('day_chg_pct'):+.2f}%{yr}")
     print()
     gainers = data.get("top_gainers", [])[:5]
     if gainers:

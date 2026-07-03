@@ -52,6 +52,7 @@ class Quote:
     price: float | None
     day_chg_pct: float | None
     week_chg_pct: float | None = None
+    year_chg_pct: float | None = None
     volume: int | None = None
 
 
@@ -61,6 +62,7 @@ class SectorSnapshot:
     sector: str
     day_chg_pct: float | None
     week_chg_pct: float | None
+    year_chg_pct: float | None = None
     rank: int = 0
 
 
@@ -108,7 +110,7 @@ class MarketAnalystExpert:
         try:
             resp = requests.get(
                 CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1mo"},
+                params={"interval": "1d", "range": "1y"},
                 headers=HEADERS,
                 timeout=25,
             )
@@ -116,7 +118,7 @@ class MarketAnalystExpert:
                 time.sleep(3)
                 resp = requests.get(
                     CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1mo"},
+                    params={"interval": "1d", "range": "1y"},
                     headers=HEADERS,
                     timeout=25,
                 )
@@ -146,12 +148,20 @@ class MarketAnalystExpert:
             elif len(valid) >= 2:
                 week_chg = round(((valid[-1] - valid[0]) / valid[0]) * 100, 2)
 
+            # ~1 trading year of daily bars (roughly 252). Fall back to the
+            # oldest available close when a full year of history isn't returned.
+            year_chg: float | None = None
+            if len(valid) >= 200:
+                anchor = valid[-253] if len(valid) >= 253 else valid[0]
+                year_chg = round(((valid[-1] - anchor) / anchor) * 100, 2)
+
             return Quote(
                 symbol=symbol,
                 name=meta.get("shortName") or symbol,
                 price=round(float(price), 2),
                 day_chg_pct=day_chg,
                 week_chg_pct=week_chg,
+                year_chg_pct=year_chg,
                 volume=meta.get("regularMarketVolume"),
             )
         except Exception:
@@ -215,6 +225,7 @@ class MarketAnalystExpert:
                 sector=name,
                 day_chg_pct=q.day_chg_pct,
                 week_chg_pct=q.week_chg_pct,
+                year_chg_pct=q.year_chg_pct,
             ))
         sectors.sort(key=lambda s: s.day_chg_pct or -999, reverse=True)
         for i, s in enumerate(sectors, 1):
@@ -537,6 +548,7 @@ class MarketAnalystExpert:
                     "price": q.price,
                     "day_chg_pct": q.day_chg_pct,
                     "week_chg_pct": q.week_chg_pct,
+                    "year_chg_pct": q.year_chg_pct,
                 }
                 for q in report.indices
             ],
@@ -547,6 +559,7 @@ class MarketAnalystExpert:
                     "rank": s.rank,
                     "day_chg_pct": s.day_chg_pct,
                     "week_chg_pct": s.week_chg_pct,
+                    "year_chg_pct": s.year_chg_pct,
                 }
                 for s in report.sectors
             ],
