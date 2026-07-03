@@ -11,6 +11,8 @@ const countEl      = document.getElementById('event-count');
 const filterCat    = document.getElementById('filter-category');
 const filterImpact = document.getElementById('filter-impact');
 const filterSearch = document.getElementById('filter-search');
+const importInput  = document.getElementById('import-json');
+const btnImport    = document.getElementById('btn-import');
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function loadEvents() {
@@ -30,6 +32,33 @@ function addEvent(data) {
   events.unshift({ id: Date.now(), ...data });
   saveEvents();
   render();
+}
+
+function importEvents(incoming) {
+  const list = Array.isArray(incoming) ? incoming : (incoming.tracker_events || incoming.events || []);
+  if (!list.length) return 0;
+  const existing = new Set(events.map(e => e.title.toLowerCase().slice(0, 80)));
+  let added = 0;
+  for (const raw of list) {
+    const title = String(raw.title || '').trim();
+    if (!title) continue;
+    const key = title.toLowerCase().slice(0, 80);
+    if (existing.has(key)) continue;
+    existing.add(key);
+    events.unshift({
+      id: raw.id || Date.now() + added,
+      title,
+      date: raw.date || today(),
+      region: raw.region || 'Global',
+      category: raw.category || 'other',
+      impact: raw.impact || 'medium',
+      notes: raw.notes || '',
+    });
+    added += 1;
+  }
+  if (added) saveEvents();
+  render();
+  return added;
 }
 
 function deleteEvent(id) {
@@ -137,6 +166,26 @@ listEl.addEventListener('click', e => {
 
 [filterCat, filterImpact, filterSearch].forEach(el =>
   el.addEventListener('input', render));
+
+if (btnImport && importInput) {
+  btnImport.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        const added = importEvents(data);
+        alert(added ? `Imported ${added} new event(s).` : 'No new events to import.');
+      } catch {
+        alert('Invalid JSON file.');
+      }
+      importInput.value = '';
+    };
+    reader.readAsText(file);
+  });
+}
 
 function today() {
   return new Date().toISOString().slice(0, 10);

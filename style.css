@@ -132,6 +132,24 @@ main {
   background: #2b6cb0;
 }
 
+.btn-import {
+  background: transparent;
+  color: #63b3ed;
+  border: 1px solid #3182ce;
+  border-radius: 6px;
+  padding: 0.45rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
+  margin-left: auto;
+  transition: background 0.2s, color 0.2s;
+}
+
+.btn-import:hover {
+  background: #2a4365;
+  color: #90cdf4;
+}
+
 /* Filters */
 .filters {
   display: flex;
