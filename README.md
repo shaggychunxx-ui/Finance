@@ -18,6 +18,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
+| **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -35,6 +36,7 @@ run.bat markets
 run.bat geopolitics
 run.bat logistics
 run.bat theoretical-probability
+run.bat empirical-probability
 run.bat meteorology
 ```
 
@@ -249,6 +251,27 @@ Outputs:
 
 - `output/theoretical_probability.json` — full probability analysis with market signals
 - `output/probability_models.json` — catalog of theoretical models and formulas
+
+## Empirical Probability Expert
+
+Expert in empirical (experimental) probability applied to US market data:
+
+- **Observed frequencies** — empirical P(up/down) with trial counts
+- **Wilson score 95% CI** — confidence intervals for win-rate estimates
+- **Rolling win rates** — 20/60/120-day empirical probabilities
+- **Conditional frequencies** — P(up | prior up/down), P(up | 2 down days)
+- **Return-bin histogram** — empirical probability mass across move sizes
+- **Bootstrap resampling** — non-parametric CI for win rate and mean return
+- **Rule experiments** — momentum and mean-reversion trials with 70/30 train/test validation
+
+```bat
+run.bat empirical-probability -o output/empirical_probability.json
+```
+
+Outputs:
+
+- `output/empirical_probability.json` — full empirical analysis with market signals
+- `output/empirical_experiments.json` — catalog of experimental methods
 
 ## Meteorology Expert
 
