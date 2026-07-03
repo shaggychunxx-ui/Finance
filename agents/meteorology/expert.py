@@ -152,14 +152,14 @@ class MeteorologyExpert:
     def _fetch_alert_count(self) -> dict[str, Any]:
         try:
             return self._get("/alerts/active/count")
-        except Exception:
+        except requests.RequestException:
             return {}
 
     def _fetch_active_alerts(self) -> list[dict[str, Any]]:
         try:
             data = self._get("/alerts/active", {"status": "actual"})
             return data.get("features", [])
-        except Exception:
+        except requests.RequestException:
             return []
 
     @staticmethod
