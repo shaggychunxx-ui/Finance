@@ -150,11 +150,17 @@ class MeteorologyExpert:
         return resp.json()
 
     def _fetch_alert_count(self) -> dict[str, Any]:
-        return self._get("/alerts/active/count")
+        try:
+            return self._get("/alerts/active/count")
+        except Exception:
+            return {}
 
     def _fetch_active_alerts(self) -> list[dict[str, Any]]:
-        data = self._get("/alerts/active", {"status": "actual"})
-        return data.get("features", [])
+        try:
+            data = self._get("/alerts/active", {"status": "actual"})
+            return data.get("features", [])
+        except Exception:
+            return []
 
     @staticmethod
     def _match_category(event: str, keywords: set[str]) -> bool:
@@ -203,7 +209,7 @@ class MeteorologyExpert:
         count_data = self._fetch_alert_count()
         return AlertSummary(
             total_active=int(count_data.get("total", len(features))),
-            land_alerts=int(count_data.get("land", 0)),
+            land_alerts=int(count_data.get("land", len(features))),
             marine_alerts=int(count_data.get("marine", 0)),
             by_event=dict(sorted(by_event.items(), key=lambda x: -x[1])),
             by_state=dict(sorted(by_state.items(), key=lambda x: -x[1])[:15]),
