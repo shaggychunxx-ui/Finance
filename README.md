@@ -155,17 +155,27 @@ Outputs:
 
 ## Logistics Expert
 
-Monitors three global trade corridors and assesses supply-chain stress:
+Evaluates logistics strategies from [MarineTraffic](https://www.marinetraffic.com/) AIS patterns across three global trade corridors:
 
-- **North Sea / English Channel** — Rotterdam, Antwerp, Dover
+- **North Sea / English Channel** (primary) — [MarineTraffic view](https://www.marinetraffic.com/en/ais/home/centerx:2.7/centery:51.2/zoom:6) — Rotterdam, Antwerp, Dover
 - **US West Coast** — LA/Long Beach, Oakland
 - **Singapore Strait** — Asia export chokepoint
 
 Outputs:
 
+- Marine traffic strategy evaluation (routing, anchorage, freight mix, port priority)
 - Lane density, freight momentum, and port congestion scores
 - Chokepoint, container backlog, retail lead-time, and manufacturing flow signals
 - Sector signals (dry bulk, container shipping, retail, tankers, freight brokers)
+
+```bat
+run.bat logistics -o output/logistics.json
+```
+
+Writes:
+
+- `output/logistics.json` — full analysis with market signals and recommendations
+- `output/marine_traffic_corridors.json` — corridor dashboard catalog
 
 Optional: copy `config.example.json` to `config.json` and set `marinetraffic_api_key` for live AIS data.
 

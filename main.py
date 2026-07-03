@@ -399,7 +399,24 @@ def _print_logistics(data: dict[str, Any]) -> None:
     print(f"  Stress: {metrics.get('stress_label')} ({metrics.get('supply_chain_stress_score')})")
     print(f"  Freight momentum: {metrics.get('freight_momentum_score')}")
     print(f"  Peak congestion: {metrics.get('congestion_score')}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
     print()
+    primary = data.get("primary_corridor")
+    if primary:
+        print(
+            f"  Primary view — {primary.get('name')}: "
+            f"{primary.get('total_vessels')} vessels | "
+            f"density {primary.get('lane_density_score')} | "
+            f"congestion {primary.get('congestion_score')}"
+        )
+        print()
+    strategies = data.get("marine_traffic_strategies", {})
+    if strategies:
+        print("  Marine traffic strategies:")
+        for key in ("routing", "anchorage", "freight_mix", "port_priority"):
+            if strategies.get(key):
+                print(f"    • {strategies[key]}")
+        print()
     for c in data.get("corridors", []):
         m = c.get("metrics", {})
         print(
@@ -483,6 +500,10 @@ def main() -> int:
                 catalog = args.output.parent / "eia_grid_monitor_views.json"
                 if catalog.exists():
                     print(f"  EIA Grid Monitor views: {catalog}")
+            if args.agent == "logistics":
+                catalog = args.output.parent / "marine_traffic_corridors.json"
+                if catalog.exists():
+                    print(f"  MarineTraffic corridor catalog: {catalog}")
             print()
 
     return 0

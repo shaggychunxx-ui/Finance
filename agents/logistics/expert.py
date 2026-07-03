@@ -22,6 +22,10 @@ import requests
 
 AIS_EXPORT_URL = "https://services.marinetraffic.com/api/exportvessels"
 HEADERS = {"User-Agent": "Finance-Logistics-Expert/1.0 (shaggychunxx@gmail.com)"}
+PRIMARY_DASHBOARD = (
+    "https://www.marinetraffic.com/en/ais/home/centerx:2.7/centery:51.2/zoom:6"
+)
+PRIMARY_CORRIDOR_ID = "north_sea"
 
 CORRIDORS = {
     "north_sea": {
@@ -129,6 +133,9 @@ class LogisticsReport:
     expert_summary: str
     market_signals: list[dict[str, Any]]
     recommendations: list[str]
+    primary_corridor: CorridorSnapshot | None = None
+    marine_traffic_strategies: dict[str, str] = field(default_factory=dict)
+    data_sources: list[str] = field(default_factory=list)
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -385,6 +392,57 @@ class LogisticsExpert:
     def _congestion_aggregate(self, corridors: list[CorridorSnapshot]) -> float:
         return round(max(c.congestion_score for c in corridors), 4)
 
+    @staticmethod
+    def _marine_traffic_strategies(primary: CorridorSnapshot | None) -> dict[str, str]:
+        if not primary:
+            return {
+                "routing": "Primary corridor unavailable — use multi-corridor proxy",
+                "anchorage": "n/a",
+                "freight_mix": "n/a",
+                "port_priority": "n/a",
+            }
+
+        total = max(primary.total_vessels, 1)
+        anchored_pct = primary.anchored_count / total * 100
+        underway_pct = primary.underway_count / total * 100
+        top_ports = sorted(primary.port_proximity.items(), key=lambda x: -x[1])[:3]
+        port_line = ", ".join(f"{n} ({v})" for n, v in top_ports) if top_ports else "n/a"
+
+        routing = (
+            f"High lane density ({primary.lane_density_score:.2f}) — "
+            "favor scheduled feeder services and Dover/Channel weather windows"
+            if primary.lane_density_score >= 0.65
+            else "Moderate North Sea traffic — standard EU-UK routing viable"
+        )
+
+        anchorage = (
+            f"{anchored_pct:.0f}% anchored ({primary.anchored_count} vessels) — "
+            "expect Rotterdam/Antwerp queue delays; consider just-in-time berth booking"
+            if anchored_pct >= 25
+            else f"{underway_pct:.0f}% underway — fluid anchorage, normal port turnaround"
+        )
+
+        bulk_share = primary.bulk_count / total * 100
+        cargo_share = primary.cargo_count / total * 100
+        freight_mix = (
+            f"Bulk-heavy mix ({bulk_share:.0f}% bulk, {cargo_share:.0f}% cargo) — "
+            "dry freight rate sensitivity (BDRY); prioritize bulk berth slots"
+            if bulk_share >= 20
+            else f"Container/cargo dominant ({cargo_share:.0f}%) — "
+            "monitor TEU flow through Rotterdam and Antwerp"
+        )
+
+        return {
+            "routing": routing,
+            "anchorage": anchorage,
+            "freight_mix": freight_mix,
+            "port_priority": f"Top port proximity: {port_line}",
+            "dashboard_note": (
+                f"MarineTraffic North Sea view at {PRIMARY_DASHBOARD} "
+                f"({primary.total_vessels} vessels tracked)"
+            ),
+        }
+
     def _expert_summary(
         self,
         corridors: list[CorridorSnapshot],
@@ -392,12 +450,21 @@ class LogisticsExpert:
         stress: float,
         freight: float,
         label: str,
+        primary: CorridorSnapshot | None,
     ) -> str:
         total_vessels = sum(c.total_vessels for c in corridors)
         busiest = max(corridors, key=lambda c: c.total_vessels)
+        primary_line = ""
+        if primary:
+            primary_line = (
+                f" Primary view ({PRIMARY_DASHBOARD}): "
+                f"{primary.total_vessels} vessels, density {primary.lane_density_score:.2f}, "
+                f"congestion {primary.congestion_score:.2f}."
+            )
         return (
-            f"Global logistics stress is {label.lower()} (score {stress:.2f}) across "
-            f"{len(corridors)} monitored corridors ({total_vessels} vessels total). "
+            f"MarineTraffic logistics analysis — global stress {label.lower()} "
+            f"(score {stress:.2f}) across {len(corridors)} corridors "
+            f"({total_vessels} vessels total).{primary_line} "
             f"Busiest lane: {busiest.corridor_name} ({busiest.total_vessels} vessels). "
             f"Freight momentum {freight:.2f}. "
             f"Chokepoint: {assessment.chokepoint_risk}. "
@@ -425,9 +492,17 @@ class LogisticsExpert:
             "Normal"
         )
 
-        summary = self._expert_summary(corridors, assessment, stress, freight, label)
+        primary = next((c for c in corridors if c.corridor_id == PRIMARY_CORRIDOR_ID), None)
+        strategies = self._marine_traffic_strategies(primary)
+        sources = sorted({c.data_source for c in corridors if c.data_source})
+
+        summary = self._expert_summary(
+            corridors, assessment, stress, freight, label, primary
+        )
         signals = self._market_signals(corridors, assessment, stress, freight, congestion)
         recs = self._recommendations(corridors, assessment, stress, freight, congestion)
+        for key, value in strategies.items():
+            recs.append(f"{key.replace('_', ' ').title()}: {value}")
 
         return LogisticsReport(
             corridors=corridors,
@@ -439,6 +514,9 @@ class LogisticsExpert:
             expert_summary=summary,
             market_signals=signals,
             recommendations=recs,
+            primary_corridor=primary,
+            marine_traffic_strategies=strategies,
+            data_sources=sources,
         )
 
     @staticmethod
@@ -539,15 +617,47 @@ class LogisticsExpert:
             recs.append("Port congestion elevated — monitor retail inventory and margin pressure")
         return recs
 
+    @staticmethod
+    def corridor_catalog() -> list[dict[str, Any]]:
+        return [
+            {
+                "id": cid,
+                "name": cfg["name"],
+                "dashboard": cfg["dashboard"],
+                "center": cfg["center"],
+                "ports": [name for _, _, name in cfg["ports"]],
+                "primary": cid == PRIMARY_CORRIDOR_ID,
+            }
+            for cid, cfg in CORRIDORS.items()
+        ]
+
     def to_dict(self, report: LogisticsReport) -> dict[str, Any]:
         a = report.assessment
         return {
             "meta": {
                 "agent": "Logistics Expert",
+                "primary_dashboard": PRIMARY_DASHBOARD,
                 "analyzed_at": report.analyzed_at,
                 "expert_summary": report.expert_summary,
                 "corridors_monitored": len(report.corridors),
+                "data_sources": report.data_sources,
             },
+            "marine_traffic_strategies": report.marine_traffic_strategies,
+            "primary_corridor": (
+                {
+                    "id": report.primary_corridor.corridor_id,
+                    "name": report.primary_corridor.corridor_name,
+                    "dashboard": report.primary_corridor.dashboard_url,
+                    "total_vessels": report.primary_corridor.total_vessels,
+                    "lane_density_score": report.primary_corridor.lane_density_score,
+                    "congestion_score": report.primary_corridor.congestion_score,
+                    "freight_score": report.primary_corridor.freight_score,
+                    "port_proximity": report.primary_corridor.port_proximity,
+                    "data_source": report.primary_corridor.data_source,
+                }
+                if report.primary_corridor
+                else None
+            ),
             "assessment": {
                 "chokepoint_risk": a.chokepoint_risk,
                 "container_backlog_signal": a.container_backlog_signal,
@@ -590,10 +700,16 @@ class LogisticsExpert:
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
-        result = self.to_dict(self.analyze())
+        report = self.analyze()
+        result = self.to_dict(report)
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+            catalog_path = output.parent / "marine_traffic_corridors.json"
+            catalog_path.write_text(
+                json.dumps(self.corridor_catalog(), indent=2),
+                encoding="utf-8",
+            )
         return result
 
 
