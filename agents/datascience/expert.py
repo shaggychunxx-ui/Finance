@@ -352,7 +352,7 @@ class DataScienceExpert:
             time.sleep(self.delay_seconds)
 
         if BENCHMARK not in return_map:
-            raise RuntimeError("Unable to fetch SPY data for data science analysis")
+            raise RuntimeError(f"Unable to fetch {BENCHMARK} data for data science analysis")
 
         correlations = self._correlations(return_map)
         assessment = self._assessment(tickers, correlations)
