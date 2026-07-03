@@ -351,6 +351,9 @@ class DataScienceExpert:
                 tickers.append(stats)
             time.sleep(self.delay_seconds)
 
+        if not any(t.symbol == BENCHMARK for t in tickers):
+            raise RuntimeError("Unable to fetch SPY data for data science analysis")
+
         correlations = self._correlations(return_map)
         assessment = self._assessment(tickers, correlations)
         stress = self._quant_stress(tickers)
