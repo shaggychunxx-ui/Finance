@@ -6,6 +6,7 @@ Intelligence agents for financial market analysis and a client-side world events
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
@@ -17,6 +18,7 @@ Intelligence agents for financial market analysis and a client-side world events
 ## Quick start
 
 ```bat
+run.bat transportation
 run.bat patents
 run.bat events
 run.bat datascience
@@ -29,10 +31,22 @@ run.bat meteorology
 Or with options:
 
 ```bat
+run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
 run.bat geopolitics --json
 ```
+
+## Civil Transportation Analyst
+
+Civil engineering analysis of U.S. DOT open data from [data.transportation.gov](https://data.transportation.gov/):
+
+- **10 DOT resource categories** cataloged (bridges, roadways, rail, transit, trucking, maritime)
+- Railroad bridge inventory by state and design type (FRA dataset)
+- Weekly traffic volume trends — passenger vs. truck demand
+- FHWA commercial vehicle inspection volume by state
+- Infrastructure stress score, freight momentum, and civil assessment
+- Sector signals for rails, freight, and construction materials
 
 ## Patent Landscape Analyst
 
