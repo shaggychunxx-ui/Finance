@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from agents.geopolitics import run_geopolitics_analysis
 from agents.logistics import run_logistics_analysis
+from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 
 
@@ -52,6 +53,38 @@ def _print_meteorology(data: dict[str, Any]) -> None:
     print(f"  Severe: {metrics.get('severe_weather_score')}  |  Flood: {metrics.get('flood_risk_score')}")
     print(f"  Energy demand: {metrics.get('energy_demand_score')}")
     print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_markets(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Regime: {metrics.get('trend_label')} (risk-on {metrics.get('risk_on_score')})")
+    print(f"  Breadth: {metrics.get('breadth_score')}  |  Momentum: {metrics.get('momentum_score')}")
+    print()
+    for q in data.get("indices", [])[:5]:
+        wk = f" / 1w {q.get('week_chg_pct'):+.2f}%" if q.get("week_chg_pct") is not None else ""
+        print(f"  • {q.get('symbol')}: {q.get('day_chg_pct'):+.2f}%{wk}")
+    print()
+    print("  Sector leaders:")
+    for s in data.get("sectors", [])[:5]:
+        print(f"    #{s.get('rank')} {s.get('sector')} ({s.get('etf')}): {s.get('day_chg_pct'):+.2f}%")
+    print()
+    gainers = data.get("top_gainers", [])[:5]
+    if gainers:
+        print("  Top gainers: " + ", ".join(
+            f"{g.get('symbol')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
+        ))
+        print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -110,12 +143,14 @@ def _print_logistics(data: dict[str, Any]) -> None:
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "geopolitics": _print_geopolitics,
+    "markets": _print_markets,
     "meteorology": _print_meteorology,
     "logistics": _print_logistics,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "geopolitics": run_geopolitics_analysis,
+    "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "logistics": run_logistics_analysis,
 }
@@ -126,7 +161,7 @@ def main() -> int:
     parser.add_argument(
         "agent",
         nargs="?",
-        default="geopolitics",
+        default="markets",
         choices=sorted(RUNNERS.keys()),
         help="Agent to run (default: logistics)",
     )

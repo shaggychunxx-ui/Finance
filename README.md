@@ -6,6 +6,7 @@ Intelligence agents for financial market analysis. Each agent pulls live public 
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
@@ -13,6 +14,7 @@ Intelligence agents for financial market analysis. Each agent pulls live public 
 ## Quick start
 
 ```bat
+run.bat markets
 run.bat geopolitics
 run.bat logistics
 run.bat meteorology
@@ -24,6 +26,15 @@ Or with options:
 run.bat geopolitics --json
 run.bat geopolitics -o output/geopolitics.json
 ```
+
+## Market Analyst Expert
+
+Live US market analysis from Yahoo Finance:
+
+- Major indices (^GSPC, ^DJI, ^IXIC, ^RUT) and VIX
+- 11 sector ETFs with day and 1-week performance ranking
+- Top 10 day gainers/losers and trending tickers
+- Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
 
 ## Geopolitics Expert
 
