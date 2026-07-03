@@ -329,6 +329,27 @@ Analyzes US weather hazards and hub forecasts:
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
 
+## Prediction Catalog & Accuracy Back-testing
+
+Every agent run automatically catalogs its directional market signals (sector, bias, tickers, reason), key metrics, recommendations, and a reference price for each mentioned ticker to an append-only JSONL log:
+
+```bat
+run.bat markets
+```
+
+- Outputs: `output/prediction_log.jsonl` (one JSON snapshot per run, use `--log` to change the path, `--no-catalog` to skip it)
+
+Once catalogued predictions have had time to play out, back-test them against live prices to see how accurate each agent's directional calls were:
+
+```bat
+main.py --accuracy
+main.py --accuracy --for-agent markets --horizon-days 5
+```
+
+- `--horizon-days` — minimum age (in days) a catalogued prediction must have before it's scored (default 1)
+- `--for-agent` — restrict the report to a single agent (default: all agents in the catalog)
+- `--json` — print the full per-signal accuracy detail as JSON instead of the summary table
+
 ## Requirements
 
 - Python 3.10+

@@ -9,6 +9,11 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.common.tracking import (
+    DEFAULT_LOG_PATH,
+    evaluate_accuracy,
+    log_prediction,
+)
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -775,6 +780,25 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "transportation": _print_transportation,
 }
 
+def _print_accuracy_reports(reports: list[Any], log_path: Path) -> None:
+    print()
+    print("=" * 60)
+    print("  Prediction Catalog — Accuracy Back-test")
+    print("=" * 60)
+    print(f"  Catalog: {log_path}")
+    print()
+    if not reports:
+        print("  No catalogued predictions old enough to score yet.")
+        print()
+        return
+    for r in reports:
+        acc = r.accuracy_pct
+        acc_str = f"{acc:.1f}%" if acc is not None else "n/a"
+        print(f"  • {r.agent}: {acc_str} accuracy "
+              f"({r.correct} correct / {r.incorrect} incorrect, {r.skipped} skipped)")
+    print()
+
+
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "combined-conditional": run_combined_conditional_analysis,
     "datascience": run_datascience_analysis,
@@ -806,7 +830,43 @@ def main() -> int:
     )
     parser.add_argument("-o", "--output", type=Path, help="Write JSON report to this file")
     parser.add_argument("--json", action="store_true", help="Print full JSON to stdout")
+    parser.add_argument(
+        "--no-catalog",
+        action="store_true",
+        help="Skip cataloguing this run's signals to the prediction log",
+    )
+    parser.add_argument(
+        "--log", type=Path, default=DEFAULT_LOG_PATH,
+        help=f"Prediction catalog JSONL path (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument(
+        "--accuracy",
+        action="store_true",
+        help="Skip running an agent; instead back-test the prediction catalog and report accuracy",
+    )
+    parser.add_argument(
+        "--for-agent",
+        dest="for_agent",
+        choices=sorted(RUNNERS.keys()),
+        help="Restrict --accuracy report to a single agent (default: all agents in the catalog)",
+    )
+    parser.add_argument(
+        "--horizon-days",
+        type=float,
+        default=1.0,
+        help="Minimum age (days) a catalogued prediction must have before --accuracy scores it (default: 1)",
+    )
     args = parser.parse_args()
+
+    if args.accuracy:
+        reports = evaluate_accuracy(
+            log_path=args.log, agent=args.for_agent, horizon_days=args.horizon_days,
+        )
+        if args.json:
+            print(json.dumps([r.to_dict() for r in reports], indent=2))
+        else:
+            _print_accuracy_reports(reports, args.log)
+        return 0
 
     try:
         result = RUNNERS[args.agent](output=args.output)
@@ -814,10 +874,18 @@ def main() -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
+    if not args.no_catalog:
+        try:
+            log_prediction(args.agent, result, log_path=args.log)
+        except Exception as exc:
+            print(f"Warning: failed to catalog prediction: {exc}", file=sys.stderr)
+
     if args.json:
         print(json.dumps(result, indent=2))
     else:
         PRINTERS[args.agent](result)
+        if not args.no_catalog:
+            print(f"  Prediction catalogued to {args.log}")
         if args.output:
             print(f"  Full report saved to {args.output}")
             if args.agent == "events":
