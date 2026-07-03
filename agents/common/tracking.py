@@ -64,12 +64,14 @@ def fetch_price(symbol: str) -> float | None:
 
 
 def _unique_tickers(market_signals: list[dict[str, Any]]) -> list[str]:
-    seen: list[str] = []
+    seen: set[str] = set()
+    ordered: list[str] = []
     for sig in market_signals:
         for ticker in sig.get("tickers", []) or []:
             if ticker not in seen:
-                seen.append(ticker)
-    return seen[:_MAX_PRICED_TICKERS]
+                seen.add(ticker)
+                ordered.append(ticker)
+    return ordered[:_MAX_PRICED_TICKERS]
 
 
 def build_snapshot(
@@ -229,7 +231,12 @@ def evaluate_accuracy(
                 current_price = cached_price(ticker)
                 if current_price is None:
                     continue
+                if ref_price == 0:
+                    continue
                 pct_change = (current_price - ref_price) / ref_price * 100
+                if pct_change == 0:
+                    # No movement — not enough signal to call correct or incorrect.
+                    continue
                 is_correct = (pct_change > 0 and direction > 0) or (pct_change < 0 and direction < 0)
                 report.signals_evaluated += 1
                 if is_correct:
