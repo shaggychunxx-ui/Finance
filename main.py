@@ -12,6 +12,7 @@ from typing import Any, Callable
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.events import run_events_analysis
+from agents.finance import run_finance_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
@@ -90,6 +91,62 @@ def _print_markets(data: dict[str, Any]) -> None:
         print("  Top gainers: " + ", ".join(
             f"{g.get('symbol')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
         ))
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_finance(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("trader_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — Google Finance Beta")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Tape: {metrics.get('trend_label')} "
+        f"(opportunity {metrics.get('opportunity_score')})"
+    )
+    print(
+        f"  Momentum: {metrics.get('momentum_score')} | "
+        f"Dispersion: {metrics.get('dispersion_score')} | "
+        f"Risk/reward: {metrics.get('risk_reward_score')}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Equity sectors (Google Finance beta):")
+    for s in sorted(data.get("sectors", []), key=lambda x: -(x.get("day_chg_pct") or -999))[:6]:
+        print(
+            f"    • {s.get('google_symbol')} {s.get('name')}: "
+            f"{s.get('day_chg_pct'):+.2f}% day | z {s.get('z_score_5d')}"
+        )
+    print()
+    print("  US indices:")
+    for i in data.get("indices", [])[:5]:
+        print(
+            f"    • {i.get('name')}: {i.get('price')} "
+            f"({i.get('day_chg_pct'):+.2f}%)"
+        )
+    print()
+    opps = data.get("trading_opportunities", [])
+    if opps:
+        print("  Top trading opportunities:")
+        for o in opps[:6]:
+            print(
+                f"    • {o.get('symbol')} [{o.get('strategy')}]: "
+                f"score {o.get('opportunity_score')} — {o.get('rationale')}"
+            )
+        print()
+    if assessment:
+        print("  Trader assessment:")
+        for key in ("regime", "sector_rotation", "mathematical_edge", "crypto_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
         print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -432,6 +489,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "events": _print_events,
+    "finance": _print_finance,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
@@ -445,6 +503,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "events": run_events_analysis,
+    "finance": run_finance_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
@@ -504,6 +563,10 @@ def main() -> int:
                 catalog = args.output.parent / "marine_traffic_corridors.json"
                 if catalog.exists():
                     print(f"  MarineTraffic corridor catalog: {catalog}")
+            if args.agent == "finance":
+                catalog = args.output.parent / "google_finance_views.json"
+                if catalog.exists():
+                    print(f"  Google Finance views: {catalog}")
             print()
 
     return 0

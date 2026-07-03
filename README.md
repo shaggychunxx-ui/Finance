@@ -12,6 +12,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
+| **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
@@ -26,6 +27,7 @@ run.bat transportation
 run.bat patents
 run.bat events
 run.bat datascience
+run.bat finance
 run.bat markets
 run.bat geopolitics
 run.bat logistics
@@ -40,6 +42,7 @@ run.bat grid -o output/grid.json
 run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
+run.bat finance -o output/finance.json
 run.bat geopolitics --json
 ```
 
@@ -130,6 +133,27 @@ Quantitative factor analysis on 10 US ETFs (SPY, QQQ, IWM, sectors, GLD, TLT, HY
 - Monte Carlo 5-day forward simulation (5,000 GBM paths)
 - SPY correlation structure across factors
 - Mean-reversion and momentum signals
+
+## Google Finance Beta Analyst
+
+Mathematician/trader analysis of [Google Finance Beta](https://www.google.com/finance/beta):
+
+- **Equity sectors** (SIXB–SIXY) mapped to SPDR sector ETFs
+- **US indices** — Dow, S&P 500, Nasdaq, Russell, VIX
+- **Futures & crypto** — Dow/ES/NQ, gold, crude, BTC/ETH/SOL
+- **Most active** stocks and day gainers/losers
+- Mathematical opportunity scoring (momentum, dispersion, z-scores)
+- Ranked trading setups: momentum continuation, mean reversion, swing trades
+- Calibrated proxy fallback when live quotes are unavailable
+
+```bat
+run.bat finance -o output/finance.json
+```
+
+Outputs:
+
+- `output/finance.json` — full analysis with trading opportunities and market signals
+- `output/google_finance_views.json` — dashboard view catalog
 
 ## Market Analyst Expert
 
