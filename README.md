@@ -1,11 +1,13 @@
 # Finance
 
-Intelligence agents for financial market analysis. Each agent pulls live public data and produces expert summaries with sector signals.
+Intelligence agents for financial market analysis and a client-side world events tracker. Each agent pulls live public data and produces expert summaries with sector signals.
 
 ## Agents
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
+| **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
@@ -15,6 +17,8 @@ Intelligence agents for financial market analysis. Each agent pulls live public 
 ## Quick start
 
 ```bat
+run.bat patents
+run.bat events
 run.bat datascience
 run.bat markets
 run.bat geopolitics
@@ -25,9 +29,50 @@ run.bat meteorology
 Or with options:
 
 ```bat
+run.bat patents -o output/patents.json
+run.bat events -o output/world_events.json
 run.bat geopolitics --json
-run.bat geopolitics -o output/geopolitics.json
 ```
+
+## Patent Landscape Analyst
+
+Tracks global patent databases, APIs, and monitoring resources while surfacing recent innovation activity:
+
+- **16 patent resources** cataloged (USPTO ODP, PatentsView, Espacenet, PATENTSCOPE, Google Patents, Lens.org, etc.)
+- Resource health checks (online / restricted / offline)
+- Live innovation signals from OpenAlex, IPWatchdog, and USPTO trademark feed
+- Sector classification: semiconductor, AI, biotech, energy, automotive, telecom
+- Innovation velocity score and sector market signals
+
+Optional: copy `config.example.json` to `config.json` and set `uspto_api_key` from [data.uspto.gov](https://data.uspto.gov/) for live US application search.
+
+## World Events Tracker
+
+Two ways to track global events that impact financial markets:
+
+### Web app
+
+Open `index.html` in any modern browser (or run `open_tracker.bat`). No build step or server required.
+
+- **Add events** with title, date, region, category, impact level, and notes
+- **Categories**: Geopolitical, Economic, Monetary Policy, Trade, Energy, Natural Disaster, Pandemic/Health, Technology, Other
+- **Impact levels**: Critical, High, Medium, Low — colour-coded for quick scanning
+- **Filter** by category, impact, or free-text search
+- **Import JSON** from the Python agent (`output/world_events_tracker.json`)
+- **Persistent** — events are saved to browser `localStorage`
+
+### Python agent
+
+Fetches live headlines from BBC World and NPR, classifies each event by category, region, and market impact, and exports JSON reports:
+
+```bat
+run.bat events -o output/world_events.json
+```
+
+Outputs:
+
+- `output/world_events.json` — full analysis with market signals and recommendations
+- `output/world_events_tracker.json` — web-import format for `index.html`
 
 ## Data Science Expert
 
