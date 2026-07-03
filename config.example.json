@@ -1,6 +1,8 @@
 {
   "marinetraffic_api_key": "",
   "uspto_api_key": "",
+  "gridstatus_api_key": "",
+  "eia_api_key": "",
   "weather_hubs": [
     {"name": "New York", "lat": 40.7128, "lon": -74.0060},
     {"name": "Chicago", "lat": 41.8781, "lon": -87.6298},

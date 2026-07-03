@@ -6,33 +6,91 @@ Intelligence agents for financial market analysis and a client-side world events
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **EIA Grid Monitor Analyst** | `run.bat electricity` | [EIA Grid Monitor US48](https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overview/US48/US48) |
+| **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
+| **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
+| **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
+| **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
+| **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
+| **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
+| **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
 
 ```bat
+run.bat electricity
+run.bat grid
+run.bat transportation
 run.bat patents
 run.bat events
 run.bat datascience
+run.bat finance
+run.bat financial-data
 run.bat markets
 run.bat geopolitics
 run.bat logistics
+run.bat theoretical-probability
+run.bat empirical-probability
+run.bat combined-conditional
 run.bat meteorology
 ```
 
 Or with options:
 
 ```bat
+run.bat electricity -o output/electricity.json
+run.bat grid -o output/grid.json
+run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
+run.bat finance -o output/finance.json
 run.bat geopolitics --json
 ```
+
+## EIA Grid Monitor Analyst
+
+Civil/electrical engineering analysis of the [EIA Grid Monitor electric overview](https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overview/US48/US48) for the U.S. lower 48 (US48):
+
+- Hourly **demand** and **net generation** from EIA RTO region-data API
+- **Fuel-type mix** (coal, gas, nuclear, solar, wind, hydro) from EIA fuel-type-data API
+- ISO demand breakdown for Texas (ERCOT), California (CAISO), PJM, MISO, and NYISO
+- Grid balance score, supply-demand gap, and electrical assessment
+- Calibrated proxy fallback when the EIA API is unavailable or rate-limited
+- Optional `eia_api_key` in `config.json` for live EIA Open Data API v2 access
+
+Outputs:
+
+- `output/electricity.json` — full analysis with market signals and recommendations
+- `output/eia_grid_monitor_views.json` — dashboard view catalog
+
+## Electrical Grid Analyst
+
+Civil/electrical engineering analysis of live wholesale power markets from [Grid Status Live](https://www.gridstatus.io/live):
+
+- **9 ISO/RTO markets** cataloged (ERCOT, CAISO, PJM, MISO, SPP, NYISO, ISO-NE, IESO, AESO)
+- Live fuel mix from ERCOT and CAISO public dashboards
+- Hourly regional demand from EIA RTO API
+- CAISO net demand and battery dispatch visibility
+- Grid stress score, renewable index, and electrical assessment
+- Optional `gridstatus_api_key` for hub LMP pricing via [Grid Status API](https://www.gridstatus.io/)
+
+## Civil Transportation Analyst
+
+Civil engineering analysis of U.S. DOT open data from [data.transportation.gov](https://data.transportation.gov/):
+
+- **10 DOT resource categories** cataloged (bridges, roadways, rail, transit, trucking, maritime)
+- Railroad bridge inventory by state and design type (FRA dataset)
+- Weekly traffic volume trends — passenger vs. truck demand
+- FHWA commercial vehicle inspection volume by state
+- Infrastructure stress score, freight momentum, and civil assessment
+- Sector signals for rails, freight, and construction materials
 
 ## Patent Landscape Analyst
 
@@ -84,6 +142,49 @@ Quantitative factor analysis on 10 US ETFs (SPY, QQQ, IWM, sectors, GLD, TLT, HY
 - SPY correlation structure across factors
 - Mean-reversion and momentum signals
 
+## Google Finance Beta Analyst
+
+Mathematician/trader analysis of [Google Finance Beta](https://www.google.com/finance/beta):
+
+- **Equity sectors** (SIXB–SIXY) mapped to SPDR sector ETFs
+- **US indices** — Dow, S&P 500, Nasdaq, Russell, VIX
+- **Futures & crypto** — Dow/ES/NQ, gold, crude, BTC/ETH/SOL
+- **Most active** stocks and day gainers/losers
+- Mathematical opportunity scoring (momentum, dispersion, z-scores)
+- Ranked trading setups: momentum continuation, mean reversion, swing trades
+- Calibrated proxy fallback when live quotes are unavailable
+
+```bat
+run.bat finance -o output/finance.json
+```
+
+Outputs:
+
+- `output/finance.json` — full analysis with trading opportunities and market signals
+- `output/google_finance_views.json` — dashboard view catalog
+
+## Yahoo Finance Statistical Analyst
+
+Mathematician/market analyst statistical analysis of [Yahoo Finance](https://finance.yahoo.com/):
+
+- **Cross-sectional statistics** — mean, median, σ, skewness, and kurtosis of sector returns
+- **Breadth metrics** — advance/decline ratio from gainers/losers, % sectors positive
+- **Sector z-scores** — relative performance vs peer distribution (distinct from time-series z)
+- **3-month correlation matrix** among SPDR sector ETFs
+- **Beta estimates** vs SPY and 20-day realized volatility regime
+- **Statistical outlier detection** on Yahoo top movers (mover z-scores)
+- **Linear trend regression** on S&P 500 (slope and R²)
+- Statistical regime labels and mathematical edge assessment
+
+```bat
+run.bat financial-data -o output/financial_data.json
+```
+
+Outputs:
+
+- `output/financial_data.json` — full statistical analysis with market signals
+- `output/yahoo_finance_views.json` — Yahoo Finance dashboard view catalog
+
 ## Market Analyst Expert
 
 Live US market analysis from Yahoo Finance:
@@ -108,19 +209,92 @@ Outputs:
 
 ## Logistics Expert
 
-Monitors three global trade corridors and assesses supply-chain stress:
+Evaluates logistics strategies from [MarineTraffic](https://www.marinetraffic.com/) AIS patterns across three global trade corridors:
 
-- **North Sea / English Channel** — Rotterdam, Antwerp, Dover
+- **North Sea / English Channel** (primary) — [MarineTraffic view](https://www.marinetraffic.com/en/ais/home/centerx:2.7/centery:51.2/zoom:6) — Rotterdam, Antwerp, Dover
 - **US West Coast** — LA/Long Beach, Oakland
 - **Singapore Strait** — Asia export chokepoint
 
 Outputs:
 
+- Marine traffic strategy evaluation (routing, anchorage, freight mix, port priority)
 - Lane density, freight momentum, and port congestion scores
 - Chokepoint, container backlog, retail lead-time, and manufacturing flow signals
 - Sector signals (dry bulk, container shipping, retail, tankers, freight brokers)
 
+```bat
+run.bat logistics -o output/logistics.json
+```
+
+Writes:
+
+- `output/logistics.json` — full analysis with market signals and recommendations
+- `output/marine_traffic_corridors.json` — corridor dashboard catalog
+
 Optional: copy `config.example.json` to `config.json` and set `marinetraffic_api_key` for live AIS data.
+
+## Theoretical Probability Expert
+
+Expert in theoretical probability applied to US market data:
+
+- **Markov chain** — 3-state (bull/bear/neutral) transition matrix and 1-step forecast
+- **Bayesian inference** — posterior regime probabilities updated with return and breadth evidence
+- **Conditional probability** — P(sector up | SPY up/down), P(VIX up | SPY down), etc.
+- **Binomial streak model** — theoretical vs empirical consecutive up/down streaks
+- **GBM barrier probability** — first-passage risk of −5% drawdown within 5 days
+- **Expected value & Kelly criterion** — EV and optimal sizing for momentum/mean-reversion bets
+- **Law of large numbers** — sample size guidance for win-rate precision
+
+```bat
+run.bat theoretical-probability -o output/theoretical_probability.json
+```
+
+Outputs:
+
+- `output/theoretical_probability.json` — full probability analysis with market signals
+- `output/probability_models.json` — catalog of theoretical models and formulas
+
+## Empirical Probability Expert
+
+Expert in empirical (experimental) probability applied to US market data:
+
+- **Observed frequencies** — empirical P(up/down) with trial counts
+- **Wilson score 95% CI** — confidence intervals for win-rate estimates
+- **Rolling win rates** — 20/60/120-day empirical probabilities
+- **Conditional frequencies** — P(up | prior up/down), P(up | 2 down days)
+- **Return-bin histogram** — empirical probability mass across move sizes
+- **Bootstrap resampling** — non-parametric CI for win rate and mean return
+- **Rule experiments** — momentum and mean-reversion trials with 70/30 train/test validation
+
+```bat
+run.bat empirical-probability -o output/empirical_probability.json
+```
+
+Outputs:
+
+- `output/empirical_probability.json` — full empirical analysis with market signals
+- `output/empirical_experiments.json` — catalog of experimental methods
+
+## Combined & Conditional Probability Expert
+
+Expert in combined and conditional probabilities applied to US market data:
+
+- **Joint probability** P(A∩B) — same-day co-occurrence of market events
+- **Union probability** P(A∪B) — at least one event occurs
+- **Conditional probability** P(A|B) — sector/index moves given benchmark state
+- **Multi-condition** P(A|B∩C) — e.g., P(Tech up | SPY up AND VIX down)
+- **Independence tests** — compare P(A∩B) vs P(A)·P(B)
+- **Chain rule** — decompose P(A∩B∩C) = P(A)·P(B|A)·P(C|A∩B)
+- **Combined scenarios** — ranked multi-asset outcome probabilities
+
+```bat
+run.bat combined-conditional -o output/combined_conditional.json
+```
+
+Outputs:
+
+- `output/combined_conditional.json` — full combined/conditional analysis
+- `output/probability_concepts.json` — probability concepts and formulas catalog
 
 ## Meteorology Expert
 
