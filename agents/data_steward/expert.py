@@ -192,6 +192,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["ETL pipeline registry", "output/ artifacts"],
         "owner": "platform",
     },
+    {
+        "command": "data-entry",
+        "agent": "Data Entry Specialist Expert",
+        "primary_output": "data_entry.json",
+        "sidecars": ["entry_templates.json", "validation_rules.json"],
+        "sources": ["output/ artifact field validation"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

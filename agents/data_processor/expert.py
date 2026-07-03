@@ -239,6 +239,19 @@ PIPELINE_REGISTRY: list[dict[str, Any]] = [
         "schedule": "daily",
         "depends_on": ["database_admin_etl"],
     },
+    {
+        "pipeline_id": "data_entry_etl",
+        "command": "data-entry",
+        "agent": "Data Entry Specialist Expert",
+        "extract": {"source": "output/ artifact fields", "format": "json"},
+        "transform": ["field_validation", "accuracy_scoring", "queue_build"],
+        "load": {
+            "primary": "data_entry.json",
+            "sidecars": ["entry_templates.json", "validation_rules.json"],
+        },
+        "schedule": "daily",
+        "depends_on": ["data_processor_etl"],
+    },
 ]
 
 TRANSFORMATION_CATALOG: list[dict[str, Any]] = [
@@ -305,7 +318,7 @@ BATCH_ORCHESTRATION: list[dict[str, Any]] = [
     {"wave": 2, "pipelines": ["financial_data_etl", "datascience_etl", "finance_etl", "patents_etl", "transportation_etl"], "parallel": True},
     {"wave": 3, "pipelines": ["markets_etl", "geopolitics_etl", "theoretical_probability_etl", "empirical_probability_etl", "research_statistics_etl"], "parallel": True},
     {"wave": 4, "pipelines": ["combined_conditional_etl", "sales_analytics_etl"], "parallel": True},
-    {"wave": 5, "pipelines": ["data_steward_etl", "records_management_etl", "database_admin_etl", "data_processor_etl"], "parallel": False},
+    {"wave": 5, "pipelines": ["data_steward_etl", "records_management_etl", "database_admin_etl", "data_processor_etl", "data_entry_etl"], "parallel": False},
 ]
 
 REQUIRED_OUTPUT_KEYS = ("meta", "market_signals", "recommendations")

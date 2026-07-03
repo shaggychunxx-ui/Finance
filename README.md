@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Database Administrator Expert** | `run.bat database-admin` | Schema inventory, integrity, backup posture, index tuning |
 | **Data Processor Expert** | `run.bat data-processor` | ETL pipelines, transformations, batch orchestration |
+| **Data Entry Specialist** | `run.bat data-entry` | Entry templates, field validation, capture queue |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -51,6 +52,7 @@ run.bat data-steward
 run.bat records-management
 run.bat database-admin
 run.bat data-processor
+run.bat data-entry
 run.bat meteorology
 ```
 
@@ -433,6 +435,26 @@ Outputs:
 - `output/data_processor.json` — full processing report with market signals
 - `output/processing_pipelines.json` — pipeline registry and live status
 - `output/transformation_catalog.json` — transform definitions and mappings
+
+## Data Entry Specialist
+
+Expert data entry for the Finance intelligence platform:
+
+- **Entry templates** — capture forms for reports, signals, events, and catalogs
+- **Field validation** — required fields, ISO8601 timestamps, enum checks
+- **Artifact audits** — per-file accuracy scoring and verification status
+- **Entry queue** — prioritized correction and capture actions
+- **Double-entry checks** — primary/sidecar consistency verification
+
+```bat
+run.bat data-entry -o output/data_entry.json
+```
+
+Outputs:
+
+- `output/data_entry.json` — full entry quality report with market signals
+- `output/entry_templates.json` — capture form templates
+- `output/validation_rules.json` — field validation rule catalog
 
 ## Meteorology Expert
 

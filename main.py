@@ -14,6 +14,7 @@ from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.database_admin import run_database_admin_analysis
+from agents.data_entry import run_data_entry_analysis
 from agents.data_processor import run_data_processor_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
@@ -324,6 +325,60 @@ def _print_data_steward(data: dict[str, Any]) -> None:
     if assessment:
         print("  Stewardship assessment:")
         for key in ("stewardship_priority", "governance_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_data_entry(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("entry_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(accuracy {metrics.get('accuracy_score')}, "
+        f"validation {metrics.get('validation_score')}, "
+        f"completeness {metrics.get('completeness_score')})"
+    )
+    print(
+        f"  Rules: {meta.get('rules_cataloged')} | "
+        f"Queue: {metrics.get('queue_size')}"
+    )
+    print()
+    verified = [a for a in data.get("artifact_audits", []) if a.get("entry_status") == "verified"][:6]
+    missing = [a for a in data.get("artifact_audits", []) if a.get("entry_status") == "missing"][:4]
+    if verified:
+        print("  Verified entries:")
+        for a in verified:
+            print(
+                f"    • {a.get('filename')}: accuracy {a.get('accuracy_score'):.0%}, "
+                f"{a.get('validations_passed')} rules passed"
+            )
+        print()
+    if missing:
+        print("  Missing captures:")
+        for a in missing:
+            print(f"    • {a.get('filename')} — run.bat {a.get('command')}")
+        print()
+    queue = data.get("entry_queue", [])
+    if queue:
+        print("  Entry queue:")
+        for q in queue[:5]:
+            print(f"    • [{q.get('priority')}] {q.get('filename')}.{q.get('field')}")
+        print()
+    if assessment:
+        print("  Entry assessment:")
+        for key in ("entry_priority", "capture_coverage"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -1041,6 +1096,7 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "database-admin": _print_database_admin,
+    "data-entry": _print_data_entry,
     "data-processor": _print_data_processor,
     "data-steward": _print_data_steward,
     "datascience": _print_datascience,
@@ -1065,6 +1121,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "combined-conditional": run_combined_conditional_analysis,
     "database-admin": run_database_admin_analysis,
+    "data-entry": run_data_entry_analysis,
     "data-processor": run_data_processor_analysis,
     "data-steward": run_data_steward_analysis,
     "datascience": run_datascience_analysis,
@@ -1175,6 +1232,13 @@ def main() -> int:
                 lineage = args.output.parent / "data_lineage.json"
                 if lineage.exists():
                     print(f"  Data lineage: {lineage}")
+            if args.agent == "data-entry":
+                templates = args.output.parent / "entry_templates.json"
+                if templates.exists():
+                    print(f"  Entry templates: {templates}")
+                rules = args.output.parent / "validation_rules.json"
+                if rules.exists():
+                    print(f"  Validation rules: {rules}")
             if args.agent == "data-processor":
                 pipelines = args.output.parent / "processing_pipelines.json"
                 if pipelines.exists():

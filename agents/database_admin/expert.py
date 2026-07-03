@@ -71,6 +71,7 @@ TABLE_REGISTRY: list[dict[str, Any]] = [
     {"table": "records_management", "file": "records_management.json", "agent": "records-management", "tier": "governance"},
     {"table": "database_admin", "file": "database_admin.json", "agent": "database-admin", "tier": "governance"},
     {"table": "data_processor", "file": "data_processor.json", "agent": "data-processor", "tier": "governance"},
+    {"table": "data_entry", "file": "data_entry.json", "agent": "data-entry", "tier": "governance"},
     {"table": "data_catalog", "file": "data_catalog.json", "agent": "data-steward", "tier": "reference"},
     {"table": "data_lineage", "file": "data_lineage.json", "agent": "data-steward", "tier": "reference"},
     {"table": "archive_catalog", "file": "archive_catalog.json", "agent": "records-management", "tier": "reference"},
@@ -101,6 +102,8 @@ FOREIGN_KEYS: list[dict[str, str]] = [
     {"child": "database_indexes.json", "parent": "database_admin.json", "relationship": "governance_sidecar"},
     {"child": "processing_pipelines.json", "parent": "data_processor.json", "relationship": "governance_sidecar"},
     {"child": "transformation_catalog.json", "parent": "data_processor.json", "relationship": "governance_sidecar"},
+    {"child": "entry_templates.json", "parent": "data_entry.json", "relationship": "governance_sidecar"},
+    {"child": "validation_rules.json", "parent": "data_entry.json", "relationship": "governance_sidecar"},
 ]
 
 CONNECTION_ENDPOINTS: list[dict[str, Any]] = [
