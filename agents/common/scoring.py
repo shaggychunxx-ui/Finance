@@ -170,7 +170,7 @@ class ScoringLedger:
         self._save()
         return pred
 
-    def resolve_prediction(self, prediction_id: str, accurate: bool, actual_outcome: str = "") -> Prediction:
+    def resolve_prediction(self, prediction_id: str, accurate: bool, actual_outcome: str | None = None) -> Prediction:
         """Resolve a pending prediction, awarding +1.0 (accurate) or -1.5
         (inaccurate) points to the agent that made the call."""
         pred = self._predictions.get(prediction_id)

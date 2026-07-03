@@ -811,7 +811,7 @@ def _print_scoreboard(data: dict[str, Any]) -> None:
     pending = data.get("pending_predictions", [])
     if pending:
         print("  Pending predictions:")
-        for p in pending[:10]:
+        for p in pending[:10]:  # cap console output; full list is in the JSON ledger
             print(f"    • [{p.get('agent')}] {p.get('subject')}: {p.get('call')}")
         print()
 
