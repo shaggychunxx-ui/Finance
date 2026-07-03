@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Multi-Agent Collaboration Coordinator** | `run.bat collaborate` | Aggregates all agents above |
 
 ## Quick start
 
@@ -42,6 +43,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat meteorology
+run.bat collaborate
 ```
 
 Or with options:
@@ -328,6 +330,26 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Multi-Agent Collaboration Coordinator
+
+Runs every agent above through a three-phase collaborative workflow:
+
+1. **Analyze** — all agents are shuffled into random groups of 3-4 and each
+   group's results are combined into a group analysis.
+2. **Peer review** — the pool is reshuffled into new random groups; each new
+   group peer-reviews the group analyses its members originated from
+   (favoring reviewers who were not part of the original group).
+3. **Finalize** — the pool is reshuffled a third time; each new group merges
+   the original analyses with peer-review feedback into a final consensus
+   view with a confidence score.
+
+Agents are also scored on the outcome of corrections raised during peer
+review, based on whether post-review confidence improves on the original
+group's internal agreement:
+
+- Reviewer proposes a correction that **improves** results: reviewer(s) **+0.5**, corrected agent(s) **-1**.
+- Reviewer proposes a correction that yields the **same or worse** results: reviewer(s) **-1**, corrected agent(s) **+2**.
 
 ## Requirements
 

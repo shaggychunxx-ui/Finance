@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.collaboration import run_collaboration_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -756,7 +757,50 @@ def _print_research_statistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_collaboration(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {len(meta.get('agents_involved', []))} agents")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print("  Phase 1 — Random groups analyze:")
+    for a in data.get("phase1_analyses", []):
+        print(f"    • {a.get('group_id')}: {', '.join(a.get('members', []))}")
+        if a.get("errors"):
+            print(f"      errors: {'; '.join(a['errors'])}")
+    print()
+    print("  Phase 2 — Regrouped peer review:")
+    for r in data.get("peer_reviews", [])[:10]:
+        tag = " (self-review)" if r.get("self_review") else ""
+        print(
+            f"    • {r.get('reviewer_group_id')} reviewed {r.get('target_group_id')}"
+            f" — agreement {r.get('agreement_score'):.0%}{tag}"
+        )
+    print()
+    print("  Phase 3 — Regrouped finalize:")
+    for f in data.get("final_analyses", []):
+        print(
+            f"    • {f.get('group_id')} (from {', '.join(f.get('origin_group_ids', []))}): "
+            f"confidence {f.get('confidence_score'):.0%}"
+        )
+        print(f"      {f.get('final_summary')}")
+    print()
+    scores = data.get("agent_scores", {})
+    if scores:
+        print("  Agent scores (correction outcomes):")
+        for name, score in scores.items():
+            print(f"    • {name}: {score:+.1f}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "collaborate": _print_collaboration,
     "combined-conditional": _print_combined_conditional,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
@@ -776,6 +820,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "collaborate": run_collaboration_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
