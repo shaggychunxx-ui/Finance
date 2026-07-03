@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agents.datascience import run_datascience_analysis
+from agents.electricity import run_electricity_analysis
 from agents.events import run_events_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
@@ -233,6 +234,65 @@ def _print_grid(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_electricity(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("electrical_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — US48 Electric Overview")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Balance: {metrics.get('stress_label')} "
+        f"({metrics.get('grid_balance_score')})"
+    )
+    print(
+        f"  Demand: {metrics.get('total_demand_mw', 0):,.0f} MW | "
+        f"Net gen: {metrics.get('net_generation_mw', 0):,.0f} MW | "
+        f"Gap: {metrics.get('supply_demand_gap_mw', 0):+,.0f} MW"
+    )
+    print(
+        f"  Fuel mix: gas {metrics.get('gas_pct')}% | "
+        f"coal {metrics.get('coal_pct')}% | "
+        f"renewables {metrics.get('renewable_pct')}%"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Hourly fuel mix:")
+    for f in data.get("fuel_mix", [])[:8]:
+        print(
+            f"    • {f.get('fuel_name')}: {f.get('generation_mwh', 0):,.0f} MWh "
+            f"({f.get('share_pct')}%) — {f.get('period')}"
+        )
+    print()
+    print("  ISO demand breakdown:")
+    for d in sorted(data.get("iso_breakdown", []), key=lambda x: -x.get("demand_mw", 0))[:6]:
+        print(
+            f"    • {d.get('region_name')}: {d.get('demand_mw', 0):,.0f} MW "
+            f"({d.get('period')})"
+        )
+    print()
+    if assessment:
+        print("  Electrical assessment:")
+        for key in (
+            "supply_demand_balance",
+            "fuel_dominance",
+            "renewable_penetration",
+            "regional_load",
+            "gas_reliance",
+            "dashboard_note",
+        ):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_transportation(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -353,6 +413,7 @@ def _print_logistics(data: dict[str, Any]) -> None:
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
+    "electricity": _print_electricity,
     "events": _print_events,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
@@ -365,6 +426,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
+    "electricity": run_electricity_analysis,
     "events": run_events_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
@@ -417,6 +479,10 @@ def main() -> int:
                 catalog = args.output.parent / "grid_markets.json"
                 if catalog.exists():
                     print(f"  Grid markets catalog: {catalog}")
+            if args.agent == "electricity":
+                catalog = args.output.parent / "eia_grid_monitor_views.json"
+                if catalog.exists():
+                    print(f"  EIA Grid Monitor views: {catalog}")
             print()
 
     return 0
