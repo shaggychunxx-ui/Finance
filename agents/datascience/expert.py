@@ -98,6 +98,7 @@ class DataScienceExpert:
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
         self.watchlist = dict(WATCHLIST)
+        self.temperature = random.randint(1, 8)
 
     def _fetch_closes(self, symbol: str) -> list[float]:
         try:
@@ -501,6 +502,7 @@ class DataScienceExpert:
         return {
             "meta": {
                 "agent": "Data Science Expert",
+                "temperature": self.temperature,
                 "analyzed_at": report.analyzed_at,
                 "data_source": report.data_source,
                 "expert_summary": report.expert_summary,

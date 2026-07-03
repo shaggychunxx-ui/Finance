@@ -9,6 +9,7 @@ Dashboard: https://finance.yahoo.com/
 from __future__ import annotations
 
 import json
+import random
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -103,6 +104,7 @@ class MarketAnalystExpert:
             US_INDICES + RISK_SYMBOLS + list(SECTOR_ETFS)
             + [GROWTH_PROXY, VALUE_PROXY] + list(COMMODITIES)
         )
+        self.temperature = random.randint(1, 8)
 
     def _fetch_chart(self, symbol: str) -> Quote | None:
         try:
@@ -517,6 +519,7 @@ class MarketAnalystExpert:
         return {
             "meta": {
                 "agent": "Market Analyst Expert",
+                "temperature": self.temperature,
                 "dashboard": DASHBOARD_URL,
                 "analyzed_at": report.analyzed_at,
                 "data_source": report.data_source,

@@ -11,6 +11,7 @@ Data: Yahoo Finance chart API (1-year daily history).
 from __future__ import annotations
 
 import json
+import random
 import math
 import statistics
 import time
@@ -206,6 +207,7 @@ class ResearchStatisticsExpert:
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _norm_cdf(x: float) -> float:
@@ -860,6 +862,7 @@ class ResearchStatisticsExpert:
         return {
             "meta": {
                 "agent": "Research Statistics Expert",
+                "temperature": self.temperature,
                 "analyzed_at": report.analyzed_at,
                 "data_source": report.data_source,
                 "alpha_level": ALPHA,

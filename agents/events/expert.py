@@ -10,6 +10,7 @@ Data: BBC World / NPR RSS feeds.
 from __future__ import annotations
 
 import json
+import random
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -99,6 +100,9 @@ class EventsReport:
 
 class WorldEventsTracker:
     """Track world events from live news feeds with market impact classification."""
+
+    def __init__(self) -> None:
+        self.temperature = random.randint(1, 8)
 
     def _parse_rss(self, xml_bytes: bytes, source: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
@@ -343,6 +347,7 @@ class WorldEventsTracker:
         return {
             "meta": {
                 "agent": "World Events Tracker",
+                "temperature": self.temperature,
                 "analyzed_at": report.analyzed_at,
                 "data_sources": report.data_sources,
                 "expert_summary": report.expert_summary,

@@ -10,6 +10,7 @@ Dashboard: https://www.marinetraffic.com/
 from __future__ import annotations
 
 import json
+import random
 import math
 import os
 import time
@@ -144,6 +145,7 @@ class LogisticsExpert:
 
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.environ.get("MARINETRAFFIC_API_KEY", "") or self._load_config_key()
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _load_config_key() -> str:
@@ -636,6 +638,7 @@ class LogisticsExpert:
         return {
             "meta": {
                 "agent": "Logistics Expert",
+                "temperature": self.temperature,
                 "primary_dashboard": PRIMARY_DASHBOARD,
                 "analyzed_at": report.analyzed_at,
                 "expert_summary": report.expert_summary,

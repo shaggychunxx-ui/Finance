@@ -11,6 +11,7 @@ Data: Yahoo Finance chart API (6-month daily history).
 from __future__ import annotations
 
 import json
+import random
 import math
 import statistics
 import time
@@ -189,6 +190,7 @@ class TheoreticalProbabilityExpert:
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _norm_cdf(x: float) -> float:
@@ -834,6 +836,7 @@ class TheoreticalProbabilityExpert:
         return {
             "meta": {
                 "agent": "Theoretical Probability Expert",
+                "temperature": self.temperature,
                 "analyzed_at": report.analyzed_at,
                 "data_source": report.data_source,
                 "expert_summary": report.expert_summary,

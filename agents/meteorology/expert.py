@@ -10,6 +10,7 @@ No API key required; a descriptive User-Agent is required per NWS policy.
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -125,6 +126,7 @@ class MeteorologyExpert:
 
     def __init__(self, hubs: list[tuple[float, float, str]] | None = None) -> None:
         self.hubs = hubs or self._load_config_hubs() or DEFAULT_HUBS
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _load_config_hubs() -> list[tuple[float, float, str]]:
@@ -612,6 +614,7 @@ class MeteorologyExpert:
             "meta": {
                 "dashboard": DASHBOARD_URL,
                 "agent": "Meteorology Expert",
+                "temperature": self.temperature,
                 "region": report.region,
                 "region_name": report.region_name,
                 "analyzed_at": report.analyzed_at,

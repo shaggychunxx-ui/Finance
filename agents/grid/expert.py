@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -109,6 +110,7 @@ class ElectricalGridAnalyst:
         self.config = self._load_config(config_path)
         self.gridstatus_api_key = self.config.get("gridstatus_api_key", "").strip()
         self.eia_api_key = self.config.get("eia_api_key", "DEMO_KEY").strip() or "DEMO_KEY"
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:
@@ -545,6 +547,7 @@ class ElectricalGridAnalyst:
         return {
             "meta": {
                 "agent": "Electrical Grid Analyst",
+                "temperature": self.temperature,
                 "portal": GRID_LIVE,
                 "analyzed_at": report.analyzed_at,
                 "data_sources": report.data_sources,

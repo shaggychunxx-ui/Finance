@@ -11,6 +11,7 @@ Dashboard: https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overvi
 from __future__ import annotations
 
 import json
+import random
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -143,6 +144,7 @@ class EiaGridMonitorAnalyst:
     def __init__(self, config_path: Path | None = None) -> None:
         self.config = self._load_config(config_path)
         self.eia_api_key = self.config.get("eia_api_key", "DEMO_KEY").strip() or "DEMO_KEY"
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:
@@ -508,6 +510,7 @@ class EiaGridMonitorAnalyst:
         return {
             "meta": {
                 "agent": "EIA Grid Monitor Analyst",
+                "temperature": self.temperature,
                 "dashboard": DASHBOARD_US48,
                 "analyzed_at": report.analyzed_at,
                 "data_sources": report.data_sources,

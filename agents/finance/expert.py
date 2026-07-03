@@ -10,6 +10,7 @@ Data: Yahoo Finance chart API (Google symbol mapping) with calibrated proxy fall
 from __future__ import annotations
 
 import json
+import random
 import math
 import time
 from dataclasses import dataclass, field
@@ -189,6 +190,7 @@ class GoogleFinanceAnalyst:
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
         self._live_ok = False
+        self.temperature = random.randint(1, 8)
 
     def _fetch_chart(self, yahoo_symbol: str) -> QuoteRow | None:
         try:
@@ -624,6 +626,7 @@ class GoogleFinanceAnalyst:
         return {
             "meta": {
                 "agent": "Google Finance Beta Analyst",
+                "temperature": self.temperature,
                 "dashboard": DASHBOARD_URL,
                 "analyzed_at": report.analyzed_at,
                 "data_sources": report.data_sources,

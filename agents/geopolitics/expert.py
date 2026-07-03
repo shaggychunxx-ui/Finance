@@ -9,6 +9,7 @@ Primary data: BBC World RSS, GDELT DOC API (rate-limited, optional).
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -139,6 +140,7 @@ class GeopoliticsExpert:
 
     def __init__(self, use_gdelt: bool = True) -> None:
         self.use_gdelt = use_gdelt
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _parse_rss(xml_bytes: bytes, source: str) -> list[NewsArticle]:
@@ -532,6 +534,7 @@ class GeopoliticsExpert:
         return {
             "meta": {
                 "agent": "Geopolitics Expert",
+                "temperature": self.temperature,
                 "analyzed_at": report.analyzed_at,
                 "expert_summary": report.expert_summary,
                 "headlines_analyzed": len(report.articles),

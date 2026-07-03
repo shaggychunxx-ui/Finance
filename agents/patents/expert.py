@@ -10,6 +10,7 @@ Data: OpenAlex, IPWatchdog RSS, USPTO IP feeds (+ optional USPTO ODP API key).
 from __future__ import annotations
 
 import json
+import random
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -285,6 +286,7 @@ class PatentLandscapeAnalyst:
     def __init__(self, config_path: Path | None = None) -> None:
         self.config = self._load_config(config_path)
         self.uspto_api_key = self.config.get("uspto_api_key", "").strip()
+        self.temperature = random.randint(1, 8)
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:
@@ -679,6 +681,7 @@ class PatentLandscapeAnalyst:
         return {
             "meta": {
                 "agent": "Patent Landscape Analyst",
+                "temperature": self.temperature,
                 "analyzed_at": report.analyzed_at,
                 "data_sources": report.data_sources,
                 "expert_summary": report.expert_summary,

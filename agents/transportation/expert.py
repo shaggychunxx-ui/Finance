@@ -9,6 +9,7 @@ Data: Railroad Bridge Inventory, Weekly Traffic Volume, FHWA truck inspections.
 from __future__ import annotations
 
 import json
+import random
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -162,6 +163,9 @@ class TransportationReport:
 
 class CivilTransportationAnalyst:
     """Civil engineer analyst for DOT transportation open data."""
+
+    def __init__(self) -> None:
+        self.temperature = random.randint(1, 8)
 
     def _socrata_get(self, dataset_id: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         url = f"{DOT_BASE}/{dataset_id}.json"
@@ -454,6 +458,7 @@ class CivilTransportationAnalyst:
         return {
             "meta": {
                 "agent": "Civil Transportation Analyst",
+                "temperature": self.temperature,
                 "portal": DOT_PORTAL,
                 "analyzed_at": report.analyzed_at,
                 "data_sources": report.data_sources,
