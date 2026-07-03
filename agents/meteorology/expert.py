@@ -10,6 +10,7 @@ No API key required; a descriptive User-Agent is required per NWS policy.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ HEADERS = {
     "User-Agent": "Finance-Meteorology-Expert/1.0 (shaggychunxx@gmail.com)",
     "Accept": "application/geo+json",
 }
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_HUBS = [
     (40.7128, -74.0060, "New York"),
@@ -152,14 +154,16 @@ class MeteorologyExpert:
     def _fetch_alert_count(self) -> dict[str, Any]:
         try:
             return self._get("/alerts/active/count")
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            LOGGER.warning("Unable to fetch NWS alert count: %s", exc)
             return {}
 
     def _fetch_active_alerts(self) -> list[dict[str, Any]]:
         try:
             data = self._get("/alerts/active", {"status": "actual"})
             return data.get("features", [])
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            LOGGER.warning("Unable to fetch NWS active alerts: %s", exc)
             return []
 
     @staticmethod
