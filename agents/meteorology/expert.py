@@ -57,6 +57,50 @@ FLOOD_EVENTS = {
 FIRE_EVENTS = {"red flag warning", "fire weather watch", "fire warning"}
 WIND_EVENTS = {"high wind warning", "high wind watch", "wind advisory"}
 
+WEATHER_HUBS: list[dict[str, Any]] = [
+    {"name": name, "lat": lat, "lon": lon}
+    for lat, lon, name in DEFAULT_HUBS
+]
+
+HAZARD_CATALOG: list[dict[str, Any]] = [
+    {
+        "id": "heat",
+        "name": "Heat",
+        "description": "Extreme/excessive heat warnings and heat advisories",
+        "events": sorted(HEAT_EVENTS),
+    },
+    {
+        "id": "cold",
+        "name": "Cold / Winter",
+        "description": "Extreme cold, wind chill, freeze, and winter storm alerts",
+        "events": sorted(COLD_EVENTS),
+    },
+    {
+        "id": "severe",
+        "name": "Severe Weather",
+        "description": "Tornado, severe thunderstorm, hurricane, and tropical storm alerts",
+        "events": sorted(SEVERE_EVENTS),
+    },
+    {
+        "id": "flood",
+        "name": "Flood",
+        "description": "Flood and flash flood warnings/watches/advisories",
+        "events": sorted(FLOOD_EVENTS),
+    },
+    {
+        "id": "fire",
+        "name": "Fire Weather",
+        "description": "Red flag warnings and fire weather watches",
+        "events": sorted(FIRE_EVENTS),
+    },
+    {
+        "id": "wind",
+        "name": "Wind",
+        "description": "High wind warnings/watches and wind advisories",
+        "events": sorted(WIND_EVENTS),
+    },
+]
+
 
 @dataclass
 class AlertSummary:
@@ -618,6 +662,8 @@ class MeteorologyExpert:
                 "data_source": report.data_source,
                 "national_headline": report.national_headline,
                 "expert_summary": report.expert_summary,
+                "hubs_monitored": [h["name"] for h in WEATHER_HUBS],
+                "hazard_categories": [h["id"] for h in HAZARD_CATALOG],
             },
             "synoptic": {
                 "season_context": s.season_context,
@@ -672,6 +718,11 @@ class MeteorologyExpert:
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+            catalog = output.parent / "weather_hubs.json"
+            catalog.write_text(
+                json.dumps({"hubs": WEATHER_HUBS, "hazard_categories": HAZARD_CATALOG}, indent=2),
+                encoding="utf-8",
+            )
         return result
 
 

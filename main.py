@@ -868,6 +868,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "meteorology":
+                catalog = args.output.parent / "weather_hubs.json"
+                if catalog.exists():
+                    print(f"  Weather hub/hazard catalog: {catalog}")
             print()
 
     return 0

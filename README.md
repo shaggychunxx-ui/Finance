@@ -329,6 +329,15 @@ Analyzes US weather hazards and hub forecasts:
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
 
+```bat
+run.bat meteorology -o output/meteorology.json
+```
+
+Outputs:
+
+- `output/meteorology.json` — full weather hazard and forecast analysis
+- `output/weather_hubs.json` — monitored hub locations and hazard category catalog
+
 ## Requirements
 
 - Python 3.10+
