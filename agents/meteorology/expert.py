@@ -126,6 +126,7 @@ class MeteorologyExpert:
 
     def __init__(self, hubs: list[tuple[float, float, str]] | None = None) -> None:
         self.hubs = hubs or self._load_config_hubs() or DEFAULT_HUBS
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     @staticmethod

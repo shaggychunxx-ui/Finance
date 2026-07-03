@@ -98,6 +98,7 @@ class DataScienceExpert:
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
         self.watchlist = dict(WATCHLIST)
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     def _fetch_closes(self, symbol: str) -> list[float]:

@@ -140,6 +140,7 @@ class GeopoliticsExpert:
 
     def __init__(self, use_gdelt: bool = True) -> None:
         self.use_gdelt = use_gdelt
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     @staticmethod

@@ -207,6 +207,7 @@ class ResearchStatisticsExpert:
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     @staticmethod

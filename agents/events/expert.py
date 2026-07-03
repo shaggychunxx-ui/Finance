@@ -102,6 +102,7 @@ class WorldEventsTracker:
     """Track world events from live news feeds with market impact classification."""
 
     def __init__(self) -> None:
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     def _parse_rss(self, xml_bytes: bytes, source: str) -> list[dict[str, Any]]:

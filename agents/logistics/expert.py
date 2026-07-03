@@ -145,6 +145,7 @@ class LogisticsExpert:
 
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.environ.get("MARINETRAFFIC_API_KEY", "") or self._load_config_key()
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     @staticmethod

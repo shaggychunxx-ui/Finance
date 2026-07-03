@@ -110,6 +110,7 @@ class ElectricalGridAnalyst:
         self.config = self._load_config(config_path)
         self.gridstatus_api_key = self.config.get("gridstatus_api_key", "").strip()
         self.eia_api_key = self.config.get("eia_api_key", "DEMO_KEY").strip() or "DEMO_KEY"
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     @staticmethod

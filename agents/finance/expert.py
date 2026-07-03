@@ -190,6 +190,7 @@ class GoogleFinanceAnalyst:
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
         self._live_ok = False
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     def _fetch_chart(self, yahoo_symbol: str) -> QuoteRow | None:

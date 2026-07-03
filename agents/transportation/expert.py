@@ -165,6 +165,7 @@ class CivilTransportationAnalyst:
     """Civil engineer analyst for DOT transportation open data."""
 
     def __init__(self) -> None:
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     def _socrata_get(self, dataset_id: str, params: dict[str, Any]) -> list[dict[str, Any]]:

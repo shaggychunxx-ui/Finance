@@ -104,6 +104,7 @@ class MarketAnalystExpert:
             US_INDICES + RISK_SYMBOLS + list(SECTOR_ETFS)
             + [GROWTH_PROXY, VALUE_PROXY] + list(COMMODITIES)
         )
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     def _fetch_chart(self, symbol: str) -> Quote | None:

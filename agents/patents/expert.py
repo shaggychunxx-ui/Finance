@@ -286,6 +286,7 @@ class PatentLandscapeAnalyst:
     def __init__(self, config_path: Path | None = None) -> None:
         self.config = self._load_config(config_path)
         self.uspto_api_key = self.config.get("uspto_api_key", "").strip()
+        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
         self.temperature = random.randint(1, 8)
 
     @staticmethod
