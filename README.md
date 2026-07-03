@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Agent Prediction Scoreboard** | `run.bat scoreboard` | Shared ledger (`output/agent_scoreboard.json`) |
 
 ## Quick start
 
@@ -42,6 +43,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat meteorology
+run.bat scoreboard
 ```
 
 Or with options:
@@ -328,6 +330,24 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Agent Prediction Scoring
+
+Every agent is held accountable for the accuracy of its calls under a single, shared scoring policy (`agents/common/scoring.py`):
+
+- **+1.0 point** for a prediction that resolves **accurate**.
+- **−1.5 points** for a prediction that resolves **inaccurate**.
+- Agents must be **detailed and truthful** — a prediction is rejected before it can be logged unless it includes a substantive rationale and at least one piece of supporting evidence (a data point, indicator, or source). The asymmetric penalty discourages speculative or low-conviction calls.
+
+Predictions are logged to a persistent ledger (`output/agent_scoreboard.json` by default) as *pending*, then resolved later as *accurate* or *inaccurate* once the outcome is known. View current standings with:
+
+```bat
+run.bat scoreboard
+```
+
+Outputs:
+
+- `output/agent_scoreboard.json` — full ledger with per-agent points, hit rate, and pending predictions
 
 ## Requirements
 

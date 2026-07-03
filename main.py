@@ -25,6 +25,7 @@ from agents.patents import run_patents_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
+from agents.common.scoring import DEFAULT_LEDGER_PATH, ScoringLedger
 
 
 def _print_signals(signals: list[dict[str, Any]]) -> None:
@@ -756,6 +757,65 @@ def _print_research_statistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def run_scoreboard_analysis(output: Path | None = None) -> dict[str, Any]:
+    """Load the shared agent prediction scoreboard.
+
+    Scoring rules: every agent earns +1.0 point for an accurate prediction
+    and loses -1.5 points for an inaccurate one. Predictions are only logged
+    when they are detailed (a substantive rationale) and truthful (backed by
+    at least one piece of evidence) — see agents/common/scoring.py.
+    """
+    ledger_path = output if output else DEFAULT_LEDGER_PATH
+    ledger = ScoringLedger(ledger_path)
+    result = {
+        "rules": {
+            "points_accurate": 1.0,
+            "points_inaccurate": -1.5,
+            "requirement": "Predictions must be detailed and truthful (rationale + evidence) to be scored.",
+        },
+        "leaderboard": [s.to_dict() for s in ledger.leaderboard()],
+        "pending_predictions": [p.to_dict() for p in ledger.pending_predictions()],
+    }
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return result
+
+
+def _print_scoreboard(data: dict[str, Any]) -> None:
+    rules = data.get("rules", {})
+    print()
+    print("=" * 60)
+    print("  Agent Prediction Scoreboard")
+    print("=" * 60)
+    print(
+        f"  Rules: +{rules.get('points_accurate', 1.0)} pt accurate / "
+        f"{rules.get('points_inaccurate', -1.5)} pt inaccurate"
+    )
+    print(f"  {rules.get('requirement', '')}")
+    print()
+    leaderboard = data.get("leaderboard", [])
+    if not leaderboard:
+        print("  No resolved or pending predictions logged yet.")
+    else:
+        print("  Standings:")
+        for s in leaderboard:
+            hit_rate = s.get("hit_rate")
+            hit_rate_str = f"{hit_rate:.0%}" if hit_rate is not None else "n/a"
+            print(
+                f"    • {s.get('agent')}: {s.get('points'):+.1f} pts "
+                f"({s.get('accurate')} accurate / {s.get('inaccurate')} inaccurate, "
+                f"hit rate {hit_rate_str}, {s.get('pending')} pending)"
+            )
+    print()
+    pending = data.get("pending_predictions", [])
+    if pending:
+        print("  Pending predictions:")
+        for p in pending[:10]:
+            print(f"    • [{p.get('agent')}] {p.get('subject')}: {p.get('call')}")
+        print()
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "datascience": _print_datascience,
@@ -771,6 +831,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "meteorology": _print_meteorology,
     "patents": _print_patents,
     "research-statistics": _print_research_statistics,
+    "scoreboard": _print_scoreboard,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
@@ -790,6 +851,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
     "research-statistics": run_research_statistics_analysis,
+    "scoreboard": run_scoreboard_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
