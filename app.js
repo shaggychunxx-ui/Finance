@@ -13,6 +13,10 @@ const filterImpact = document.getElementById('filter-impact');
 const filterSearch = document.getElementById('filter-search');
 const importInput  = document.getElementById('import-json');
 const btnImport    = document.getElementById('btn-import');
+const autoStatusEl = document.getElementById('auto-refresh-status');
+
+const AUTO_REFRESH_URL = 'data/world_events_tracker.json';
+const AUTO_REFRESH_INTERVAL_MS = 60 * 60 * 1000; // every hour
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function loadEvents() {
@@ -191,6 +195,35 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ── Auto-refresh from data/world_events_tracker.json ───────────────────────────
+// The Python agents (see scripts/update_all_agents.py and the hourly
+// "Update Agent Data" GitHub Actions workflow) regenerate this file on a
+// schedule. When the tracker is served over http(s) we can fetch it directly
+// and silently merge in any new events, checking again every hour.
+async function checkForAgentUpdates() {
+  if (!autoStatusEl) return;
+  try {
+    const res = await fetch(AUTO_REFRESH_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const added = importEvents(data);
+    const time = new Date().toLocaleTimeString();
+    autoStatusEl.textContent = added
+      ? `🔄 Auto-updated ${time} (+${added} new)`
+      : `🔄 Checked for updates ${time}`;
+  } catch {
+    // Most likely opened via file:// (no server) or offline — fall back to
+    // the manual "Import JSON" button, which always works.
+    autoStatusEl.textContent = '';
+  }
+}
+
+function startAutoRefresh() {
+  checkForAgentUpdates();
+  setInterval(checkForAgentUpdates, AUTO_REFRESH_INTERVAL_MS);
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.getElementById('input-date').value = today();
 render();
+startAutoRefresh();

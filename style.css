@@ -190,6 +190,11 @@ main {
   color: #718096;
 }
 
+.auto-refresh-status {
+  font-size: 0.75rem;
+  color: #63b3ed;
+}
+
 /* Events List */
 .events-list {
   display: flex;

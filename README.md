@@ -121,6 +121,7 @@ Open `index.html` in any modern browser (or run `open_tracker.bat`). No build st
 - **Impact levels**: Critical, High, Medium, Low — colour-coded for quick scanning
 - **Filter** by category, impact, or free-text search
 - **Import JSON** from the Python agent (`output/world_events_tracker.json`)
+- **Auto-refresh** — when served over http(s), the page fetches `data/world_events_tracker.json` on load and re-checks it every hour, silently merging in new events (see [Automated hourly updates](#automated-hourly-updates) below). Opened via `file://` it falls back to the manual **Import JSON** button.
 - **Persistent** — events are saved to browser `localStorage`
 
 ### Python agent
@@ -135,6 +136,18 @@ Outputs:
 
 - `output/world_events.json` — full analysis with market signals and recommendations
 - `output/world_events_tracker.json` — web-import format for `index.html`
+
+## Automated hourly updates
+
+The `.github/workflows/update-agents.yml` workflow runs every existing agent (via `scripts/update_all_agents.py`) once an hour, checks whether any report changed, and — only when it did — commits the refreshed JSON into the tracked `data/` directory (e.g. `data/world_events_tracker.json`, `data/markets.json`, `data/geopolitics.json`, ...). This keeps the web tracker's auto-refresh and any other data consumers current without manual intervention.
+
+Run it locally at any time with:
+
+```bat
+python scripts/update_all_agents.py
+```
+
+Trigger it manually on GitHub from the **Actions** tab (`Update Agent Data` → **Run workflow**), or let it run on its hourly schedule.
 
 ## Data Science Expert
 
