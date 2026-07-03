@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
+from agents.empirical_probability import run_empirical_probability_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
@@ -266,6 +267,54 @@ def _print_datascience(data: dict[str, Any]) -> None:
             f"MC P(up) {t.get('mc_prob_up_5d'):.0%}"
         )
     print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_empirical_probability(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("empirical_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(evidence {metrics.get('evidence_score')}, "
+        f"stability {metrics.get('stability_score')})"
+    )
+    print(f"  Experiments: {', '.join(meta.get('experiments_run', []))}")
+    print()
+    print("  Frequency estimates:")
+    for f in data.get("frequency_estimates", [])[:5]:
+        print(
+            f"    • {f.get('symbol')} P({f.get('event')}): "
+            f"{f.get('empirical_prob'):.0%} "
+            f"[{f.get('wilson_ci_low'):.0%}, {f.get('wilson_ci_high'):.0%}] "
+            f"n={f.get('trials')}"
+        )
+    print()
+    exps = data.get("rule_experiments", [])
+    if exps:
+        print("  Rule experiments (in-sample / OOS):")
+        for e in exps[:4]:
+            print(
+                f"    • {e.get('symbol')} {e.get('rule_id')}: "
+                f"{e.get('in_sample_win_rate'):.0%} / {e.get('out_of_sample_win_rate'):.0%} "
+                f"({'stable' if e.get('stable') else 'unstable'})"
+            )
+        print()
+    if assessment:
+        print("  Empirical assessment:")
+        for key in ("conditional_signal", "experiment_signal", "experimental_edge"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -606,6 +655,7 @@ def _print_logistics(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
     "electricity": _print_electricity,
+    "empirical-probability": _print_empirical_probability,
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
@@ -622,6 +672,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
+    "empirical-probability": run_empirical_probability_analysis,
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
@@ -697,6 +748,10 @@ def main() -> int:
                 catalog = args.output.parent / "probability_models.json"
                 if catalog.exists():
                     print(f"  Probability models catalog: {catalog}")
+            if args.agent == "empirical-probability":
+                catalog = args.output.parent / "empirical_experiments.json"
+                if catalog.exists():
+                    print(f"  Empirical experiments catalog: {catalog}")
             print()
 
     return 0
