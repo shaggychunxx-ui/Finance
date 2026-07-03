@@ -6,6 +6,7 @@ Intelligence agents for financial market analysis. Each agent pulls live public 
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
@@ -14,6 +15,7 @@ Intelligence agents for financial market analysis. Each agent pulls live public 
 ## Quick start
 
 ```bat
+run.bat datascience
 run.bat markets
 run.bat geopolitics
 run.bat logistics
@@ -26,6 +28,16 @@ Or with options:
 run.bat geopolitics --json
 run.bat geopolitics -o output/geopolitics.json
 ```
+
+## Data Science Expert
+
+Quantitative factor analysis on 10 US ETFs (SPY, QQQ, IWM, sectors, GLD, TLT, HYG):
+
+- 20-day volatility, z-scores, and momentum factors
+- Empirical P(up) from 60-session history
+- Monte Carlo 5-day forward simulation (5,000 GBM paths)
+- SPY correlation structure across factors
+- Mean-reversion and momentum signals
 
 ## Market Analyst Expert
 

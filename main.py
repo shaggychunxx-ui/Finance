@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.datascience import run_datascience_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
@@ -115,6 +116,35 @@ def _print_geopolitics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_datascience(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    mc = meta.get("monte_carlo", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('tickers_analyzed', 0)} tickers")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Regime: {metrics.get('stress_label')} (stress {metrics.get('quant_stress_score')})")
+    print(f"  Opportunity score: {metrics.get('opportunity_score')}")
+    if mc:
+        print(f"  Monte Carlo: {mc.get('simulations')} sims × {mc.get('horizon_days')} days")
+    print()
+    print("  Factor rankings (momentum):")
+    for t in sorted(data.get("tickers", []), key=lambda x: x.get("momentum_score", 0), reverse=True)[:6]:
+        print(
+            f"    • {t.get('symbol')}: mom {t.get('momentum_score')} | "
+            f"z {t.get('z_score_20d'):+.2f} | 20d {t.get('return_20d_pct'):+.2f}% | "
+            f"MC P(up) {t.get('mc_prob_up_5d'):.0%}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_logistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -142,6 +172,7 @@ def _print_logistics(data: dict[str, Any]) -> None:
 
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "datascience": _print_datascience,
     "geopolitics": _print_geopolitics,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
@@ -149,6 +180,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "datascience": run_datascience_analysis,
     "geopolitics": run_geopolitics_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
@@ -161,7 +193,7 @@ def main() -> int:
     parser.add_argument(
         "agent",
         nargs="?",
-        default="markets",
+        default="datascience",
         choices=sorted(RUNNERS.keys()),
         help="Agent to run (default: logistics)",
     )
