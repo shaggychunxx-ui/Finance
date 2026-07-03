@@ -16,6 +16,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Cross-Agent Consensus Expert** | `run.bat consensus` | All agents above + [Yahoo Finance](https://finance.yahoo.com/) API |
 
 ## Quick start
 
@@ -30,6 +31,7 @@ run.bat markets
 run.bat geopolitics
 run.bat logistics
 run.bat meteorology
+run.bat consensus
 ```
 
 Or with options:
@@ -177,6 +179,23 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Cross-Agent Consensus Expert
+
+Runs every agent above together to determine overall US market conditions and forecast the
+top movers:
+
+- Aggregates the Markets, Data Science, Geopolitics, Grid, Electricity, Meteorology,
+  Logistics, Transportation, Patents, and World Events agents into a single weighted
+  **market condition score** (Risk-On / Neutral / Risk-Off) with contributing factors
+- Selects the **top 15 US market movers** (day gainers + losers) from the Markets agent
+- Runs a Monte Carlo quantitative model per mover for **24-hour** and **1-week** horizons,
+  producing direction (UP/DOWN), probability of being up, expected return, and a
+  10th–90th percentile range
+- Tilts each mover's forecast drift by the overall macro market-condition score, so a
+  Risk-Off backdrop nudges predictions more bearish and vice versa
+- Falls back to a lightweight heuristic prediction for movers with insufficient price history
+- Per-agent status briefs (ok/error) and one-line takeaways from each contributing agent
 
 ## Requirements
 

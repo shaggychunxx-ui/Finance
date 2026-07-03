@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.consensus import run_consensus_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.events import run_events_analysis
@@ -411,7 +412,60 @@ def _print_logistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_consensus(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('agents_succeeded', 0)}/{meta.get('agents_consulted', 0)} agents"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Market conditions: {metrics.get('market_condition_label')} "
+        f"(score {metrics.get('market_condition_score')})"
+    )
+    print()
+    factors = data.get("contributing_factors", [])
+    if factors:
+        print("  Contributing factors:")
+        for f in factors:
+            print(f"    • {f}")
+        print()
+    print("  Agent briefs:")
+    for b in data.get("agent_briefs", []):
+        print(f"    • [{b.get('status', '?').upper()}] {b.get('agent')}: {b.get('headline')}")
+    print()
+    print("  Top market movers — 24h / 1w predictions:")
+    for m in data.get("movers", []):
+        preds = {p.get("horizon"): p for p in m.get("predictions", [])}
+        h24, h1w = preds.get("24h"), preds.get("1w")
+        day = f"{m.get('day_chg_pct'):+.2f}%" if m.get("day_chg_pct") is not None else "n/a"
+        print(f"    • {m.get('symbol')} ({m.get('name')}) — today {day}")
+        if h24:
+            print(
+                f"        24h: {h24.get('direction')} P(up)={h24.get('prob_up'):.0%} "
+                f"exp {h24.get('expected_return_pct'):+.2f}% "
+                f"[{h24.get('low_return_pct'):+.2f}%, {h24.get('high_return_pct'):+.2f}%]"
+            )
+        if h1w:
+            print(
+                f"        1w:  {h1w.get('direction')} P(up)={h1w.get('prob_up'):.0%} "
+                f"exp {h1w.get('expected_return_pct'):+.2f}% "
+                f"[{h1w.get('low_return_pct'):+.2f}%, {h1w.get('high_return_pct'):+.2f}%]"
+            )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []), limit=20)
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "consensus": _print_consensus,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "events": _print_events,
@@ -425,6 +479,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "consensus": run_consensus_analysis,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "events": run_events_analysis,
