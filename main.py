@@ -441,23 +441,29 @@ def _print_consensus(data: dict[str, Any]) -> None:
     for b in data.get("agent_briefs", []):
         print(f"    • [{b.get('status', '?').upper()}] {b.get('agent')}: {b.get('headline')}")
     print()
-    print("  Top market movers — 24h / 1w predictions:")
+    print("  Top 5 market movers — 24h / 1-month / 1-year predictions:")
     for m in data.get("movers", []):
         preds = {p.get("horizon"): p for p in m.get("predictions", [])}
-        h24, h1w = preds.get("24h"), preds.get("1w")
+        h24, h1mo, h1y = preds.get("24h"), preds.get("1mo"), preds.get("1y")
         day = f"{m.get('day_chg_pct'):+.2f}%" if m.get("day_chg_pct") is not None else "n/a"
         print(f"    • {m.get('symbol')} ({m.get('name')}) — today {day}")
         if h24:
             print(
-                f"        24h: {h24.get('direction')} P(up)={h24.get('prob_up'):.0%} "
+                f"        24h:  {h24.get('direction')} P(up)={h24.get('prob_up'):.0%} "
                 f"exp {h24.get('expected_return_pct'):+.2f}% "
                 f"[{h24.get('low_return_pct'):+.2f}%, {h24.get('high_return_pct'):+.2f}%]"
             )
-        if h1w:
+        if h1mo:
             print(
-                f"        1w:  {h1w.get('direction')} P(up)={h1w.get('prob_up'):.0%} "
-                f"exp {h1w.get('expected_return_pct'):+.2f}% "
-                f"[{h1w.get('low_return_pct'):+.2f}%, {h1w.get('high_return_pct'):+.2f}%]"
+                f"        1mo:  {h1mo.get('direction')} P(up)={h1mo.get('prob_up'):.0%} "
+                f"exp {h1mo.get('expected_return_pct'):+.2f}% "
+                f"[{h1mo.get('low_return_pct'):+.2f}%, {h1mo.get('high_return_pct'):+.2f}%]"
+            )
+        if h1y:
+            print(
+                f"        1y:   {h1y.get('direction')} P(up)={h1y.get('prob_up'):.0%} "
+                f"exp {h1y.get('expected_return_pct'):+.2f}% "
+                f"[{h1y.get('low_return_pct'):+.2f}%, {h1y.get('high_return_pct'):+.2f}%]"
             )
     print()
     _print_signals(data.get("market_signals", []))

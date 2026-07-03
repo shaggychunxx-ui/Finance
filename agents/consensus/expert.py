@@ -4,8 +4,8 @@ Cross-Agent Consensus Expert
 Runs every intelligence agent in this repo (markets, data science,
 geopolitics, grid, electricity, meteorology, logistics, transportation,
 patents, and world events) together to determine overall US market
-conditions, then produces 24-hour and 1-week direction/return predictions
-for the top 15 US market movers.
+conditions, then produces 24-hour, 1-month, and 1-year direction/return
+predictions for the top 5 US market movers.
 
 Data: Yahoo Finance chart API (mover price history) plus each agent's own
 live public data sources.
@@ -40,9 +40,12 @@ CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Finance-Consensus-Expert/1.0 (shaggychunxx@gmail.com)"}
 
 MC_SIMULATIONS = 4000
-HORIZONS: dict[str, int] = {"24h": 1, "1w": 5}
-MAX_MOVERS = 15
-MACRO_DRIFT_PER_DAY = 0.0009  # max daily drift nudge applied at full macro tilt
+HORIZONS: dict[str, int] = {"24h": 1, "1mo": 21, "1y": 252}
+HORIZON_LABELS: dict[int, str] = {days: label for label, days in HORIZONS.items()}
+MAX_MOVERS = 5
+MACRO_DRIFT_PER_DAY = 0.0009  # daily drift nudge applied when macro tilt is at full strength (+/-1.0)
+NAIVE_ASSUMED_DAILY_VOL = 0.02  # ~2% typical single-stock daily volatility, used by the naive fallback
+NAIVE_PROB_DRIFT_SENSITIVITY = 5.0  # scales expected drift into a probability shift for the naive fallback
 
 
 @dataclass
@@ -94,7 +97,7 @@ class ConsensusReport:
 
 class ConsensusExpert:
     """Combines every agent in the repo into one US market-conditions read
-    and 24h / 1-week predictions for the top 15 market movers."""
+    and 24h / 1-month / 1-year predictions for the top 5 market movers."""
 
     AGENTS: dict[str, Callable[..., dict[str, Any]]] = {
         "markets": run_markets_analysis,
@@ -280,7 +283,7 @@ class ConsensusExpert:
         try:
             resp = requests.get(
                 CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "3mo"},
+                params={"interval": "1d", "range": "1y"},
                 headers=HEADERS,
                 timeout=25,
             )
@@ -288,7 +291,7 @@ class ConsensusExpert:
                 time.sleep(3)
                 resp = requests.get(
                     CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "3mo"},
+                    params={"interval": "1d", "range": "1y"},
                     headers=HEADERS,
                     timeout=25,
                 )
@@ -335,9 +338,24 @@ class ConsensusExpert:
     def _monte_carlo(
         self, returns: list[float], last_price: float, horizon_days: int, tilt: float
     ) -> HorizonPrediction:
-        recent = returns[-60:]
-        mu = statistics.mean(recent) + tilt
+        # Longer horizons use a longer look-back window (60 recent trading
+        # days for <=1-week horizons to capture recent momentum, vs. a
+        # near-full-year 250-day window for 1-month/1-year horizons) so the
+        # drift estimate reflects a durable trend rather than short-term
+        # noise that would otherwise compound into an unrealistic
+        # multi-month/year forecast.
+        window = 60 if horizon_days <= 5 else min(len(returns), 250)
+        recent = returns[-window:]
+        sample_mu = statistics.mean(recent)
         sigma = statistics.stdev(recent) if len(recent) > 1 else 0.01
+        # Shrink the drift estimate toward zero as the sampling uncertainty
+        # grows relative to the signal, so a noisy short history doesn't get
+        # extrapolated with excessive confidence over long horizons: the
+        # standard error of the mean is compared against the drift's own
+        # magnitude, and a large relative standard error pulls mu toward 0.
+        std_err = sigma / math.sqrt(len(recent)) if len(recent) > 1 else sigma
+        shrinkage = std_err / (std_err + abs(sample_mu) + 1e-9)
+        mu = sample_mu * (1.0 - shrinkage * 0.5) + tilt
         ups = 0
         finals: list[float] = []
         for _ in range(MC_SIMULATIONS):
@@ -353,7 +371,7 @@ class ConsensusExpert:
         median_ret = finals[len(finals) // 2]
         low_ret = finals[max(0, int(len(finals) * 0.10) - 1)]
         high_ret = finals[min(len(finals) - 1, int(len(finals) * 0.90))]
-        label = "24h" if horizon_days == 1 else "1w"
+        label = HORIZON_LABELS.get(horizon_days, f"{horizon_days}d")
         return HorizonPrediction(
             horizon=label,
             trading_days=horizon_days,
@@ -367,12 +385,27 @@ class ConsensusExpert:
     def _naive_prediction(
         self, day_chg_pct: float | None, macro_tilt: float, horizon_days: int
     ) -> HorizonPrediction:
-        """Fallback prediction when insufficient price history is available."""
-        base_drift = ((day_chg_pct or 0.0) / 100.0) * 0.25 + macro_tilt * MACRO_DRIFT_PER_DAY
-        expected = base_drift * horizon_days
-        spread = max(abs(expected) * 2, 0.01 * horizon_days)
-        prob_up = round(max(0.35, min(0.65, 0.5 + expected * 5)), 4)
-        label = "24h" if horizon_days == 1 else "1w"
+        """Fallback prediction when insufficient price history is available.
+
+        Today's single-day move is treated as a short-lived signal that fades
+        out for longer horizons (it is not compounded daily), while the macro
+        tilt contributes a small, steady per-trading-day drift that does
+        compound over the full horizon.
+        """
+        macro_daily = macro_tilt * MACRO_DRIFT_PER_DAY
+        # The macro drift compounds daily over the full horizon (1 + x) ** n,
+        # while today's single-day move is a one-off signal that is not
+        # compounded — it is added once and its weight decays as the horizon
+        # lengthens (full weight for <=5 trading days, fading out beyond that).
+        decay = min(1.0, 5.0 / horizon_days)
+        day_component = ((day_chg_pct or 0.0) / 100.0) * 0.25 * decay
+        expected = (1.0 + macro_daily) ** horizon_days - 1.0 + day_component
+        spread = NAIVE_ASSUMED_DAILY_VOL * math.sqrt(horizon_days) + abs(day_component)
+        prob_up = round(
+            max(0.35, min(0.65, 0.5 + (macro_daily * horizon_days + day_component) * NAIVE_PROB_DRIFT_SENSITIVITY)),
+            4,
+        )
+        label = HORIZON_LABELS.get(horizon_days, f"{horizon_days}d")
         return HorizonPrediction(
             horizon=label,
             trading_days=horizon_days,
@@ -447,10 +480,10 @@ class ConsensusExpert:
         ]
         if bullish:
             signals.append({
-                "sector": "Top Movers — 1w Bullish",
+                "sector": "Top Movers — 1y Bullish",
                 "tickers": [m.symbol for m in bullish[:5]],
                 "bias": "BULLISH",
-                "reason": "Monte Carlo 1-week P(up) >= 55% among top movers",
+                "reason": "Monte Carlo 1-year P(up) >= 55% among top movers",
             })
         bearish = [
             m for m in movers
@@ -458,10 +491,10 @@ class ConsensusExpert:
         ]
         if bearish:
             signals.append({
-                "sector": "Top Movers — 1w Bearish",
+                "sector": "Top Movers — 1y Bearish",
                 "tickers": [m.symbol for m in bearish[:5]],
                 "bias": "BEARISH",
-                "reason": "Monte Carlo 1-week P(up) <= 45% among top movers",
+                "reason": "Monte Carlo 1-year P(up) <= 45% among top movers",
             })
         return signals
 
@@ -476,12 +509,16 @@ class ConsensusExpert:
         for m in movers[:5]:
             if not m.predictions:
                 continue
-            h24, h1w = m.predictions[0], m.predictions[-1]
-            recs.append(
-                f"{m.symbol}: 24h {h24.direction} P(up)={h24.prob_up:.0%} "
-                f"exp {h24.expected_return_pct:+.2f}% | "
-                f"1w {h1w.direction} P(up)={h1w.prob_up:.0%} exp {h1w.expected_return_pct:+.2f}%"
-            )
+            preds = {p.horizon: p for p in m.predictions}
+            h24, h1mo, h1y = preds.get("24h"), preds.get("1mo"), preds.get("1y")
+            parts = [f"{m.symbol}:"]
+            if h24:
+                parts.append(f"24h {h24.direction} P(up)={h24.prob_up:.0%} exp {h24.expected_return_pct:+.2f}%")
+            if h1mo:
+                parts.append(f"1mo {h1mo.direction} P(up)={h1mo.prob_up:.0%} exp {h1mo.expected_return_pct:+.2f}%")
+            if h1y:
+                parts.append(f"1y {h1y.direction} P(up)={h1y.prob_up:.0%} exp {h1y.expected_return_pct:+.2f}%")
+            recs.append(" | ".join(parts))
         return recs
 
     @staticmethod
@@ -490,7 +527,7 @@ class ConsensusExpert:
     ) -> str:
         top = movers[0] if movers else None
         top_line = (
-            f"Top mover {top.symbol}: 1w {top.predictions[-1].direction} "
+            f"Top mover {top.symbol}: 1y {top.predictions[-1].direction} "
             f"P(up)={top.predictions[-1].prob_up:.0%}"
             if top and top.predictions
             else "no movers analyzed"

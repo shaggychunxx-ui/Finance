@@ -188,10 +188,10 @@ top movers:
 - Aggregates the Markets, Data Science, Geopolitics, Grid, Electricity, Meteorology,
   Logistics, Transportation, Patents, and World Events agents into a single weighted
   **market condition score** (Risk-On / Neutral / Risk-Off) with contributing factors
-- Selects the **top 15 US market movers** (day gainers + losers) from the Markets agent
-- Runs a Monte Carlo quantitative model per mover for **24-hour** and **1-week** horizons,
-  producing direction (UP/DOWN), probability of being up, expected return, and a
-  10th–90th percentile range
+- Selects the **top 5 US market movers** (day gainers + losers) from the Markets agent
+- Runs a Monte Carlo quantitative model per mover for **24-hour**, **1-month**, and
+  **1-year** horizons, producing direction (UP/DOWN), probability of being up,
+  expected return, and a 10th–90th percentile range
 - Tilts each mover's forecast drift by the overall macro market-condition score, so a
   Risk-Off backdrop nudges predictions more bearish and vice versa
 - Falls back to a lightweight heuristic prediction for movers with insufficient price history
