@@ -357,9 +357,6 @@ class PortfolioManagerExpert:
         self.output_dir = output_dir or Path("output")
         self.state_path = self.output_dir / STATE_FILENAME
         self.delay_seconds = delay_seconds
-        # When a balance is explicitly supplied for this run, it overrides the
-        # persisted paper-trading ledger entirely: decisions are made fresh
-        # from that balance instead of resuming prior paper-trading state.
         self.balance = balance
         self.use_etrade = use_etrade
         self._etrade_client = etrade_client
@@ -368,6 +365,16 @@ class PortfolioManagerExpert:
     @property
     def ad_hoc_balance(self) -> bool:
         return self.balance is not None and not self.use_etrade
+
+    @property
+    def should_persist_state(self) -> bool:
+        """Whether this run's paper-trading state should be read from/written to disk.
+
+        A run based on an external/one-off balance — a real E*TRADE account or
+        a manually supplied ``balance`` — must not read or overwrite the
+        persisted paper-trading ledger.
+        """
+        return not (self.use_etrade or self.ad_hoc_balance)
 
     @property
     def etrade_client(self) -> ETradeClient:
@@ -384,6 +391,9 @@ class PortfolioManagerExpert:
 
         state = PortfolioState.new()
         state.cash = assets["cash"]
+        # starting_balance is the baseline used for total-return reporting;
+        # for a live account it's this run's total assets (cash + cost basis
+        # of existing holdings), since there is no separate "inception" value.
         state.starting_balance = assets["cash"]
         opened_at = _today().isoformat()
         for symbol, info in assets.get("positions", {}).items():
@@ -407,6 +417,9 @@ class PortfolioManagerExpert:
             return self._state_from_etrade()
         if self.ad_hoc_balance:
             state = PortfolioState.new()
+            # Both cash and starting_balance are set to the provided balance:
+            # there are no pre-existing holdings for an ad-hoc run, so the
+            # balance is both the available cash and the return baseline.
             state.cash = self.balance
             state.starting_balance = self.balance
             return state
@@ -418,10 +431,7 @@ class PortfolioManagerExpert:
         return PortfolioState.new()
 
     def _save_state(self, state: PortfolioState, full_trade_log: list[Trade]) -> None:
-        if self.use_etrade or self.ad_hoc_balance:
-            # This run makes decisions from an external/one-off balance (a
-            # real E*TRADE account or a manually supplied balance) — it must
-            # not overwrite or extend the persisted paper-trading ledger.
+        if not self.should_persist_state:
             return
         self.output_dir.mkdir(parents=True, exist_ok=True)
         payload = state.to_dict()
@@ -429,7 +439,7 @@ class PortfolioManagerExpert:
         self.state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _load_trade_log(self) -> list[Trade]:
-        if self.use_etrade or self.ad_hoc_balance:
+        if not self.should_persist_state:
             return []
         if not self.state_path.exists():
             return []
@@ -875,7 +885,7 @@ class PortfolioManagerExpert:
                     else "ad_hoc_balance" if self.ad_hoc_balance
                     else "paper_trading"
                 ),
-                "state_file": None if (self.use_etrade or self.ad_hoc_balance) else str(self.state_path),
+                "state_file": str(self.state_path) if self.should_persist_state else None,
             },
             "metrics": {
                 "cash": round(state.cash, 2),

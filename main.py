@@ -1066,13 +1066,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    kwargs: dict[str, Any] = {"output": args.output}
+    if args.agent == "portfolio":
+        if args.use_etrade:
+            kwargs["use_etrade"] = True
+        elif args.balance is not None:
+            kwargs["balance"] = args.balance
+
     try:
-        if args.agent == "portfolio" and args.use_etrade:
-            result = RUNNERS[args.agent](output=args.output, use_etrade=True)
-        elif args.agent == "portfolio" and args.balance is not None:
-            result = RUNNERS[args.agent](output=args.output, balance=args.balance)
-        else:
-            result = RUNNERS[args.agent](output=args.output)
+        result = RUNNERS[args.agent](**kwargs)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

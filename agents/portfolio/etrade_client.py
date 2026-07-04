@@ -16,8 +16,8 @@ already been obtained. Configure it via environment variables:
     ETRADE_CONSUMER_SECRET
     ETRADE_ACCESS_TOKEN
     ETRADE_ACCESS_TOKEN_SECRET
-    ETRADE_ACCOUNT_ID_KEY   (optional; auto-discovered from /accounts/list if omitted)
-    ETRADE_ENV              "sandbox" (default) or "live"
+    ETRADE_ACCOUNT_ID_KEY  (optional; auto-discovered from /accounts/list if omitted)
+    ETRADE_ENV             "sandbox" (default) or "live"
 
 This client only reads account balance/position data. It does not place
 orders — the portfolio agent treats its output as decisions/recommendations
@@ -97,8 +97,15 @@ class ETradeClient:
         )
         base_str = "&".join([method.upper(), _percent_encode(url), _percent_encode(param_str)])
         signing_key = f"{_percent_encode(self.consumer_secret)}&{_percent_encode(self.access_token_secret)}"
+        # HMAC-SHA1 is mandated by the OAuth 1.0a spec and is the only signature
+        # method E*TRADE's API accepts — this is not a locally chosen weak hash
+        # for secrets, but the required MAC algorithm for request signing. It is
+        # used here purely to sign requests (proving possession of the consumer
+        # secret / access token secret), not to hash or store sensitive data.
         signature = b64encode(
-            hmac.new(signing_key.encode("utf-8"), base_str.encode("utf-8"), hashlib.sha1).digest()
+            hmac.new(
+                signing_key.encode("utf-8"), base_str.encode("utf-8"), hashlib.sha1
+            ).digest()
         ).decode("utf-8")
         oauth_params["oauth_signature"] = signature
         return oauth_params
@@ -185,7 +192,9 @@ class ETradeClient:
                 positions_list = [positions_list]
             for pos in positions_list:
                 symbol = (pos.get("Product") or {}).get("symbol") or pos.get("symbolDescription")
-                quantity = float(pos.get("quantity", 0.0) or 0.0)
+                # E*TRADE can return an explicit null for quantity; `or 0.0`
+                # guards against that in addition to the missing-key default.
+                quantity = float(pos.get("quantity") or 0.0)
                 if not symbol or quantity <= 0:
                     continue
                 avg_cost = float(pos.get("pricePaid", 0.0) or 0.0)
