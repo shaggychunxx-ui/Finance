@@ -942,19 +942,29 @@ def _print_portfolio(data: dict[str, Any]) -> None:
         f"Fees paid: ${metrics.get('fees_paid_total'):,.2f}  |  "
         f"Taxes paid: ${metrics.get('taxes_paid_total'):,.2f}"
     )
+    print(
+        f"  Dividend/interest income: ${metrics.get('income_received_total', 0):,.2f}  |  "
+        f"Income tax paid: ${metrics.get('income_tax_paid_total', 0):,.2f}"
+    )
     alloc = data.get("allocation_by_horizon_pct", {})
     print(
         f"  Allocation — short: {alloc.get('short_term', 0):.1f}%  "
         f"mid: {alloc.get('mid_term', 0):.1f}%  long: {alloc.get('long_term', 0):.1f}%  "
         f"cash: {alloc.get('cash', 0):.1f}%"
     )
+    asset_alloc = data.get("allocation_by_asset_class_pct", {})
+    if asset_alloc:
+        print("  Allocation by asset class — " + "  ".join(
+            f"{k}: {v:.1f}%" for k, v in asset_alloc.items()
+        ))
     print()
     positions = data.get("positions", [])
     if positions:
         print("  Positions:")
         for p in positions[:10]:
             print(
-                f"    • {p.get('symbol')} ({p.get('horizon')}): {p.get('quantity'):.4f} sh @ "
+                f"    • {p.get('symbol')} ({p.get('horizon')}, {p.get('asset_class', 'equity_etf')}): "
+                f"{p.get('quantity'):.4f} sh @ "
                 f"${p.get('avg_cost'):,.2f} avg, now ${p.get('price'):,.2f} "
                 f"({p.get('unrealized_pl_pct'):+.2f}%), weight {p.get('weight_pct'):.1f}%"
             )
@@ -963,10 +973,16 @@ def _print_portfolio(data: dict[str, Any]) -> None:
     if trades:
         print("  Trades this run:")
         for t in trades:
-            print(
-                f"    • {t.get('action')} {t.get('quantity'):.4f} {t.get('symbol')} @ "
-                f"${t.get('price'):,.2f} (fees ${t.get('fees'):.2f}, tax ${t.get('tax'):.2f})"
-            )
+            if t.get("action") == "INCOME":
+                print(
+                    f"    • INCOME {t.get('symbol')}: ${t.get('notional'):,.2f} gross "
+                    f"(tax ${t.get('tax'):.2f})"
+                )
+            else:
+                print(
+                    f"    • {t.get('action')} {t.get('quantity'):.4f} {t.get('symbol')} @ "
+                    f"${t.get('price'):,.2f} (fees ${t.get('fees'):.2f}, tax ${t.get('tax'):.2f})"
+                )
         print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))

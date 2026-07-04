@@ -7,6 +7,16 @@ balance, sizes short-term / mid-term / long-term positions, and simulates
 realistic trading costs — a brokerage/slippage fee, an SEC Section 31 fee on
 sells, and short-term vs. long-term capital-gains tax on realized profits.
 
+The tradable universe spans multiple asset classes — broad-market and sector
+equity ETFs, precious-metals ETFs (e.g. gold, silver), and bond/fixed-income
+ETFs (Treasuries and investment-grade corporates) — each tagged with an
+``asset_class`` for reporting. Dividend/interest income paid by held
+positions (equity dividends, bond coupon income, ETF distributions) is
+accrued pro-rata each run, taxed, and added to cash, so total return reflects
+both price appreciation and income. Options and other derivatives are out of
+scope: they require separate margin, expiry, and Greeks modeling that this
+spot/ETF paper-trading ledger does not support.
+
 No real funds are ever used. This agent only reads public market data and
 maintains its own JSON ledger (``output/portfolio_state.json``) across runs.
 
@@ -96,17 +106,43 @@ HORIZON_TARGET_WEIGHTS: dict[str, float] = {
     "long_term": 0.40,
 }
 
-LONG_TERM_CORE = {"SPY", "QQQ", "IWM", "GLD", "TLT"}
+BOND_ETFS = {"TLT", "AGG", "LQD", "SHY"}
+PRECIOUS_METAL_ETFS = {"GLD", "SLV"}
+LONG_TERM_CORE = {"SPY", "QQQ", "IWM"} | BOND_ETFS | PRECIOUS_METAL_ETFS
 SECTOR_ETFS = {"XLK", "XLE", "XLU", "XLF", "XLI", "XLY", "XLP", "XLRE", "XLV", "XLB", "XLC"}
 NOT_TRADABLE = {"^VIX", "^GSPC", "^DJI", "^IXIC", "^RUT"}
 
 SYMBOL_NAMES: dict[str, str] = {
     "SPY": "S&P 500", "QQQ": "Nasdaq 100", "IWM": "Russell 2000",
-    "GLD": "Gold", "TLT": "20+ Year Treasuries",
+    "GLD": "Gold", "SLV": "Silver",
+    "TLT": "20+ Year Treasuries", "AGG": "US Aggregate Bonds",
+    "LQD": "Investment Grade Corporate Bonds", "SHY": "1-3 Year Treasuries",
     "XLK": "Technology", "XLE": "Energy", "XLU": "Utilities", "XLF": "Financials",
     "XLI": "Industrials", "XLY": "Consumer Discretionary", "XLP": "Consumer Staples",
     "XLRE": "Real Estate", "XLV": "Health Care", "XLB": "Materials", "XLC": "Communication",
 }
+
+# Broad asset-class tag for each symbol, surfaced on positions/signals so the
+# portfolio's diversification across equities, precious metals, and bonds is
+# visible in the report. Anything not listed defaults to "equity_etf".
+ASSET_CLASS: dict[str, str] = {
+    "SPY": "equity_etf", "QQQ": "equity_etf", "IWM": "equity_etf",
+    "GLD": "precious_metal_etf", "SLV": "precious_metal_etf",
+    "TLT": "bond_etf", "AGG": "bond_etf", "LQD": "bond_etf", "SHY": "bond_etf",
+    **{sym: "sector_etf" for sym in SECTOR_ETFS},
+}
+
+# Approximate blended annual dividend/interest yield paid out by each symbol
+# (equity dividends, bond coupon income, ETF distributions). Used to accrue
+# income into cash between runs; symbols not listed are assumed to pay none.
+ANNUAL_YIELD_PCT: dict[str, float] = {
+    "SPY": 1.3, "QQQ": 0.6, "IWM": 1.2,
+    "GLD": 0.0, "SLV": 0.0,
+    "TLT": 4.0, "AGG": 4.2, "LQD": 4.8, "SHY": 4.5,
+    "XLK": 0.7, "XLE": 3.2, "XLU": 2.9, "XLF": 1.6, "XLI": 1.4,
+    "XLY": 0.7, "XLP": 2.4, "XLRE": 3.4, "XLV": 1.5, "XLB": 1.7, "XLC": 0.8,
+}
+DIVIDEND_INTEREST_TAX_RATE = 0.15  # blended qualified-dividend / interest income tax rate
 
 # Calibrated fallback quotes for symbols not covered elsewhere, used only when
 # both the live fetch and the shared Google-Finance proxy table miss a symbol.
@@ -115,7 +151,11 @@ SUPPLEMENTAL_PROXY_QUOTES: dict[str, dict[str, float]] = {
     "QQQ": {"price": 610.4, "day_chg_pct": -0.3, "week_chg_pct": -0.1},
     "IWM": {"price": 239.7, "day_chg_pct": -0.55, "week_chg_pct": 0.2},
     "GLD": {"price": 391.6, "day_chg_pct": 0.62, "week_chg_pct": 1.1},
+    "SLV": {"price": 34.8, "day_chg_pct": 0.45, "week_chg_pct": 1.4},
     "TLT": {"price": 87.4, "day_chg_pct": 0.35, "week_chg_pct": 0.6},
+    "AGG": {"price": 98.6, "day_chg_pct": 0.10, "week_chg_pct": 0.3},
+    "LQD": {"price": 108.9, "day_chg_pct": 0.12, "week_chg_pct": 0.4},
+    "SHY": {"price": 82.1, "day_chg_pct": 0.02, "week_chg_pct": 0.1},
 }
 
 
@@ -125,6 +165,10 @@ def _horizon_for(symbol: str) -> str:
     if symbol in SECTOR_ETFS:
         return "mid_term"
     return "short_term"
+
+
+def _asset_class_for(symbol: str) -> str:
+    return ASSET_CLASS.get(symbol, "equity_etf")
 
 
 def _today() -> date:
@@ -150,6 +194,7 @@ class Position:
     symbol: str
     name: str
     horizon: str
+    asset_class: str = "equity_etf"
     lots: list[Lot] = field(default_factory=list)
 
     @property
@@ -168,6 +213,7 @@ class Position:
             "symbol": self.symbol,
             "name": self.name,
             "horizon": self.horizon,
+            "asset_class": self.asset_class,
             "lots": [l.to_dict() for l in self.lots],
         }
 
@@ -177,6 +223,7 @@ class Position:
             symbol=d["symbol"],
             name=d.get("name", d["symbol"]),
             horizon=d.get("horizon") or _horizon_for(d["symbol"]),
+            asset_class=d.get("asset_class") or _asset_class_for(d["symbol"]),
             lots=[Lot.from_dict(l) for l in d.get("lots", [])],
         )
 
@@ -221,6 +268,9 @@ class PortfolioState:
     taxes_paid_total: float
     starting_balance: float
     created_at: str
+    income_received_total: float = 0.0
+    income_tax_paid_total: float = 0.0
+    last_income_date: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -232,10 +282,14 @@ class PortfolioState:
             "taxes_paid_total": round(self.taxes_paid_total, 2),
             "starting_balance": self.starting_balance,
             "created_at": self.created_at,
+            "income_received_total": round(self.income_received_total, 2),
+            "income_tax_paid_total": round(self.income_tax_paid_total, 2),
+            "last_income_date": self.last_income_date,
         }
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "PortfolioState":
+        created_at = d.get("created_at", datetime.now(timezone.utc).isoformat())
         return PortfolioState(
             cash=d.get("cash", STARTING_BALANCE),
             positions={sym: Position.from_dict(p) for sym, p in d.get("positions", {}).items()},
@@ -244,11 +298,15 @@ class PortfolioState:
             fees_paid_total=d.get("fees_paid_total", 0.0),
             taxes_paid_total=d.get("taxes_paid_total", 0.0),
             starting_balance=d.get("starting_balance", STARTING_BALANCE),
-            created_at=d.get("created_at", datetime.now(timezone.utc).isoformat()),
+            created_at=created_at,
+            income_received_total=d.get("income_received_total", 0.0),
+            income_tax_paid_total=d.get("income_tax_paid_total", 0.0),
+            last_income_date=d.get("last_income_date") or created_at[:10],
         )
 
     @staticmethod
     def new() -> "PortfolioState":
+        created_at = datetime.now(timezone.utc).isoformat()
         return PortfolioState(
             cash=STARTING_BALANCE,
             positions={},
@@ -257,7 +315,10 @@ class PortfolioState:
             fees_paid_total=0.0,
             taxes_paid_total=0.0,
             starting_balance=STARTING_BALANCE,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=created_at,
+            income_received_total=0.0,
+            income_tax_paid_total=0.0,
+            last_income_date=created_at[:10],
         )
 
 
@@ -389,6 +450,54 @@ class PortfolioManagerExpert:
                 value += qty * self._price(sym)["price"]
         return value
 
+    def _accrue_income(self, state: PortfolioState, trades: list[Trade]) -> float:
+        """Accrue dividend/interest income paid by held positions since the last run.
+
+        Income is pro-rated daily from each symbol's ``ANNUAL_YIELD_PCT`` against its
+        current market value, taxed at ``DIVIDEND_INTEREST_TAX_RATE``, and deposited
+        as cash — so equity dividends and bond coupon/interest income both contribute
+        to total return, not just price appreciation.
+        """
+        today = _today()
+        try:
+            last_date = date.fromisoformat(state.last_income_date) if state.last_income_date else today
+        except ValueError:
+            last_date = today
+        days_elapsed = (today - last_date).days
+        if days_elapsed <= 0:
+            return 0.0
+
+        total_income = 0.0
+        for sym, pos in state.positions.items():
+            qty = pos.quantity
+            annual_yield_pct = ANNUAL_YIELD_PCT.get(sym, 0.0)
+            if qty <= 0 or annual_yield_pct <= 0:
+                continue
+            market_value = qty * self._price(sym)["price"]
+            gross_income = market_value * (annual_yield_pct / 100.0) * (days_elapsed / 365.0)
+            if gross_income <= 0:
+                continue
+            tax = gross_income * DIVIDEND_INTEREST_TAX_RATE
+            net_income = gross_income - tax
+
+            state.cash += net_income
+            state.income_received_total += gross_income
+            state.income_tax_paid_total += tax
+            total_income += net_income
+
+            trades.append(Trade(
+                date=today.isoformat(), symbol=sym, action="INCOME", quantity=0.0,
+                price=self._price(sym)["price"], notional=round(gross_income, 2),
+                fees=0.0, tax=round(tax, 2), realized_pl=None, horizon=pos.horizon,
+                reason=(
+                    f"Dividend/interest income accrued over {days_elapsed} day(s) "
+                    f"at {annual_yield_pct:.2f}% annual yield"
+                ),
+            ))
+
+        state.last_income_date = today.isoformat()
+        return total_income
+
     def _sell_position(
         self, state: PortfolioState, sym: str, pos: Position, price: float,
         horizon: str, reason: str, trades: list[Trade],
@@ -447,7 +556,9 @@ class PortfolioManagerExpert:
         state.cash -= total_cost
         state.fees_paid_total += fees
 
-        pos = state.positions.setdefault(sym, Position(symbol=sym, name=name, horizon=horizon))
+        pos = state.positions.setdefault(
+            sym, Position(symbol=sym, name=name, horizon=horizon, asset_class=_asset_class_for(sym))
+        )
         pos.lots.append(Lot(quantity=qty, cost_basis=price, opened_at=_today().isoformat()))
 
         trades.append(Trade(
@@ -474,6 +585,9 @@ class PortfolioManagerExpert:
                 "agents": sorted({v["agent"] for v in ticker_votes}),
             })
         signals_considered.sort(key=lambda s: -abs(s["conviction"]))
+
+        # 0) Accrue dividend/interest income paid by current holdings since last run.
+        self._accrue_income(state, trades)
 
         # 1) Sell any held position whose aggregated conviction has turned bearish.
         for sym in list(state.positions.keys()):
@@ -540,7 +654,8 @@ class PortfolioManagerExpert:
             f"of ${state.starting_balance:,.2f}). Synthesized signals from {ok_agents}/{len(agent_status)} "
             f"Finance agents this run — executed {buys} buy(s) and {sells} sell(s). "
             f"Lifetime realized P&L ${state.realized_pl_total:,.2f}, fees paid ${state.fees_paid_total:,.2f}, "
-            f"taxes paid ${state.taxes_paid_total:,.2f}."
+            f"taxes paid ${state.taxes_paid_total:,.2f}, dividend/interest income "
+            f"${state.income_received_total:,.2f} (${state.income_tax_paid_total:,.2f} tax)."
         )
 
     def analyze(self) -> dict[str, Any]:
@@ -555,6 +670,7 @@ class PortfolioManagerExpert:
 
         positions_out: list[dict[str, Any]] = []
         allocation_by_horizon = {"short_term": 0.0, "mid_term": 0.0, "long_term": 0.0}
+        allocation_by_asset_class: dict[str, float] = {}
         for sym, pos in state.positions.items():
             qty = pos.quantity
             if qty <= 0:
@@ -565,10 +681,15 @@ class PortfolioManagerExpert:
             unrealized_pl = market_value - cost_basis_total
             unrealized_pl_pct = (unrealized_pl / cost_basis_total * 100) if cost_basis_total > 0 else 0.0
             allocation_by_horizon[pos.horizon] = allocation_by_horizon.get(pos.horizon, 0.0) + market_value
+            allocation_by_asset_class[pos.asset_class] = (
+                allocation_by_asset_class.get(pos.asset_class, 0.0) + market_value
+            )
             positions_out.append({
                 "symbol": sym,
                 "name": pos.name,
                 "horizon": pos.horizon,
+                "asset_class": pos.asset_class,
+                "annual_yield_pct": ANNUAL_YIELD_PCT.get(sym, 0.0),
                 "quantity": round(qty, 6),
                 "avg_cost": round(pos.avg_cost, 4),
                 "price": price,
@@ -585,6 +706,10 @@ class PortfolioManagerExpert:
             for k, v in allocation_by_horizon.items()
         }
         allocation_pct["cash"] = round((state.cash / total_value * 100) if total_value else 0.0, 2)
+        allocation_by_asset_class_pct = {
+            k: round((v / total_value * 100) if total_value else 0.0, 2)
+            for k, v in allocation_by_asset_class.items()
+        }
 
         full_trade_log = prior_trade_log + trades
         self._save_state(state, full_trade_log)
@@ -600,8 +725,10 @@ class PortfolioManagerExpert:
         ]
 
         recommendations: list[str] = []
-        if trades:
-            for t in trades:
+        income_trades = [t for t in trades if t.action == "INCOME"]
+        trade_actions = [t for t in trades if t.action != "INCOME"]
+        if trade_actions:
+            for t in trade_actions:
                 verb = "Bought" if t.action == "BUY" else "Sold"
                 recommendations.append(
                     f"{verb} {t.quantity:.4f} {t.symbol} @ ${t.price:,.2f} "
@@ -609,6 +736,14 @@ class PortfolioManagerExpert:
                 )
         else:
             recommendations.append("No trades triggered this run — holding current allocation.")
+        if income_trades:
+            income_total = sum(t.notional for t in income_trades)
+            income_tax_total = sum(t.tax for t in income_trades)
+            recommendations.append(
+                f"Received ${income_total - income_tax_total:,.2f} net dividend/interest income "
+                f"(${income_total:,.2f} gross, ${income_tax_total:,.2f} tax) across "
+                f"{len(income_trades)} position(s)."
+            )
         recommendations.extend(all_recommendations[:5])
 
         summary = self._expert_summary(total_value, state, trades, agent_status)
@@ -627,6 +762,7 @@ class PortfolioManagerExpert:
                     "long_term_holding_days": LONG_TERM_HOLDING_DAYS,
                     "max_position_weight_pct": MAX_POSITION_WEIGHT * 100,
                     "min_cash_reserve_pct": MIN_CASH_RESERVE_PCT * 100,
+                    "dividend_interest_tax_pct": DIVIDEND_INTEREST_TAX_RATE * 100,
                 },
                 "agents_consulted": agent_status,
                 "data_source": "Yahoo Finance (proxy-calibrated) + aggregated Finance repo agent signals",
@@ -644,8 +780,11 @@ class PortfolioManagerExpert:
                 "realized_pl_total": round(state.realized_pl_total, 2),
                 "fees_paid_total": round(state.fees_paid_total, 2),
                 "taxes_paid_total": round(state.taxes_paid_total, 2),
+                "income_received_total": round(state.income_received_total, 2),
+                "income_tax_paid_total": round(state.income_tax_paid_total, 2),
             },
             "allocation_by_horizon_pct": allocation_pct,
+            "allocation_by_asset_class_pct": allocation_by_asset_class_pct,
             "positions": positions_out,
             "trades_this_run": [t.to_dict() for t in trades],
             "trade_history_count": len(full_trade_log),

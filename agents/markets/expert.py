@@ -426,9 +426,16 @@ class MarketAnalystExpert:
         elif risk_on <= 0.40:
             signals.append({
                 "sector": "Defensives",
-                "tickers": ["XLU", "XLP", "GLD", "TLT"],
+                "tickers": ["XLU", "XLP", "GLD", "SLV", "TLT", "AGG", "LQD", "SHY"],
                 "bias": "BULLISH",
                 "reason": f"Risk-off score {risk_on:.2f}",
+            })
+        else:
+            signals.append({
+                "sector": "Diversifiers — Bonds & Precious Metals",
+                "tickers": ["GLD", "SLV", "TLT", "AGG", "LQD", "SHY"],
+                "bias": "NEUTRAL",
+                "reason": f"Risk-on score {risk_on:.2f} is balanced — hold core fixed income/metals",
             })
 
         if sectors:

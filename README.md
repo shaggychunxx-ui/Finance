@@ -407,9 +407,11 @@ Paper-trading portfolio manager that synthesizes `market_signals` and `recommend
 - Starts from a **$10,000 cash balance** — no real funds are ever used
 - Tallies bullish/bearish votes per ticker across all agents to compute a conviction score
 - Classifies candidates into **short-term**, **mid-term**, and **long-term** horizon buckets and rebalances toward target weights per horizon
+- Spans multiple asset classes — broad-market and sector **equity ETFs**, **precious-metals ETFs** (GLD, SLV), and **bond/fixed-income ETFs** (TLT, AGG, LQD, SHY) — each tagged with an `asset_class` for reporting; options and other derivatives are out of scope since they require separate margin/expiry modeling
 - Position caps (max 20% of portfolio per symbol) and a minimum cash reserve (5%)
 - Simulates real trading costs: a brokerage/slippage fee, an SEC Section 31 fee on sells, and short-term vs. long-term capital-gains tax on realized profits
-- Persists cash, open lots, and the full trade history across runs in `output/portfolio_state.json`
+- Accrues **dividend and interest income** paid by held positions (equity dividends, bond coupon/ETF distributions) pro-rata each run, taxed and added to cash, so total return reflects income as well as price appreciation
+- Persists cash, open lots, income received, and the full trade history across runs in `output/portfolio_state.json`
 
 ```bat
 run.bat portfolio -o output/portfolio.json
