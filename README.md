@@ -2,6 +2,13 @@
 
 Intelligence agents for financial market analysis and a client-side world events tracker. Each agent pulls live public data and produces expert summaries with sector signals.
 
+## Strategic framework
+
+Agents that produce analysis, sector signals, or recommendations are guided by a shared
+strategic operating system spanning diagnosis, strategic architecture, resource
+allocation, execution, and risk resilience. See
+[`docs/STRATEGIC_FRAMEWORK.md`](docs/STRATEGIC_FRAMEWORK.md) for the full framework.
+
 ## Agents
 
 | Agent | Command | Data source |
