@@ -8,7 +8,14 @@ import requests
 from requests_oauthlib import OAuth1
 
 from .config import ETradeConfig
-from .oauth import ETradeTokens, load_tokens, renew_access_token
+from .oauth import (
+    ETradeTokens,
+    is_expired_for_day,
+    load_tokens,
+    needs_renewal,
+    renew_access_token,
+    touch_tokens,
+)
 
 
 class ETradeClient:
@@ -32,13 +39,32 @@ class ETradeClient:
         session.headers.update({"Accept": "application/json"})
         return session
 
+    def _ensure_fresh_token(self) -> None:
+        """Refresh the access token proactively, as soon as it expires.
+
+        E*TRADE access tokens go inactive after ~2 hours without use and die
+        outright at midnight US/Eastern. Rather than waiting for a 401 from
+        the API, check both conditions before every request and renew
+        immediately so agents polling E*TRADE never hit a stale token.
+        """
+
+        if is_expired_for_day(self.tokens):
+            raise RuntimeError(
+                "E*TRADE access token expired (past midnight US/Eastern). "
+                "Run: python -m etrade_api auth"
+            )
+        if needs_renewal(self.tokens):
+            self.tokens = renew_access_token(self.config, self.tokens)
+
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        self._ensure_fresh_token()
         url = f"{self.config.api_base}{path}"
         response = self._session().request(method, url, timeout=30, **kwargs)
         if response.status_code == 401:
             self.tokens = renew_access_token(self.config, self.tokens)
             response = self._session().request(method, url, timeout=30, **kwargs)
         response.raise_for_status()
+        self.tokens = touch_tokens(self.config, self.tokens)
         if not response.text:
             return {}
         return response.json()

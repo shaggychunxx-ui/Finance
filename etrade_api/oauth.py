@@ -6,13 +6,23 @@ import json
 import time
 import webbrowser
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
+from zoneinfo import ZoneInfo
 
 from requests_oauthlib import OAuth1Session
 
 from .config import AUTHORIZE_URL, ETradeConfig
+
+# E*TRADE access tokens die at midnight US Eastern time regardless of use, and
+# go "inactive" (renewable, but unusable until renewed) after this many
+# minutes without a request. Renewal is attempted a little before the
+# official 2-hour inactivity limit to avoid ever hitting a 401 in practice.
+INACTIVITY_LIMIT_MINUTES = 120
+RENEW_BEFORE_MINUTES = 10
+ETRADE_TIMEZONE = ZoneInfo("America/New_York")
 
 
 @dataclass
@@ -21,6 +31,34 @@ class ETradeTokens:
     oauth_token_secret: str
     sandbox: bool = True
     created_at: float = 0.0
+    last_used_at: float = 0.0
+
+
+def is_expired_for_day(tokens: ETradeTokens, now: float | None = None) -> bool:
+    """E*TRADE access tokens die at midnight US/Eastern no matter what.
+
+    Once the calendar day (Eastern time) the token was issued/renewed on has
+    passed, the token cannot be renewed anymore and a full re-authentication
+    (browser OAuth flow) is required.
+    """
+
+    if not tokens.created_at:
+        return True
+    now = time.time() if now is None else now
+    issued_day = datetime.fromtimestamp(tokens.created_at, tz=ETRADE_TIMEZONE).date()
+    current_day = datetime.fromtimestamp(now, tz=ETRADE_TIMEZONE).date()
+    return current_day > issued_day
+
+
+def needs_renewal(tokens: ETradeTokens, now: float | None = None) -> bool:
+    """True once the token is close to E*TRADE's 2-hour inactivity limit."""
+
+    now = time.time() if now is None else now
+    last_used = tokens.last_used_at or tokens.created_at
+    if not last_used:
+        return True
+    idle_minutes = (now - last_used) / 60
+    return idle_minutes >= (INACTIVITY_LIMIT_MINUTES - RENEW_BEFORE_MINUTES)
 
 
 def _oauth_session(config: ETradeConfig, **kwargs: Any) -> OAuth1Session:
@@ -124,17 +162,26 @@ def authenticate(
 
     access_token_url = f"{config.api_base}/oauth/access_token"
     access_tokens = oauth.fetch_access_token(access_token_url, verifier=verifier)
+    issued_at = time.time()
     tokens = ETradeTokens(
         oauth_token=access_tokens["oauth_token"],
         oauth_token_secret=access_tokens["oauth_token_secret"],
         sandbox=config.sandbox,
-        created_at=time.time(),
+        created_at=issued_at,
+        last_used_at=issued_at,
     )
     _save_tokens(config.token_path, tokens)
     return tokens
 
 
 def renew_access_token(config: ETradeConfig, tokens: ETradeTokens) -> ETradeTokens:
+    """Renew an inactive access token.
+
+    Renewal resets E*TRADE's 2-hour inactivity timer, but it does *not* push
+    back the midnight US/Eastern expiration of the token, so `created_at` is
+    left untouched here.
+    """
+
     oauth = OAuth1Session(
         client_key=config.consumer_key,
         client_secret=config.consumer_secret,
@@ -145,7 +192,15 @@ def renew_access_token(config: ETradeConfig, tokens: ETradeTokens) -> ETradeToke
     renew_url = f"{config.api_base}/oauth/renew_access_token"
     response = oauth.get(renew_url)
     response.raise_for_status()
-    tokens.created_at = time.time()
+    tokens.last_used_at = time.time()
+    _save_tokens(config.token_path, tokens)
+    return tokens
+
+
+def touch_tokens(config: ETradeConfig, tokens: ETradeTokens) -> ETradeTokens:
+    """Record that the token was just used successfully, resetting its idle clock."""
+
+    tokens.last_used_at = time.time()
     _save_tokens(config.token_path, tokens)
     return tokens
 
@@ -186,6 +241,7 @@ def load_tokens(token_path: str | Path, sandbox: bool | None = None) -> ETradeTo
         oauth_token_secret=raw.get("oauth_token_secret", ""),
         sandbox=bool(raw.get("sandbox", True)),
         created_at=float(raw.get("created_at", 0.0)),
+        last_used_at=float(raw.get("last_used_at", raw.get("created_at", 0.0))),
     )
     if sandbox is not None and tokens.sandbox != sandbox:
         return None

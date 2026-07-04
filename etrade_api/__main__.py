@@ -10,7 +10,14 @@ from typing import Any
 
 from .client import ETradeClient
 from .config import ETradeConfig, load_config
-from .oauth import authenticate, load_tokens, renew_access_token, revoke_access_token
+from .oauth import (
+    authenticate,
+    is_expired_for_day,
+    load_tokens,
+    needs_renewal,
+    renew_access_token,
+    revoke_access_token,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -100,9 +107,17 @@ def main(argv: list[str] | None = None) -> int:
                 print("No saved token found.")
                 return 1
             age_minutes = (time.time() - tokens.created_at) / 60
+            idle_minutes = (time.time() - (tokens.last_used_at or tokens.created_at)) / 60
             print(f"Token path: {config.token_path}")
             print(f"Sandbox: {tokens.sandbox}")
             print(f"Created: {age_minutes:.1f} minutes ago")
+            print(f"Idle: {idle_minutes:.1f} minutes")
+            if is_expired_for_day(tokens):
+                print("Status: EXPIRED (past midnight US/Eastern) — run: python -m etrade_api auth")
+            elif needs_renewal(tokens):
+                print("Status: needs renewal — will auto-renew on next request")
+            else:
+                print("Status: active")
             return 0
 
         client = ETradeClient(config)
