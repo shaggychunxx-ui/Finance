@@ -293,7 +293,9 @@ class MultiverseScenariosExpert:
         divergence_annual = ensemble_avg_annual - time_avg_annual
         variance = statistics.pvariance(returns) if len(returns) > 1 else 0.0
         variance_drag_ratio = (
-            (variance * 252 / 2) / abs(ensemble_avg_annual) if ensemble_avg_annual else 0.0
+            (variance * 252 / 2) / abs(ensemble_avg_annual)
+            if abs(ensemble_avg_annual) > 1e-6
+            else 0.0
         )
 
         if divergence_annual > 0.08:
@@ -367,7 +369,7 @@ class MultiverseScenariosExpert:
         entropy_bits = self._shannon_entropy(states)
         distinct_configs = 2 ** (entropy_bits * window)
         observed_windows = len(states) - window + 1
-        expected_repeat = math.sqrt(math.pi / 2 * distinct_configs) if distinct_configs > 0 else float("inf")
+        expected_repeat = math.sqrt((math.pi / 2) * distinct_configs) if distinct_configs > 0 else float("inf")
         coverage = observed_windows / expected_repeat if expected_repeat else 0.0
 
         if coverage >= 1.0:

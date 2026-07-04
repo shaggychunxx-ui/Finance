@@ -772,7 +772,8 @@ def _print_multiverse_scenarios(data: dict[str, Any]) -> None:
         print()
     print(
         f"  Regime: {metrics.get('regime_label')} "
-        f"(divergence {metrics.get('divergence_score')}, coherence {metrics.get('coherence_score')})"
+        f"(divergence {metrics.get('divergence_score', 0):.2f}, "
+        f"coherence {metrics.get('coherence_score', 0):.2f})"
     )
     print(
         f"  Branching: decoherence horizon {branching.get('decoherence_horizon_days')}d, "
