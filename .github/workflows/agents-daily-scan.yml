@@ -30,7 +30,7 @@ jobs:
         run: |
           set +e
           mkdir -p output logs
-          agents="combined-conditional datascience electricity empirical-probability events finance financial-data geopolitics grid logistics markets meteorology patents research-statistics theoretical-probability transportation"
+          agents="combined-conditional data-steward datascience electricity empirical-probability events finance financial-data geopolitics grid logistics markets meteorology patents records-management research-statistics sales-analytics theoretical-probability transportation"
 
           {
             echo "## Daily agent scan results"
