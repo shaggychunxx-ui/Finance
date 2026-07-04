@@ -1,7 +1,9 @@
 """
 Market Analyst Expert Agent
 ===========================
-Expert US market analysis from Yahoo Finance public APIs.
+Expert US market analysis from Yahoo Finance public APIs, enriched with
+live E*TRADE (etrade.com) quotes for equities/ETFs when credentials are
+configured (see etrade_config.example.json).
 
 Dashboard: https://finance.yahoo.com/
 """
@@ -97,12 +99,72 @@ class MarketReport:
 class MarketAnalystExpert:
     """Expert market analyst — indices, sectors, movers, and regime assessment."""
 
-    def __init__(self, delay_seconds: float = 0.35) -> None:
+    #: Equities/ETFs that E*TRADE's quote API can serve directly (indices,
+    #: risk symbols, and commodity futures are fetched from Yahoo instead).
+    ETRADE_EQUITY_SYMBOLS = list(SECTOR_ETFS) + [GROWTH_PROXY, VALUE_PROXY]
+
+    def __init__(self, delay_seconds: float = 0.35, use_etrade: bool = True) -> None:
         self.delay_seconds = delay_seconds
         self.symbols = (
             US_INDICES + RISK_SYMBOLS + list(SECTOR_ETFS)
             + [GROWTH_PROXY, VALUE_PROXY] + list(COMMODITIES)
         )
+        self.use_etrade = use_etrade
+        self._etrade_client: Any | None = None
+        self.etrade_used = False
+        if use_etrade:
+            self._etrade_client = self._init_etrade_client()
+
+    @staticmethod
+    def _init_etrade_client() -> Any | None:
+        """Build an E*TRADE client if credentials/tokens are configured.
+
+        Returns ``None`` (silently) when etrade_config.json is missing, the
+        etrade_api package isn't importable, or no access token has been
+        obtained yet — the agent simply falls back to Yahoo Finance.
+        """
+        try:
+            from etrade_api import ETradeClient, load_config
+
+            config = load_config()
+            return ETradeClient(config)
+        except Exception:
+            return None
+
+    def _fetch_etrade_quotes(self, symbols: list[str]) -> dict[str, Quote]:
+        """Fetch quotes for `symbols` from E*TRADE (etrade.com market data)."""
+        if not self._etrade_client or not symbols:
+            return {}
+        quotes: dict[str, Quote] = {}
+        try:
+            data = self._etrade_client.get_quotes(symbols)
+            rows = (data or {}).get("QuoteResponse", {}).get("QuoteData", [])
+            for row in rows:
+                product = row.get("Product", {}) or {}
+                all_data = row.get("All", {}) or {}
+                symbol = product.get("symbol") or row.get("symbol")
+                if not symbol:
+                    continue
+                price = all_data.get("lastTrade", row.get("lastTrade"))
+                pct = all_data.get(
+                    "changeClosePercentage", row.get("changeClosePercentage")
+                )
+                if price is None or pct is None:
+                    continue
+                quotes[symbol] = Quote(
+                    symbol=symbol,
+                    name=all_data.get("companyName")
+                    or row.get("companyName")
+                    or symbol,
+                    price=round(float(price), 2),
+                    day_chg_pct=round(float(pct), 2),
+                    volume=all_data.get("totalVolume", row.get("volume")),
+                )
+            if quotes:
+                self.etrade_used = True
+        except Exception:
+            return {}
+        return quotes
 
     def _fetch_chart(self, symbol: str) -> Quote | None:
         try:
@@ -322,8 +384,16 @@ class MarketAnalystExpert:
         )
 
     def analyze(self) -> MarketReport:
-        quotes: list[Quote] = []
+        etrade_quotes = (
+            self._fetch_etrade_quotes(self.ETRADE_EQUITY_SYMBOLS)
+            if self._etrade_client
+            else {}
+        )
+
+        quotes: list[Quote] = list(etrade_quotes.values())
         for symbol in self.symbols:
+            if symbol in etrade_quotes:
+                continue
             row = self._fetch_chart(symbol)
             if row:
                 quotes.append(row)
@@ -393,7 +463,11 @@ class MarketAnalystExpert:
             expert_summary=summary,
             market_signals=signals,
             recommendations=recs,
-            data_source="Yahoo Finance API",
+            data_source=(
+                "Yahoo Finance API + E*TRADE API"
+                if self.etrade_used
+                else "Yahoo Finance API"
+            ),
         )
 
     @staticmethod

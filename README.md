@@ -14,7 +14,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
-| **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
+| **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API + optional [E*TRADE](https://www.etrade.com/) |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
@@ -189,12 +189,18 @@ Outputs:
 
 ## Market Analyst Expert
 
-Live US market analysis from Yahoo Finance:
+Live US market analysis from Yahoo Finance, enriched with live [E*TRADE](https://www.etrade.com/) quotes when configured:
 
 - Major indices (^GSPC, ^DJI, ^IXIC, ^RUT) and VIX
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+If `etrade_config.json` (see `etrade_config.example.json`) and a valid access token
+are present, sector ETF and QQQ/IWM quotes are pulled from the E*TRADE market
+data API (etrade.com) instead of Yahoo Finance, and the report's `data_source`
+reflects the blend used. Without E*TRADE credentials, the agent falls back to
+Yahoo Finance automatically — no configuration is required.
 
 ## Geopolitics Expert
 
