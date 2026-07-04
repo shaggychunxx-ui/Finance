@@ -13,6 +13,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
@@ -22,7 +23,9 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
+from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 
@@ -269,6 +272,115 @@ def _print_datascience(data: dict[str, Any]) -> None:
             f"MC P(up) {t.get('mc_prob_up_5d'):.0%}"
         )
     print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_data_steward(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("stewardship_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(stewardship {metrics.get('stewardship_score')}, "
+        f"quality {metrics.get('quality_score')}, "
+        f"freshness {metrics.get('freshness_score')})"
+    )
+    print(
+        f"  Catalog: {meta.get('agents_cataloged')} agents, "
+        f"{meta.get('sources_cataloged')} sources | "
+        f"Open issues: {metrics.get('open_issues')}"
+    )
+    print()
+    print("  Source health:")
+    for h in data.get("source_health", [])[:6]:
+        print(f"    • {h.get('name')}: {h.get('status')} — {h.get('message')}")
+    print()
+    present = [a for a in data.get("artifact_quality", []) if a.get("exists")][:6]
+    if present:
+        print("  Artifact quality:")
+        for a in present:
+            print(
+                f"    • {a.get('filename')}: {a.get('completeness_score'):.0%} complete, "
+                f"{a.get('freshness_label')}"
+            )
+        print()
+    issues = data.get("stewardship_issues", [])
+    if issues:
+        print("  Top stewardship issues:")
+        for i in issues[:5]:
+            print(f"    • [{i.get('severity')}] {i.get('message')}")
+        print()
+    if assessment:
+        print("  Stewardship assessment:")
+        for key in ("stewardship_priority", "governance_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_records_management(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("archivist_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(archive {metrics.get('archive_score')}, "
+        f"compliance {metrics.get('compliance_score')})"
+    )
+    print(
+        f"  Records: {meta.get('record_count')} files, "
+        f"{meta.get('volume_bytes', 0):,} bytes | "
+        f"Pending actions: {metrics.get('pending_actions')}"
+    )
+    print()
+    snaps = data.get("snapshots_created", [])
+    if snaps:
+        print("  Snapshots created:")
+        for s in snaps:
+            print(
+                f"    • {s.get('snapshot_id')}: {s.get('files_copied')} files "
+                f"({s.get('total_bytes', 0):,} bytes)"
+            )
+        print()
+    by_series: dict[str, int] = {}
+    for r in data.get("archive_inventory", []):
+        by_series[r.get("series", "?")] = by_series.get(r.get("series", "?"), 0) + 1
+    if by_series:
+        print("  Inventory by series:")
+        for series, count in sorted(by_series.items(), key=lambda x: -x[1]):
+            print(f"    • {series}: {count} records")
+        print()
+    actions = data.get("disposition_actions", [])
+    if actions:
+        print("  Disposition actions:")
+        for a in actions[:5]:
+            print(f"    • [{a.get('priority')}] {a.get('action')} {a.get('filename')}")
+        print()
+    if assessment:
+        print("  Archivist assessment:")
+        for key in ("archival_priority", "archive_coverage"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -756,8 +868,58 @@ def _print_research_statistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_sales_analytics(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    kpis = data.get("kpis", {})
+    assessment = data.get("bi_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — Sales Analytics BI")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Consumer strength: {kpis.get('strength_label')} "
+        f"(score {kpis.get('consumer_strength_score')})"
+    )
+    print(
+        f"  Momentum index: {kpis.get('sales_momentum_index')} | "
+        f"Breadth: {kpis.get('retail_breadth_pct')}% | "
+        f"XLY-XLP: {kpis.get('discretionary_premium_pct'):+.2f}%"
+    )
+    print(f"  Dashboard: {meta.get('dashboard', 'sales_dashboard.html')}")
+    print()
+    print("  Category performance (20d):")
+    for c in data.get("categories", [])[:6]:
+        print(
+            f"    • {c.get('label')}: {c.get('avg_return_20d_pct'):+.2f}% "
+            f"(breadth {c.get('breadth_pct')}%)"
+        )
+    print()
+    print("  Top retail proxies:")
+    for r in sorted(data.get("retailers", []), key=lambda x: -(x.get("momentum_score") or 0))[:5]:
+        if r.get("category") == "sector_etf":
+            continue
+        print(
+            f"    • {r.get('symbol')} {r.get('name')}: "
+            f"20d {r.get('return_20d_pct'):+.2f}%, momentum {r.get('momentum_score')}"
+        )
+    print()
+    if assessment:
+        print("  BI assessment:")
+        for key in ("consumer_demand", "bi_insight"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
+    "data-steward": _print_data_steward,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
@@ -770,13 +932,16 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
+    "sales-analytics": _print_sales_analytics,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "combined-conditional": run_combined_conditional_analysis,
+    "data-steward": run_data_steward_analysis,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
@@ -789,7 +954,9 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
+    "sales-analytics": run_sales_analytics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
@@ -868,6 +1035,28 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "sales-analytics":
+                feed = args.output.parent / "sales_dashboard_data.json"
+                if feed.exists():
+                    print(f"  Sales dashboard feed: {feed}")
+                panels = args.output.parent / "sales_dashboard_panels.json"
+                if panels.exists():
+                    print(f"  Dashboard panels: {panels}")
+                print(f"  Open dashboard: open_sales_dashboard.bat")
+            if args.agent == "data-steward":
+                catalog = args.output.parent / "data_catalog.json"
+                if catalog.exists():
+                    print(f"  Data catalog: {catalog}")
+                lineage = args.output.parent / "data_lineage.json"
+                if lineage.exists():
+                    print(f"  Data lineage: {lineage}")
+            if args.agent == "records-management":
+                catalog = args.output.parent / "archive_catalog.json"
+                if catalog.exists():
+                    print(f"  Archive catalog: {catalog}")
+                retention = args.output.parent / "retention_schedule.json"
+                if retention.exists():
+                    print(f"  Retention schedule: {retention}")
             print()
 
     return 0

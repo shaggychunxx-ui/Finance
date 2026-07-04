@@ -1,0 +1,287 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #0f1117;
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+header {
+  background: linear-gradient(135deg, #1a1d27 0%, #1e2a3a 100%);
+  border-bottom: 1px solid #2d3748;
+  padding: 1.25rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+header .brand h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #68d391;
+}
+
+header .brand .subtitle {
+  color: #718096;
+  font-size: 0.875rem;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+header .actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.btn {
+  background: #2d3748;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.btn:hover {
+  background: #4a5568;
+  border-color: #68d391;
+}
+
+.btn-primary {
+  background: #276749;
+  border-color: #38a169;
+}
+
+.btn-primary:hover {
+  background: #38a169;
+}
+
+main {
+  max-width: 1200px;
+  margin: 1.5rem auto;
+  padding: 0 1.5rem 3rem;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+  background: #1a1d27;
+  border: 1px solid #2d3748;
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+
+.kpi-card .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #718096;
+  margin-bottom: 0.5rem;
+}
+
+.kpi-card .value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #68d391;
+}
+
+.kpi-card .delta {
+  font-size: 0.85rem;
+  margin-top: 0.35rem;
+  color: #a0aec0;
+}
+
+.kpi-card .delta.positive { color: #68d391; }
+.kpi-card .delta.negative { color: #fc8181; }
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .panel-grid { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: #1a1d27;
+  border: 1px solid #2d3748;
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+
+.panel h2 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a0aec0;
+  margin-bottom: 1rem;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.bar-label {
+  width: 130px;
+  font-size: 0.8rem;
+  color: #cbd5e0;
+  flex-shrink: 0;
+}
+
+.bar-track {
+  flex: 1;
+  height: 22px;
+  background: #0f1117;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #276749, #68d391);
+  transition: width 0.4s ease;
+}
+
+.bar-fill.negative {
+  background: linear-gradient(90deg, #9b2c2c, #fc8181);
+}
+
+.bar-value {
+  width: 55px;
+  text-align: right;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+th {
+  text-align: left;
+  padding: 0.6rem 0.5rem;
+  color: #718096;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  border-bottom: 1px solid #2d3748;
+}
+
+td {
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid #1e2433;
+}
+
+tr:hover td {
+  background: #1e2433;
+}
+
+.positive { color: #68d391; }
+.negative { color: #fc8181; }
+
+.sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+}
+
+.spark-bar {
+  flex: 1;
+  background: #4a5568;
+  border-radius: 1px 1px 0 0;
+  min-width: 3px;
+}
+
+.spark-bar.up { background: #68d391; }
+.spark-bar.down { background: #fc8181; }
+
+.comparison-row {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.comparison-card {
+  flex: 1;
+  background: #0f1117;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.comparison-card .sym {
+  font-size: 0.75rem;
+  color: #718096;
+}
+
+.comparison-card .pct {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-top: 0.25rem;
+}
+
+.signals-list {
+  list-style: none;
+}
+
+.signals-list li {
+  padding: 0.65rem 0;
+  border-bottom: 1px solid #1e2433;
+  font-size: 0.85rem;
+}
+
+.signals-list .bias {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-right: 0.5rem;
+}
+
+.bias-BULLISH { background: #276749; color: #c6f6d5; }
+.bias-BEARISH { background: #9b2c2c; color: #fed7d7; }
+.bias-NEUTRAL { background: #4a5568; color: #e2e8f0; }
+
+.status-bar {
+  background: #1a1d27;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  color: #a0aec0;
+}
+
+.status-bar.loaded { border-color: #38a169; color: #c6f6d5; }
+.status-bar.error { border-color: #e53e3e; color: #fed7d7; }
+
+#import-input { display: none; }
+
+.full-width { grid-column: 1 / -1; }
