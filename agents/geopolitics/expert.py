@@ -9,7 +9,6 @@ Primary data: BBC World RSS, GDELT DOC API (rate-limited, optional).
 from __future__ import annotations
 
 import json
-import random
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -19,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 HEADERS = {"User-Agent": "Finance-Geopolitics-Expert/1.0 (shaggychunxx@gmail.com)"}
 GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -135,13 +136,12 @@ class GeopoliticsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class GeopoliticsExpert:
+class GeopoliticsExpert(BaseExpert):
     """Expert geopolitical analyst — news-driven theater risk and market implications."""
 
     def __init__(self, use_gdelt: bool = True) -> None:
         self.use_gdelt = use_gdelt
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     @staticmethod
     def _parse_rss(xml_bytes: bytes, source: str) -> list[NewsArticle]:

@@ -11,7 +11,6 @@ Data: Yahoo Finance chart API (1-year daily history).
 from __future__ import annotations
 
 import json
-import random
 import math
 import statistics
 import time
@@ -21,6 +20,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Finance-Research-Statistics/1.0 (shaggychunxx@gmail.com)"}
@@ -202,13 +203,12 @@ class ResearchStatisticsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class ResearchStatisticsExpert:
+class ResearchStatisticsExpert(BaseExpert):
     """Research scientist / statistician — formal inference on market return data."""
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     @staticmethod
     def _norm_cdf(x: float) -> float:

@@ -21,6 +21,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Finance-DataScience-Expert/1.0 (shaggychunxx@gmail.com)"}
 
@@ -92,14 +94,13 @@ class DataScienceReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class DataScienceExpert:
+class DataScienceExpert(BaseExpert):
     """Expert data scientist — statistical factor analysis on US market ETFs."""
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
         self.watchlist = dict(WATCHLIST)
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     def _fetch_closes(self, symbol: str) -> list[float]:
         try:

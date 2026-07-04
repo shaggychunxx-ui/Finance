@@ -9,7 +9,6 @@ Data: Railroad Bridge Inventory, Weekly Traffic Volume, FHWA truck inspections.
 from __future__ import annotations
 
 import json
-import random
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 HEADERS = {"User-Agent": "Finance-Transportation-Analyst/1.0 (shaggychunxx@gmail.com)"}
 DOT_BASE = "https://data.transportation.gov/resource"
@@ -161,12 +162,11 @@ class TransportationReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class CivilTransportationAnalyst:
+class CivilTransportationAnalyst(BaseExpert):
     """Civil engineer analyst for DOT transportation open data."""
 
     def __init__(self) -> None:
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     def _socrata_get(self, dataset_id: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         url = f"{DOT_BASE}/{dataset_id}.json"

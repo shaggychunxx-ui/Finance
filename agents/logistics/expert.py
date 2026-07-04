@@ -10,7 +10,6 @@ Dashboard: https://www.marinetraffic.com/
 from __future__ import annotations
 
 import json
-import random
 import math
 import os
 import time
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 AIS_EXPORT_URL = "https://services.marinetraffic.com/api/exportvessels"
 HEADERS = {"User-Agent": "Finance-Logistics-Expert/1.0 (shaggychunxx@gmail.com)"}
@@ -140,13 +141,12 @@ class LogisticsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class LogisticsExpert:
+class LogisticsExpert(BaseExpert):
     """Expert logistics agent — multi-corridor AIS analysis and supply-chain signals."""
 
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.environ.get("MARINETRAFFIC_API_KEY", "") or self._load_config_key()
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     @staticmethod
     def _load_config_key() -> str:

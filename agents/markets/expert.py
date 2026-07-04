@@ -9,7 +9,6 @@ Dashboard: https://finance.yahoo.com/
 from __future__ import annotations
 
 import json
-import random
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 DASHBOARD_URL = "https://finance.yahoo.com/"
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -95,7 +96,7 @@ class MarketReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class MarketAnalystExpert:
+class MarketAnalystExpert(BaseExpert):
     """Expert market analyst — indices, sectors, movers, and regime assessment."""
 
     def __init__(self, delay_seconds: float = 0.35) -> None:
@@ -104,8 +105,7 @@ class MarketAnalystExpert:
             US_INDICES + RISK_SYMBOLS + list(SECTOR_ETFS)
             + [GROWTH_PROXY, VALUE_PROXY] + list(COMMODITIES)
         )
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     def _fetch_chart(self, symbol: str) -> Quote | None:
         try:

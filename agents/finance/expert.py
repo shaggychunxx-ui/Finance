@@ -10,7 +10,6 @@ Data: Yahoo Finance chart API (Google symbol mapping) with calibrated proxy fall
 from __future__ import annotations
 
 import json
-import random
 import math
 import time
 from dataclasses import dataclass, field
@@ -19,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 DASHBOARD_URL = "https://www.google.com/finance/beta"
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -184,14 +185,13 @@ class FinanceReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class GoogleFinanceAnalyst:
+class GoogleFinanceAnalyst(BaseExpert):
     """Mathematician/trader analysis of Google Finance Beta market views."""
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
         self._live_ok = False
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     def _fetch_chart(self, yahoo_symbol: str) -> QuoteRow | None:
         try:

@@ -10,7 +10,6 @@ Data: BBC World / NPR RSS feeds.
 from __future__ import annotations
 
 import json
-import random
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 HEADERS = {"User-Agent": "Finance-WorldEvents-Tracker/1.0 (shaggychunxx@gmail.com)"}
 
@@ -98,12 +99,11 @@ class EventsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class WorldEventsTracker:
+class WorldEventsTracker(BaseExpert):
     """Track world events from live news feeds with market impact classification."""
 
     def __init__(self) -> None:
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     def _parse_rss(self, xml_bytes: bytes, source: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []

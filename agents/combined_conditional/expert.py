@@ -11,7 +11,6 @@ Data: Yahoo Finance chart API (1-year daily history).
 from __future__ import annotations
 
 import json
-import random
 import statistics
 import time
 from dataclasses import dataclass, field
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import requests
+
+from agents.base import BaseExpert
 
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Finance-Combined-Conditional/1.0 (shaggychunxx@gmail.com)"}
@@ -201,13 +202,12 @@ class CombinedConditionalReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class CombinedConditionalExpert:
+class CombinedConditionalExpert(BaseExpert):
     """Expert in combined & conditional probabilities on market return events."""
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     def _fetch_closes(self, symbol: str) -> list[float]:
         try:

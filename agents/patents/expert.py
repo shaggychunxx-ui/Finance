@@ -10,7 +10,6 @@ Data: OpenAlex, IPWatchdog RSS, USPTO IP feeds (+ optional USPTO ODP API key).
 from __future__ import annotations
 
 import json
-import random
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 HEADERS = {"User-Agent": "Finance-Patent-Landscape/1.0 (shaggychunxx@gmail.com)"}
 OPENALEX_URL = "https://api.openalex.org/works"
@@ -280,14 +281,13 @@ class PatentReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class PatentLandscapeAnalyst:
+class PatentLandscapeAnalyst(BaseExpert):
     """Patent landscape analyst — resource catalog and innovation monitoring."""
 
     def __init__(self, config_path: Path | None = None) -> None:
         self.config = self._load_config(config_path)
         self.uspto_api_key = self.config.get("uspto_api_key", "").strip()
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:

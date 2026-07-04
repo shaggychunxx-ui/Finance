@@ -329,6 +329,14 @@ Analyzes US weather hazards and hub forecasts:
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
 
+## Adding a new agent
+
+Every agent's Expert/Analyst class must inherit from `agents.base.BaseExpert`
+and call `super().__init__()` from its own `__init__`. This automatically
+gives the new agent a per-run randomized `temperature` (1-8, re-rolled on
+every new instance/request), reported under `meta.temperature` in its JSON
+output — no need to re-implement this by hand.
+
 ## Requirements
 
 - Python 3.10+

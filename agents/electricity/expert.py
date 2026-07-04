@@ -11,7 +11,6 @@ Dashboard: https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overvi
 from __future__ import annotations
 
 import json
-import random
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -19,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 HEADERS = {"User-Agent": "Finance-Electricity-Analyst/1.0 (shaggychunxx@gmail.com)"}
 EIA_REGION_URL = "https://api.eia.gov/v2/electricity/rto/region-data/data/"
@@ -138,14 +139,13 @@ class ElectricityReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class EiaGridMonitorAnalyst:
+class EiaGridMonitorAnalyst(BaseExpert):
     """Civil electrical engineer analyst for EIA Grid Monitor US48 overview."""
 
     def __init__(self, config_path: Path | None = None) -> None:
         self.config = self._load_config(config_path)
         self.eia_api_key = self.config.get("eia_api_key", "DEMO_KEY").strip() or "DEMO_KEY"
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:

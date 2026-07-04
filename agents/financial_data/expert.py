@@ -10,7 +10,6 @@ Dashboard: https://finance.yahoo.com/
 from __future__ import annotations
 
 import json
-import random
 import math
 import statistics
 import time
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 DASHBOARD_URL = "https://finance.yahoo.com/"
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -166,14 +167,13 @@ class FinancialDataReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class YahooFinanceStatisticalAnalyst:
+class YahooFinanceStatisticalAnalyst(BaseExpert):
     """Mathematician/market analyst — statistical analysis of Yahoo Finance data."""
 
     def __init__(self, delay_seconds: float = 0.3) -> None:
         self.delay_seconds = delay_seconds
         self.symbols = list(US_INDICES) + list(SECTOR_ETFS) + [BENCHMARK]
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     def _fetch_closes(self, symbol: str, range_: str = "3mo") -> list[float]:
         try:

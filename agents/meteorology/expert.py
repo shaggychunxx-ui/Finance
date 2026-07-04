@@ -10,7 +10,6 @@ No API key required; a descriptive User-Agent is required per NWS policy.
 from __future__ import annotations
 
 import json
-import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -19,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.base import BaseExpert
 
 DASHBOARD_URL = "https://www.weather.gov/"
 API_BASE = "https://api.weather.gov"
@@ -121,13 +122,12 @@ class MeteorologyReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class MeteorologyExpert:
+class MeteorologyExpert(BaseExpert):
     """Expert meteorologist agent — NWS hazards, hub forecasts, and market implications."""
 
     def __init__(self, hubs: list[tuple[float, float, str]] | None = None) -> None:
         self.hubs = hubs or self._load_config_hubs() or DEFAULT_HUBS
-        # Randomized creativity/variance level for this run's analysis (1=conservative, 8=exploratory)
-        self.temperature = random.randint(1, 8)
+        super().__init__()
 
     @staticmethod
     def _load_config_hubs() -> list[tuple[float, float, str]]:
