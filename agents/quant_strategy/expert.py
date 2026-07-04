@@ -293,7 +293,17 @@ class QuantStrategyExpert:
 
     @staticmethod
     def _ruin_root(w: float, r: float, tol: float = 1e-9, max_iter: int = 200) -> float:
-        """Bisection root-find of W·x^(R+1) - x + L = 0 for x0 ∈ (0,1)."""
+        """Bisection root-find of the ruin characteristic equation W·x^(R+1) - x + L = 0.
+
+        Args:
+            w: Win rate (probability of a winning trade), 0 < w < 1.
+            r: Risk-to-reward ratio (average win / average loss magnitude).
+            tol: Convergence tolerance on the residual |f(x)|.
+            max_iter: Maximum bisection iterations before returning the midpoint.
+
+        Returns:
+            The unique root x0 ∈ (0, 1) such that RoR = x0^U for U risk units.
+        """
         l = 1.0 - w
         if abs(r - 1.0) < 1e-9:
             return l / w if w > 0 else 1.0
