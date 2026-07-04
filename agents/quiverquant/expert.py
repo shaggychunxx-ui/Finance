@@ -229,8 +229,7 @@ class QuiverQuantAlternativeDataAnalyst:
     def _auth_headers(self) -> dict[str, str]:
         headers = dict(HEADERS)
         if self.api_key:
-            token = self.api_key
-            headers["Authorization"] = "Bearer " + token
+            headers["Authorization"] = "Bearer " + self.api_key
         return headers
 
     def _check_resource_health(self, resource: dict[str, Any]) -> dict[str, Any]:
@@ -437,6 +436,9 @@ class QuiverQuantAlternativeDataAnalyst:
         self, by_category: dict[str, int], online: int, total: int
     ) -> tuple[float, str]:
         activity = sum(by_category.values())
+        # Weight raw signal activity (3 pts/finding) higher than resource
+        # availability (2 pts/online resource), since corroborating filings
+        # matter more than dashboard uptime.
         score = min(100.0, activity * 3.0 + online * 2.0)
         if score >= 65:
             label = "High alt-data conviction — multiple corroborating signals"
