@@ -1,0 +1,65 @@
+name: Daily agents scan
+
+# Runs every Finance agent once every 24 hours and reports which agents
+# failed and why (network errors, exceptions, etc). Also runnable on demand.
+on:
+  schedule:
+    - cron: "0 0 * * *" # every day at 00:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  run-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run all agents
+        id: run_agents
+        run: |
+          set +e
+          mkdir -p output logs
+          agents="combined-conditional datascience electricity empirical-probability events finance financial-data geopolitics grid logistics markets meteorology patents research-statistics theoretical-probability transportation"
+
+          {
+            echo "## Daily agent scan results"
+            echo ""
+            echo "| Agent | Status | Details |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          failed=0
+          for agent in $agents; do
+            log="logs/${agent}.log"
+            if python main.py "$agent" -o "output/${agent}.json" > "$log" 2>&1; then
+              echo "| ${agent} | ✅ success |  |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              failed=1
+              detail=$(tail -n 1 "$log" | sed 's/|/\\|/g')
+              echo "| ${agent} | ❌ failed | ${detail} |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Agent '${agent}' failed: ${detail}"
+            fi
+          done
+
+          exit $failed
+
+      - name: Upload logs and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-scan-${{ github.run_id }}
+          path: |
+            logs/
+            output/
+          retention-days: 14
