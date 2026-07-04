@@ -34,6 +34,44 @@ MIN_EVIDENCE_ITEMS = 1
 
 DEFAULT_LEDGER_PATH = Path("output/agent_scoreboard.json")
 
+# Package directories under agents/ that are shared infrastructure rather
+# than a scoreable intelligence agent. Anything else discovered here is
+# treated as a new agent and is automatically added to the scoreboard.
+_NON_AGENT_PACKAGES = {"common"}
+
+# agents/ subpackage directory -> RUNNERS/PRINTERS slug used across the CLI.
+_AGENT_DIR_ALIASES = {
+    "combined_conditional": "combined-conditional",
+    "empirical_probability": "empirical-probability",
+    "financial_data": "financial-data",
+    "research_statistics": "research-statistics",
+    "theoretical_probability": "theoretical-probability",
+}
+
+
+def discover_agents() -> list[str]:
+    """Scan the ``agents`` package for every agent subpackage.
+
+    New agents are picked up automatically the moment their directory is
+    added under ``agents/`` — nothing needs to be registered by hand for
+    them to show up on the scoreboard. Directory names are normalized to
+    the hyphenated slug used elsewhere in the CLI (e.g. ``financial_data``
+    -> ``financial-data``).
+    """
+    agents_root = Path(__file__).resolve().parent.parent
+    discovered: list[str] = []
+    for entry in sorted(agents_root.iterdir()):
+        if not entry.is_dir():
+            continue
+        if entry.name.startswith((".", "_")):
+            continue
+        if entry.name in _NON_AGENT_PACKAGES:
+            continue
+        if not (entry / "__init__.py").exists():
+            continue
+        discovered.append(_AGENT_DIR_ALIASES.get(entry.name, entry.name.replace("_", "-")))
+    return discovered
+
 
 class PredictionValidationError(ValueError):
     """Raised when a prediction is not detailed and truthful enough to log."""
@@ -185,8 +223,18 @@ class ScoringLedger:
         self._save()
         return pred
 
-    def leaderboard(self) -> list[AgentScore]:
-        scores: dict[str, AgentScore] = {}
+    def leaderboard(self, known_agents: list[str] | None = None) -> list[AgentScore]:
+        """Return every agent's standing, sorted by points (desc).
+
+        Every agent is scored: agents are seeded from ``known_agents``
+        (defaulting to an automatic scan of ``agents/`` via
+        :func:`discover_agents`) so newly added agents appear on the
+        scoreboard at 0 points even before they have logged a prediction,
+        rather than only appearing once they happen to have a resolved call.
+        """
+        if known_agents is None:
+            known_agents = discover_agents()
+        scores: dict[str, AgentScore] = {name: AgentScore(agent=name) for name in known_agents}
         for pred in self._predictions.values():
             score = scores.setdefault(pred.agent, AgentScore(agent=pred.agent))
             if pred.status == "accurate":
@@ -197,7 +245,7 @@ class ScoringLedger:
                 score.inaccurate += 1
             else:
                 score.pending += 1
-        return sorted(scores.values(), key=lambda s: s.points, reverse=True)
+        return sorted(scores.values(), key=lambda s: (-s.points, s.agent))
 
     def pending_predictions(self, agent: str | None = None) -> list[Prediction]:
         preds = [p for p in self._predictions.values() if p.status == "pending"]

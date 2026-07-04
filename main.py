@@ -764,6 +764,11 @@ def run_scoreboard_analysis(output: Path | None = None) -> dict[str, Any]:
     and loses -1.5 points for an inaccurate one. Predictions are only logged
     when they are detailed (a substantive rationale) and truthful (backed by
     at least one piece of evidence) — see agents/common/scoring.py.
+
+    Every agent in the repo is scored: the leaderboard is seeded from an
+    automatic scan of the agents/ package (agents.common.scoring.discover_agents),
+    so newly added agents appear at 0 points immediately, without any manual
+    registration here.
     """
     ledger_path = output if output else DEFAULT_LEDGER_PATH
     ledger = ScoringLedger(ledger_path)
