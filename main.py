@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.common.tracking import DEFAULT_LOG_PATH, evaluate_accuracy, log_prediction
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -804,15 +805,53 @@ def main() -> int:
         choices=sorted(RUNNERS.keys()),
         help="Agent to run (default: events)",
     )
-    parser.add_argument("-o", "--output", type=Path, help="Write JSON report to this file")
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="Write JSON report to this file (with --accuracy, used as the prediction log path)",
+    )
     parser.add_argument("--json", action="store_true", help="Print full JSON to stdout")
+    parser.add_argument(
+        "--log",
+        action="store_true",
+        help="Append this run's predictions/signals to prediction_log.jsonl for learning/backtesting",
+    )
+    parser.add_argument(
+        "--accuracy",
+        action="store_true",
+        help="Backtest logged predictions against live prices instead of running an agent",
+    )
+    parser.add_argument(
+        "--for-agent",
+        dest="for_agent",
+        choices=sorted(RUNNERS.keys()),
+        help="Restrict --accuracy to a single agent",
+    )
+    parser.add_argument(
+        "--horizon-days",
+        type=int,
+        default=7,
+        help="Minimum age (in days) a logged prediction must be before --accuracy scores it (default: 7)",
+    )
     args = parser.parse_args()
+
+    if args.accuracy:
+        log_path = args.output if args.output else DEFAULT_LOG_PATH
+        report = evaluate_accuracy(
+            log_path=log_path, agent=args.for_agent, horizon_days=args.horizon_days
+        )
+        print(json.dumps(report, indent=2))
+        return 0
 
     try:
         result = RUNNERS[args.agent](output=args.output)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+
+    if args.log:
+        log_prediction(args.agent, result, output=args.output)
 
     if args.json:
         print(json.dumps(result, indent=2))

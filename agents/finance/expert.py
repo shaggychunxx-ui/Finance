@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from agents.common.tracking import DEFAULT_LOG_PATH, learning_adjustment
+
 DASHBOARD_URL = "https://www.google.com/finance/beta"
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 SCREENER_API = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
@@ -671,6 +673,20 @@ class GoogleFinanceAnalyst:
     def run(self, output: Path | None = None) -> dict[str, Any]:
         report = self.analyze()
         result = self.to_dict(report)
+
+        # Learn from this agent's own logged track record: nudge the
+        # opportunity score by a small confidence multiplier derived from
+        # past prediction accuracy (see agents/common/tracking.py).
+        log_path = output.parent / "prediction_log.jsonl" if output else DEFAULT_LOG_PATH
+        adjustment = learning_adjustment("finance", log_path=log_path)
+        adjusted_score = round(result["metrics"]["opportunity_score"] * adjustment, 4)
+        result["metrics"]["opportunity_score"] = adjusted_score
+        result["learning_feedback"] = {
+            "confidence_adjustment": adjustment,
+            "note": "Multiplier learned from this agent's historical prediction accuracy "
+            "(see --accuracy / --log in main.py); 1.0 until enough history is logged.",
+        }
+
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")
