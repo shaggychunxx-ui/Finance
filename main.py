@@ -1046,10 +1046,22 @@ def main() -> int:
     )
     parser.add_argument("-o", "--output", type=Path, help="Write JSON report to this file")
     parser.add_argument("--json", action="store_true", help="Print full JSON to stdout")
+    parser.add_argument(
+        "--balance",
+        type=float,
+        default=None,
+        help=(
+            "portfolio agent only: make decisions based on this balance for the "
+            "current run, ignoring the persisted paper-trading ledger/starting balance"
+        ),
+    )
     args = parser.parse_args()
 
     try:
-        result = RUNNERS[args.agent](output=args.output)
+        if args.agent == "portfolio" and args.balance is not None:
+            result = RUNNERS[args.agent](output=args.output, balance=args.balance)
+        else:
+            result = RUNNERS[args.agent](output=args.output)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

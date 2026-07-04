@@ -325,14 +325,32 @@ class PortfolioState:
 class PortfolioManagerExpert:
     """Portfolio & Fund Manager — aggregates every agent's signals into a paper portfolio."""
 
-    def __init__(self, output_dir: Path | None = None, delay_seconds: float = 0.0) -> None:
+    def __init__(
+        self,
+        output_dir: Path | None = None,
+        delay_seconds: float = 0.0,
+        balance: float | None = None,
+    ) -> None:
         self.output_dir = output_dir or Path("output")
         self.state_path = self.output_dir / STATE_FILENAME
         self.delay_seconds = delay_seconds
+        # When a balance is explicitly supplied for this run, it overrides the
+        # persisted paper-trading ledger entirely: decisions are made fresh
+        # from that balance instead of resuming prior paper-trading state.
+        self.balance = balance
         self._price_cache: dict[str, dict[str, float]] = {}
+
+    @property
+    def ad_hoc_balance(self) -> bool:
+        return self.balance is not None
 
     # ------------------------------------------------------------------ state
     def _load_state(self) -> PortfolioState:
+        if self.ad_hoc_balance:
+            state = PortfolioState.new()
+            state.cash = self.balance
+            state.starting_balance = self.balance
+            return state
         if self.state_path.exists():
             try:
                 return PortfolioState.from_dict(json.loads(self.state_path.read_text(encoding="utf-8")))
@@ -341,12 +359,18 @@ class PortfolioManagerExpert:
         return PortfolioState.new()
 
     def _save_state(self, state: PortfolioState, full_trade_log: list[Trade]) -> None:
+        if self.ad_hoc_balance:
+            # This run is a one-off decision based on the provided balance —
+            # it must not overwrite or extend the persisted paper-trading ledger.
+            return
         self.output_dir.mkdir(parents=True, exist_ok=True)
         payload = state.to_dict()
         payload["trade_log"] = [t.to_dict() for t in full_trade_log]
         self.state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _load_trade_log(self) -> list[Trade]:
+        if self.ad_hoc_balance:
+            return []
         if not self.state_path.exists():
             return []
         try:
@@ -649,6 +673,13 @@ class PortfolioManagerExpert:
         total_return_pct = ((total_value - state.starting_balance) / state.starting_balance) * 100
         buys = sum(1 for t in trades if t.action == "BUY")
         sells = sum(1 for t in trades if t.action == "SELL")
+        if self.ad_hoc_balance:
+            return (
+                f"Decisions based on the ${state.starting_balance:,.2f} balance provided for this run "
+                f"(paper-trading ledger ignored). Synthesized signals from {ok_agents}/{len(agent_status)} "
+                f"Finance agents — recommends {buys} buy(s) and {sells} sell(s) against that balance. "
+                f"Modeled fees ${state.fees_paid_total:,.2f}, taxes ${state.taxes_paid_total:,.2f}."
+            )
         return (
             f"Paper portfolio at ${total_value:,.2f} ({total_return_pct:+.2f}% since inception "
             f"of ${state.starting_balance:,.2f}). Synthesized signals from {ok_agents}/{len(agent_status)} "
@@ -754,7 +785,7 @@ class PortfolioManagerExpert:
                 "analyzed_at": datetime.now(timezone.utc).isoformat(),
                 "expert_summary": summary,
                 "assumptions": {
-                    "starting_balance": STARTING_BALANCE,
+                    "starting_balance": state.starting_balance if self.ad_hoc_balance else STARTING_BALANCE,
                     "trading_fee_pct": TRADING_FEE_PCT,
                     "sec_fee_pct": SEC_FEE_PCT,
                     "short_term_capital_gains_tax_pct": SHORT_TERM_TAX_RATE,
@@ -766,7 +797,8 @@ class PortfolioManagerExpert:
                 },
                 "agents_consulted": agent_status,
                 "data_source": "Yahoo Finance (proxy-calibrated) + aggregated Finance repo agent signals",
-                "state_file": str(self.state_path),
+                "mode": "ad_hoc_balance" if self.ad_hoc_balance else "paper_trading",
+                "state_file": None if self.ad_hoc_balance else str(self.state_path),
             },
             "metrics": {
                 "cash": round(state.cash, 2),
@@ -804,5 +836,11 @@ class PortfolioManagerExpert:
         return result
 
 
-def run_portfolio_analysis(output: Path | None = None) -> dict[str, Any]:
-    return PortfolioManagerExpert().run(output=output)
+def run_portfolio_analysis(output: Path | None = None, balance: float | None = None) -> dict[str, Any]:
+    """Run the Portfolio & Fund Manager agent.
+
+    If ``balance`` is provided, the persisted paper-trading ledger and its
+    starting balance are ignored entirely — decisions are made fresh from
+    ``balance`` for this run only, and no state file is read or written.
+    """
+    return PortfolioManagerExpert(balance=balance).run(output=output)
