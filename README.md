@@ -10,6 +10,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
+| **QuiverQuant Alternative Data Analyst** | `run.bat quiverquant` | [QuiverQuant](https://www.quiverquant.com/) congress/insider/lobbying/gov contract feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
@@ -33,6 +34,7 @@ run.bat electricity
 run.bat grid
 run.bat transportation
 run.bat patents
+run.bat quiverquant
 run.bat events
 run.bat datascience
 run.bat finance
@@ -111,6 +113,19 @@ Tracks global patent databases, APIs, and monitoring resources while surfacing r
 - Innovation velocity score and sector market signals
 
 Optional: copy `config.example.json` to `config.json` and set `uspto_api_key` from [data.uspto.gov](https://data.uspto.gov/) for live US application search.
+
+## QuiverQuant Alternative Data Analyst
+
+Tracks the [QuiverQuant](https://www.quiverquant.com/) alternative-data dashboards for signals that precede or corroborate price action:
+
+- **12 resources** cataloged across congressional trading, insider trading, lobbying, government contracts, WallStreetBets sentiment, and off-exchange short volume
+- Resource health checks (online / restricted / offline)
+- Live feeds from the QuiverQuant beta API (congress trades, Form 4 insider filings, lobbying spend, federal contract awards, WSB mentions) when an API key is configured
+- Calibrated proxy feed when the live API is unavailable or unauthenticated
+- Per-ticker conviction scoring (congress buys/sells, insider buys/sells, lobbying/contract/WSB mentions) with BULLISH/BEARISH/NEUTRAL bias
+- Alt-data conviction score and market signals for the highest-conviction tickers
+
+Optional: copy `config.example.json` to `config.json` and set `quiverquant_api_key` from [quiverquant.com/api](https://www.quiverquant.com/api/) for live congress/insider/lobbying feeds.
 
 ## World Events Tracker
 

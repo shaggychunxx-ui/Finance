@@ -23,6 +23,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.quiverquant import run_quiverquant_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
@@ -775,6 +776,50 @@ def _print_patents(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_quiverquant(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_tracked', 0)} resources, "
+        f"{meta.get('findings_count', 0)} findings"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Conviction: {summary.get('conviction_label')} "
+        f"(score {summary.get('alt_data_score')})"
+    )
+    print(
+        f"  Resources online: {summary.get('resources_online', 0)}/"
+        f"{meta.get('resources_tracked', 0)}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Signals by category:")
+    for cat, count in sorted(
+        summary.get("by_category", {}).items(), key=lambda x: -x[1]
+    ):
+        print(f"    • {cat.replace('_', ' ').title()}: {count}")
+    print()
+    print("  Ticker conviction:")
+    for tc in data.get("ticker_conviction", [])[:8]:
+        print(
+            f"    • [{tc.get('bias')}] {tc.get('ticker')}: "
+            f"congress {tc.get('congress_buys')}B/{tc.get('congress_sells')}S, "
+            f"insiders {tc.get('insider_buys')}B/{tc.get('insider_sells')}S "
+            f"(net {tc.get('net_score')})"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_logistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -932,6 +977,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "quiverquant": _print_quiverquant,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
@@ -954,6 +1000,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "quiverquant": run_quiverquant_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
@@ -993,6 +1040,10 @@ def main() -> int:
                     print(f"  Web tracker import file: {tracker}")
             if args.agent == "patents":
                 catalog = args.output.parent / "patent_resources.json"
+                if catalog.exists():
+                    print(f"  Resource catalog: {catalog}")
+            if args.agent == "quiverquant":
+                catalog = args.output.parent / "quiverquant_resources.json"
                 if catalog.exists():
                     print(f"  Resource catalog: {catalog}")
             if args.agent == "transportation":
