@@ -329,6 +329,10 @@ Analyzes US weather hazards and hub forecasts:
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
 
+## Reference
+
+- [`docs/reference/foundations-of-reality.md`](docs/reference/foundations-of-reality.md) — background reading on quantum gravity, information theory, and metaphysics frameworks. Reference/documentation only; not an implemented agent feature.
+
 ## Requirements
 
 - Python 3.10+
