@@ -1,0 +1,8 @@
+{
+  "consumer_key": "YOUR_CONSUMER_KEY",
+  "consumer_secret": "YOUR_CONSUMER_SECRET",
+  "sandbox": true,
+  "callback_url": "http://127.0.0.1:8765/callback",
+  "use_oob": false,
+  "token_path": "etrade_tokens.json"
+}

@@ -4,3 +4,5 @@ __pycache__/
 output/
 config.json
 *.db
+etrade_config.json
+etrade_tokens.json
