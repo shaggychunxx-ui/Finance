@@ -50,6 +50,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.portfolio.etrade_client import ETradeAPIError, ETradeClient, ETradeConfigError
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
@@ -330,6 +331,8 @@ class PortfolioManagerExpert:
         output_dir: Path | None = None,
         delay_seconds: float = 0.0,
         balance: float | None = None,
+        use_etrade: bool = False,
+        etrade_client: ETradeClient | None = None,
     ) -> None:
         """
         Args:
@@ -340,6 +343,16 @@ class PortfolioManagerExpert:
                 and its starting balance — decisions for this run are made
                 fresh from ``balance`` instead, and the state file is neither
                 read nor written.
+            use_etrade: When True, ignore both the persisted paper-trading
+                ledger and any ``balance`` override — decisions are made from
+                the real cash balance and holdings of the configured E*TRADE
+                account instead (see ``agents.portfolio.etrade_client``). The
+                state file is neither read nor written, and no real orders
+                are placed; this only changes what the agent bases its
+                recommendations on.
+            etrade_client: Optional pre-built ``ETradeClient`` (mainly for
+                testing/dependency injection). Built from environment
+                variables on demand when omitted.
         """
         self.output_dir = output_dir or Path("output")
         self.state_path = self.output_dir / STATE_FILENAME
@@ -348,14 +361,50 @@ class PortfolioManagerExpert:
         # persisted paper-trading ledger entirely: decisions are made fresh
         # from that balance instead of resuming prior paper-trading state.
         self.balance = balance
+        self.use_etrade = use_etrade
+        self._etrade_client = etrade_client
         self._price_cache: dict[str, dict[str, float]] = {}
 
     @property
     def ad_hoc_balance(self) -> bool:
-        return self.balance is not None
+        return self.balance is not None and not self.use_etrade
+
+    @property
+    def etrade_client(self) -> ETradeClient:
+        if self._etrade_client is None:
+            self._etrade_client = ETradeClient()
+        return self._etrade_client
 
     # ------------------------------------------------------------------ state
+    def _state_from_etrade(self) -> PortfolioState:
+        try:
+            assets = self.etrade_client.get_account_assets()
+        except (ETradeConfigError, ETradeAPIError) as exc:
+            raise RuntimeError(f"Unable to fetch E*TRADE account assets: {exc}") from exc
+
+        state = PortfolioState.new()
+        state.cash = assets["cash"]
+        state.starting_balance = assets["cash"]
+        opened_at = _today().isoformat()
+        for symbol, info in assets.get("positions", {}).items():
+            quantity = info.get("quantity", 0.0)
+            avg_cost = info.get("avg_cost", 0.0)
+            if quantity <= 0:
+                continue
+            position = Position(
+                symbol=symbol,
+                name=SYMBOL_NAMES.get(symbol, symbol),
+                horizon=_horizon_for(symbol),
+                asset_class=_asset_class_for(symbol),
+                lots=[Lot(quantity=quantity, cost_basis=avg_cost, opened_at=opened_at)],
+            )
+            state.positions[symbol] = position
+            state.starting_balance += quantity * avg_cost
+        return state
+
     def _load_state(self) -> PortfolioState:
+        if self.use_etrade:
+            return self._state_from_etrade()
         if self.ad_hoc_balance:
             state = PortfolioState.new()
             state.cash = self.balance
@@ -369,9 +418,10 @@ class PortfolioManagerExpert:
         return PortfolioState.new()
 
     def _save_state(self, state: PortfolioState, full_trade_log: list[Trade]) -> None:
-        if self.ad_hoc_balance:
-            # This run is a one-off decision based on the provided balance —
-            # it must not overwrite or extend the persisted paper-trading ledger.
+        if self.use_etrade or self.ad_hoc_balance:
+            # This run makes decisions from an external/one-off balance (a
+            # real E*TRADE account or a manually supplied balance) — it must
+            # not overwrite or extend the persisted paper-trading ledger.
             return
         self.output_dir.mkdir(parents=True, exist_ok=True)
         payload = state.to_dict()
@@ -379,7 +429,7 @@ class PortfolioManagerExpert:
         self.state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _load_trade_log(self) -> list[Trade]:
-        if self.ad_hoc_balance:
+        if self.use_etrade or self.ad_hoc_balance:
             return []
         if not self.state_path.exists():
             return []
@@ -683,6 +733,15 @@ class PortfolioManagerExpert:
         total_return_pct = ((total_value - state.starting_balance) / state.starting_balance) * 100
         buys = sum(1 for t in trades if t.action == "BUY")
         sells = sum(1 for t in trades if t.action == "SELL")
+        if self.use_etrade:
+            return (
+                f"Decisions based on the connected E*TRADE account's real assets "
+                f"(${total_value:,.2f} total — ${state.cash:,.2f} cash + "
+                f"${total_value - state.cash:,.2f} invested; paper-trading ledger and any "
+                f"manual balance ignored). Synthesized signals from {ok_agents}/{len(agent_status)} "
+                f"Finance agents — recommends {buys} buy(s) and {sells} sell(s). No orders were placed; "
+                f"these are recommendations only."
+            )
         if self.ad_hoc_balance:
             return (
                 f"Decisions based on the ${state.starting_balance:,.2f} balance provided for this run "
@@ -806,9 +865,17 @@ class PortfolioManagerExpert:
                     "dividend_interest_tax_pct": DIVIDEND_INTEREST_TAX_RATE * 100,
                 },
                 "agents_consulted": agent_status,
-                "data_source": "Yahoo Finance (proxy-calibrated) + aggregated Finance repo agent signals",
-                "mode": "ad_hoc_balance" if self.ad_hoc_balance else "paper_trading",
-                "state_file": None if self.ad_hoc_balance else str(self.state_path),
+                "data_source": (
+                    "E*TRADE account API + aggregated Finance repo agent signals"
+                    if self.use_etrade else
+                    "Yahoo Finance (proxy-calibrated) + aggregated Finance repo agent signals"
+                ),
+                "mode": (
+                    "etrade_account" if self.use_etrade
+                    else "ad_hoc_balance" if self.ad_hoc_balance
+                    else "paper_trading"
+                ),
+                "state_file": None if (self.use_etrade or self.ad_hoc_balance) else str(self.state_path),
             },
             "metrics": {
                 "cash": round(state.cash, 2),
@@ -846,11 +913,21 @@ class PortfolioManagerExpert:
         return result
 
 
-def run_portfolio_analysis(output: Path | None = None, balance: float | None = None) -> dict[str, Any]:
+def run_portfolio_analysis(
+    output: Path | None = None,
+    balance: float | None = None,
+    use_etrade: bool = False,
+) -> dict[str, Any]:
     """Run the Portfolio & Fund Manager agent.
 
     If ``balance`` is provided, the persisted paper-trading ledger and its
     starting balance are ignored entirely — decisions are made fresh from
     ``balance`` for this run only, and no state file is read or written.
+
+    If ``use_etrade`` is True, the connected E*TRADE account's real cash
+    balance and holdings (via ``ETRADE_*`` environment variables) are used
+    instead — this takes precedence over both the paper-trading ledger and
+    ``balance``. No orders are placed against the account; only its assets
+    are read to inform recommendations.
     """
-    return PortfolioManagerExpert(balance=balance).run(output=output)
+    return PortfolioManagerExpert(balance=balance, use_etrade=use_etrade).run(output=output)

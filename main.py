@@ -1055,10 +1055,21 @@ def main() -> int:
             "current run, ignoring the persisted paper-trading ledger/starting balance"
         ),
     )
+    parser.add_argument(
+        "--use-etrade",
+        action="store_true",
+        help=(
+            "portfolio agent only: make decisions based on the connected E*TRADE "
+            "account's real cash balance and holdings (configured via ETRADE_* "
+            "environment variables), ignoring paper trading and --balance"
+        ),
+    )
     args = parser.parse_args()
 
     try:
-        if args.agent == "portfolio" and args.balance is not None:
+        if args.agent == "portfolio" and args.use_etrade:
+            result = RUNNERS[args.agent](output=args.output, use_etrade=True)
+        elif args.agent == "portfolio" and args.balance is not None:
             result = RUNNERS[args.agent](output=args.output, balance=args.balance)
         else:
             result = RUNNERS[args.agent](output=args.output)
