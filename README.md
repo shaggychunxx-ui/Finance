@@ -25,6 +25,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Portfolio & Fund Manager** | `run.bat portfolio` | Aggregated signals from every agent above + Yahoo Finance |
 
 ## Quick start
 
@@ -48,6 +49,7 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat portfolio
 ```
 
 Or with options:
@@ -397,6 +399,26 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Portfolio & Fund Manager
+
+Paper-trading portfolio manager that synthesizes `market_signals` and `recommendations` from **every other agent** in this repo into one actively managed book:
+
+- Starts from a **$10,000 cash balance** — no real funds are ever used
+- Tallies bullish/bearish votes per ticker across all agents to compute a conviction score
+- Classifies candidates into **short-term**, **mid-term**, and **long-term** horizon buckets and rebalances toward target weights per horizon
+- Position caps (max 20% of portfolio per symbol) and a minimum cash reserve (5%)
+- Simulates real trading costs: a brokerage/slippage fee, an SEC Section 31 fee on sells, and short-term vs. long-term capital-gains tax on realized profits
+- Persists cash, open lots, and the full trade history across runs in `output/portfolio_state.json`
+
+```bat
+run.bat portfolio -o output/portfolio.json
+```
+
+Outputs:
+
+- `output/portfolio.json` — full report with positions, trades, allocation, and signals
+- `output/portfolio_state.json` — persistent ledger (cash, lots, trade log) carried between runs
 
 ## Requirements
 

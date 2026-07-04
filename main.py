@@ -23,6 +23,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.portfolio import run_portfolio_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
@@ -917,6 +918,60 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_portfolio(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Total value: ${metrics.get('total_value'):,.2f} "
+        f"({metrics.get('total_return_pct'):+.2f}% since ${metrics.get('starting_balance'):,.2f})"
+    )
+    print(
+        f"  Cash: ${metrics.get('cash'):,.2f}  |  Invested: ${metrics.get('invested_value'):,.2f}  |  "
+        f"Unrealized P&L: ${metrics.get('unrealized_pl'):,.2f}"
+    )
+    print(
+        f"  Realized P&L: ${metrics.get('realized_pl_total'):,.2f}  |  "
+        f"Fees paid: ${metrics.get('fees_paid_total'):,.2f}  |  "
+        f"Taxes paid: ${metrics.get('taxes_paid_total'):,.2f}"
+    )
+    alloc = data.get("allocation_by_horizon_pct", {})
+    print(
+        f"  Allocation — short: {alloc.get('short_term', 0):.1f}%  "
+        f"mid: {alloc.get('mid_term', 0):.1f}%  long: {alloc.get('long_term', 0):.1f}%  "
+        f"cash: {alloc.get('cash', 0):.1f}%"
+    )
+    print()
+    positions = data.get("positions", [])
+    if positions:
+        print("  Positions:")
+        for p in positions[:10]:
+            print(
+                f"    • {p.get('symbol')} ({p.get('horizon')}): {p.get('quantity'):.4f} sh @ "
+                f"${p.get('avg_cost'):,.2f} avg, now ${p.get('price'):,.2f} "
+                f"({p.get('unrealized_pl_pct'):+.2f}%), weight {p.get('weight_pct'):.1f}%"
+            )
+        print()
+    trades = data.get("trades_this_run", [])
+    if trades:
+        print("  Trades this run:")
+        for t in trades:
+            print(
+                f"    • {t.get('action')} {t.get('quantity'):.4f} {t.get('symbol')} @ "
+                f"${t.get('price'):,.2f} (fees ${t.get('fees'):.2f}, tax ${t.get('tax'):.2f})"
+            )
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
@@ -932,6 +987,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "portfolio": _print_portfolio,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
@@ -954,6 +1010,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "portfolio": run_portfolio_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
@@ -1057,6 +1114,10 @@ def main() -> int:
                 retention = args.output.parent / "retention_schedule.json"
                 if retention.exists():
                     print(f"  Retention schedule: {retention}")
+            if args.agent == "portfolio":
+                state = args.output.parent / "portfolio_state.json"
+                if state.exists():
+                    print(f"  Portfolio ledger (cash, positions, trade log): {state}")
             print()
 
     return 0
