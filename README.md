@@ -21,6 +21,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
+| **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
 
 ## Quick start
@@ -41,6 +42,7 @@ run.bat theoretical-probability
 run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
+run.bat sales-analytics
 run.bat meteorology
 ```
 
@@ -319,6 +321,27 @@ Outputs:
 
 - `output/research_statistics.json` — full statistical research report
 - `output/statistical_methods.json` — methods and formulas catalog
+
+## Sales Analytics BI Expert
+
+Business Intelligence analysis of US retail and consumer sales proxies:
+
+- **15 retail tickers** — Walmart, Costco, Amazon, Home Depot, Nike, and more
+- **Category breakdown** — big box, e-commerce, restaurants, apparel, home improvement
+- **BI KPIs** — sales momentum index, retail breadth, discretionary vs staples premium
+- **Consumer strength score** — composite demand signal
+- **Interactive dashboard** — KPI cards, category bars, ticker table, sparklines, signals
+
+```bat
+run.bat sales-analytics -o output/sales_analytics.json
+open_sales_dashboard.bat
+```
+
+Outputs:
+
+- `output/sales_analytics.json` — full BI analysis with market signals
+- `output/sales_dashboard_data.json` — dashboard feed (auto-loaded by `sales_dashboard.html`)
+- `output/sales_dashboard_panels.json` — dashboard panel catalog
 
 ## Meteorology Expert
 

@@ -23,6 +23,7 @@ from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
 from agents.research_statistics import run_research_statistics_analysis
+from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 
@@ -756,6 +757,55 @@ def _print_research_statistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_sales_analytics(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    kpis = data.get("kpis", {})
+    assessment = data.get("bi_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — Sales Analytics BI")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Consumer strength: {kpis.get('strength_label')} "
+        f"(score {kpis.get('consumer_strength_score')})"
+    )
+    print(
+        f"  Momentum index: {kpis.get('sales_momentum_index')} | "
+        f"Breadth: {kpis.get('retail_breadth_pct')}% | "
+        f"XLY-XLP: {kpis.get('discretionary_premium_pct'):+.2f}%"
+    )
+    print(f"  Dashboard: {meta.get('dashboard', 'sales_dashboard.html')}")
+    print()
+    print("  Category performance (20d):")
+    for c in data.get("categories", [])[:6]:
+        print(
+            f"    • {c.get('label')}: {c.get('avg_return_20d_pct'):+.2f}% "
+            f"(breadth {c.get('breadth_pct')}%)"
+        )
+    print()
+    print("  Top retail proxies:")
+    for r in sorted(data.get("retailers", []), key=lambda x: -(x.get("momentum_score") or 0))[:5]:
+        if r.get("category") == "sector_etf":
+            continue
+        print(
+            f"    • {r.get('symbol')} {r.get('name')}: "
+            f"20d {r.get('return_20d_pct'):+.2f}%, momentum {r.get('momentum_score')}"
+        )
+    print()
+    if assessment:
+        print("  BI assessment:")
+        for key in ("consumer_demand", "bi_insight"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "datascience": _print_datascience,
@@ -771,6 +821,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "meteorology": _print_meteorology,
     "patents": _print_patents,
     "research-statistics": _print_research_statistics,
+    "sales-analytics": _print_sales_analytics,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
@@ -790,6 +841,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
     "research-statistics": run_research_statistics_analysis,
+    "sales-analytics": run_sales_analytics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
@@ -868,6 +920,14 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "sales-analytics":
+                feed = args.output.parent / "sales_dashboard_data.json"
+                if feed.exists():
+                    print(f"  Sales dashboard feed: {feed}")
+                panels = args.output.parent / "sales_dashboard_panels.json"
+                if panels.exists():
+                    print(f"  Dashboard panels: {panels}")
+                print(f"  Open dashboard: open_sales_dashboard.bat")
             print()
 
     return 0

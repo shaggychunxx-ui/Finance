@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sales Analytics Dashboard – Finance</title>
+  <link rel="stylesheet" href="sales_dashboard.css" />
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>Sales Analytics Dashboard</h1>
+    <span class="subtitle">BI view of US retail &amp; consumer sales proxies</span>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btn-refresh" type="button">Refresh Data</button>
+    <button class="btn btn-primary" id="btn-import" type="button">Import JSON</button>
+    <input type="file" id="import-input" accept=".json,application/json" />
+  </div>
+</header>
+
+<main>
+  <div id="status-bar" class="status-bar">Loading dashboard data…</div>
+
+  <section class="kpi-grid" id="kpi-grid"></section>
+
+  <p id="summary-text" style="color:#a0aec0;font-size:0.9rem;margin-bottom:1.5rem;line-height:1.5"></p>
+
+  <div class="panel-grid">
+    <div class="panel">
+      <h2>Category Performance (20d)</h2>
+      <div id="category-bars"></div>
+    </div>
+    <div class="panel">
+      <h2>Discretionary vs Staples</h2>
+      <div id="comparison-panel"></div>
+    </div>
+    <div class="panel full-width">
+      <h2>Retail Ticker Table</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Name</th>
+            <th>Category</th>
+            <th>1d</th>
+            <th>20d</th>
+            <th>Momentum</th>
+            <th>Trend</th>
+          </tr>
+        </thead>
+        <tbody id="retail-tbody"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h2>BI Market Signals</h2>
+      <ul class="signals-list" id="signals-list"></ul>
+    </div>
+  </div>
+</main>
+
+<script src="sales_dashboard.js"></script>
+</body>
+</html>
