@@ -331,6 +331,16 @@ class PortfolioManagerExpert:
         delay_seconds: float = 0.0,
         balance: float | None = None,
     ) -> None:
+        """
+        Args:
+            output_dir: Directory for the JSON report and the paper-trading
+                state file.
+            delay_seconds: Throttle between live price lookups.
+            balance: When provided, ignore the persisted paper-trading ledger
+                and its starting balance — decisions for this run are made
+                fresh from ``balance`` instead, and the state file is neither
+                read nor written.
+        """
         self.output_dir = output_dir or Path("output")
         self.state_path = self.output_dir / STATE_FILENAME
         self.delay_seconds = delay_seconds
@@ -785,7 +795,7 @@ class PortfolioManagerExpert:
                 "analyzed_at": datetime.now(timezone.utc).isoformat(),
                 "expert_summary": summary,
                 "assumptions": {
-                    "starting_balance": state.starting_balance if self.ad_hoc_balance else STARTING_BALANCE,
+                    "starting_balance": state.starting_balance,
                     "trading_fee_pct": TRADING_FEE_PCT,
                     "sec_fee_pct": SEC_FEE_PCT,
                     "short_term_capital_gains_tax_pct": SHORT_TERM_TAX_RATE,
