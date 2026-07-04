@@ -76,7 +76,7 @@ def wait_for_callback_verifier(callback_url: str, timeout_seconds: int = 300) ->
                 b"<p>You can close this tab and return to the terminal.</p>"
             )
 
-        def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002, A003
             return
 
     server = HTTPServer((host, port), CallbackHandler)
