@@ -23,6 +23,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.portfolio_management import run_portfolio_management_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
@@ -917,6 +918,48 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_portfolio_management(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("portfolio_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(quality {metrics.get('portfolio_quality_score')}) | "
+        f"Risk-free rate: {meta.get('risk_free_rate_pct')}%"
+    )
+    print()
+    print("  Allocation models:")
+    for a in data.get("allocations", []):
+        print(
+            f"    • {a.get('name')}: E[R]={a.get('expected_annual_return_pct'):+.1f}%, "
+            f"σ={a.get('expected_annual_vol_pct'):.1f}%, Sharpe={a.get('sharpe_ratio'):.2f}"
+        )
+    print()
+    print("  Asset classes:")
+    for s in data.get("asset_stats", []):
+        print(
+            f"    • {s.get('name')} ({s.get('symbol')}): "
+            f"{s.get('annual_return_pct'):+.1f}% return, {s.get('annual_vol_pct'):.1f}% vol"
+        )
+    print()
+    if assessment:
+        print("  Portfolio assessment:")
+        for key in ("allocation_signal", "diversification_signal", "revision_signal", "evaluation_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
@@ -932,6 +975,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "portfolio-management": _print_portfolio_management,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
@@ -954,6 +998,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "portfolio-management": run_portfolio_management_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
@@ -1035,6 +1080,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "portfolio-management":
+                catalog = args.output.parent / "portfolio_frameworks.json"
+                if catalog.exists():
+                    print(f"  Portfolio frameworks catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():

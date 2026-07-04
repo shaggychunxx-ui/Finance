@@ -160,6 +160,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "portfolio-management",
+        "agent": "Portfolio Management Expert",
+        "primary_output": "portfolio_management.json",
+        "sidecars": ["portfolio_frameworks.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

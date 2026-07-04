@@ -21,6 +21,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
+| **Portfolio Management Expert** | `run.bat portfolio-management` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
@@ -44,6 +45,7 @@ run.bat theoretical-probability
 run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
+run.bat portfolio-management
 run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
@@ -325,6 +327,26 @@ Outputs:
 
 - `output/research_statistics.json` — full statistical research report
 - `output/statistical_methods.json` — methods and formulas catalog
+
+## Portfolio Management Expert
+
+Modern Portfolio Theory (MPT) analyst — asset allocation, the four phases of portfolio management, and risk-adjusted evaluation on live SPY/AGG/GLD data:
+
+- **Asset allocation models** — 60/40 Balanced Growth and 60/20/20 Modern Diversification
+- **Four phases of portfolio management** — security analysis, portfolio selection, portfolio revision, portfolio evaluation
+- **Correlation analysis** — pairwise ρ between asset classes vs the ρ < 0.5 diversification threshold
+- **Sharpe Ratio** — risk-adjusted return per allocation model: (Rp − Rf) / σp
+- **Rebalancing drift signal** — equities vs fixed-income divergence flags overweight/underweight
+- **Behavioral blind spots** — emotional biases, under-diversification, fee erosion
+
+```bat
+run.bat portfolio-management -o output/portfolio_management.json
+```
+
+Outputs:
+
+- `output/portfolio_management.json` — full portfolio management report
+- `output/portfolio_frameworks.json` — allocation models, four-phase process, and blind-spots catalog
 
 ## Sales Analytics BI Expert
 
