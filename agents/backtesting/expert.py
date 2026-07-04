@@ -237,7 +237,7 @@ class BacktestingExpert:
             time.sleep(self.delay_seconds)
 
         if BENCHMARK not in return_map:
-            raise RuntimeError("Unable to fetch SPY data for backtesting analysis")
+            raise RuntimeError(f"Unable to fetch {BENCHMARK} data for backtesting analysis")
 
         strategies: list[StrategyResult] = []
         for symbol, returns in return_map.items():

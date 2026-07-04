@@ -130,6 +130,19 @@ def walk_forward_backtest(
     training segment and an out-of-sample holdout segment (``train_ratio``)
     so a strategy is only treated as validated when it holds up on data it
     was not tuned against — the essence of backtesting discipline.
+
+    Args:
+        rule_id: Identifier for the signal rule being tested.
+        symbol: Ticker symbol the returns series belongs to.
+        returns: Chronological daily return series (fractional, e.g. 0.01 = 1%).
+        entry_fn: Callable ``(returns, i) -> bool`` returning True when the
+            signal fires at index ``i``.
+        train_ratio: Fraction (0-1) of the series used for the in-sample
+            training segment; the remainder is the out-of-sample holdout.
+        min_in_sample_trades: Minimum number of in-sample trades required
+            before a strategy can be considered for validation.
+        min_out_of_sample_trades: Minimum number of out-of-sample trades
+            required before a strategy can be considered for validation.
     """
     if len(returns) < 40:
         return None
@@ -181,7 +194,13 @@ def walk_forward_backtest(
 # --- Reusable signal library -------------------------------------------------
 
 def momentum_signal(returns: Sequence[float], i: int, lookback: int = 5) -> bool:
-    """True when the trailing `lookback`-day cumulative return is positive."""
+    """True when the trailing `lookback`-day cumulative return is positive.
+
+    Args:
+        returns: Chronological daily return series.
+        i: Index at which to evaluate the signal.
+        lookback: Number of trailing days used to compute the cumulative return.
+    """
     if i < lookback:
         return False
     window = returns[i - lookback:i]
@@ -189,14 +208,29 @@ def momentum_signal(returns: Sequence[float], i: int, lookback: int = 5) -> bool
 
 
 def mean_reversion_signal(returns: Sequence[float], i: int, down_days: int = 2) -> bool:
-    """True after `down_days` consecutive negative-return days."""
+    """True after `down_days` consecutive negative-return days.
+
+    Args:
+        returns: Chronological daily return series.
+        i: Index at which to evaluate the signal.
+        down_days: Number of consecutive prior negative-return days required.
+    """
     if i < down_days:
         return False
     return all(returns[i - k] < 0 for k in range(1, down_days + 1))
 
 
 def breakout_signal(returns: Sequence[float], i: int, lookback: int = 20, z_threshold: float = 1.0) -> bool:
-    """True when the prior day's return is a volatility breakout vs. its trailing window."""
+    """True when the prior day's return is a volatility breakout vs. its trailing window.
+
+    Args:
+        returns: Chronological daily return series.
+        i: Index at which to evaluate the signal.
+        lookback: Number of days in the trailing window used to compute the
+            mean and standard deviation used for the z-score.
+        z_threshold: Minimum z-score (standard deviations from the trailing
+            mean) the prior day's return must exceed to fire the signal.
+    """
     if i < lookback + 1:
         return False
     window = returns[i - lookback - 1:i - 1]

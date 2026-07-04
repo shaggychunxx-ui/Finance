@@ -397,20 +397,16 @@ class EmpiricalProbabilityExpert:
 
         # Run the shared walk-forward backtest engine for a rigorous,
         # out-of-sample validated read (Sharpe, max drawdown, profit factor)
-        # rather than trusting the raw win rate alone.
+        # rather than trusting the raw win rate alone. `returns` already
+        # satisfies the engine's minimum length requirement (checked above),
+        # so this always produces a result.
         backtest = walk_forward_backtest(rule_id, symbol, returns, entry_fn)
-        if backtest:
-            oos_sharpe = backtest.out_of_sample.sharpe_ratio
-            oos_drawdown = backtest.out_of_sample.max_drawdown_pct
-            oos_profit_factor = backtest.out_of_sample.profit_factor
-            backtest_verdict = backtest.verdict
-            stable = backtest.stable
-        else:
-            oos_sharpe = 0.0
-            oos_drawdown = 0.0
-            oos_profit_factor = 0.0
-            backtest_verdict = "insufficient data for backtest validation"
-            stable = in_trials >= 10 and out_trials >= 5 and abs(in_rate - out_rate) <= 0.15
+        assert backtest is not None
+        oos_sharpe = backtest.out_of_sample.sharpe_ratio
+        oos_drawdown = backtest.out_of_sample.max_drawdown_pct
+        oos_profit_factor = backtest.out_of_sample.profit_factor
+        backtest_verdict = backtest.verdict
+        stable = backtest.stable
 
         if in_rate >= 0.55 and stable:
             edge = f"empirical edge confirmed — {in_rate:.0%} in-sample, {out_rate:.0%} out-of-sample"
