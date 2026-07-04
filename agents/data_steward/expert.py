@@ -160,6 +160,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "quant-strategy",
+        "agent": "Quant Strategy Architect Expert",
+        "primary_output": "quant_strategy.json",
+        "sidecars": ["quant_strategy_playbook.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

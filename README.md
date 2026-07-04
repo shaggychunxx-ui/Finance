@@ -21,6 +21,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
+| **Quant Strategy Architect Expert** | `run.bat quant-strategy` | Yahoo Finance (6mo daily OHLCV) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
@@ -44,6 +45,7 @@ run.bat theoretical-probability
 run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
+run.bat quant-strategy
 run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
@@ -326,6 +328,26 @@ Outputs:
 - `output/research_statistics.json` — full statistical research report
 - `output/statistical_methods.json` — methods and formulas catalog
 
+## Quant Strategy Architect Expert
+
+Quantitative risk architecture across financial mathematics, asset-class
+microstructure, and micro-level execution mechanics:
+
+- **Risk-of-Ruin** — symmetric gambler's-ruin and asymmetric characteristic-root RoR per watchlist asset
+- **Dynamic ATR position sizing** — volatility-scaled size/notional at a fixed 1% risk-per-trade
+- **Statistical-arbitrage pairs trading** — OLS cointegration and spread Z-score signals (XLE/XOP, GLD/SLV, XLF/KRE)
+- **VWAP deviation** — 20-day volume-weighted fair value and mean-reversion extremes
+- **Microstructure & execution playbook** — Spot FX, index futures, and equities microstructure plus scalping, momentum, mean-reversion, adverse-selection, stop-hunting, and spoofing mechanics
+
+```bat
+run.bat quant-strategy -o output/quant_strategy.json
+```
+
+Outputs:
+
+- `output/quant_strategy.json` — full quant risk-architecture report
+- `output/quant_strategy_playbook.json` — formulas and microstructure/execution playbook catalog
+
 ## Sales Analytics BI Expert
 
 Business Intelligence analysis of US retail and consumer sales proxies:
@@ -352,7 +374,7 @@ Outputs:
 Expert data stewardship and management for the Finance intelligence platform:
 
 - **Data catalog** — 8 external sources with refresh policies and SLA metadata
-- **Agent registry** — 17 agents with lineage (source → agent → output)
+- **Agent registry** — 18 agents with lineage (source → agent → output)
 - **Health checks** — live endpoint monitoring (Yahoo Finance, OpenAlex, BBC RSS, NWS)
 - **Artifact validation** — schema, completeness, and freshness of `output/*.json`
 - **Stewardship issues** — severity-ranked gaps with remediation steps

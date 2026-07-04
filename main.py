@@ -23,6 +23,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.patents import run_patents_analysis
+from agents.quant_strategy import run_quant_strategy_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
@@ -868,6 +869,52 @@ def _print_research_statistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_quant_strategy(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("quant_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(risk architecture score {metrics.get('risk_architecture_score')})"
+    )
+    print()
+    print("  Risk-of-ruin:")
+    for r in sorted(data.get("risk_of_ruin", []), key=lambda x: -x.get("ror", 0))[:6]:
+        print(
+            f"    • {r.get('symbol')}: W={r.get('win_rate')}, R={r.get('reward_ratio')}, "
+            f"RoR(U={r.get('units_available'):.0f})={r.get('ror', 0) * 100:.2f}%"
+        )
+    print()
+    print("  ATR position sizing:")
+    for s in data.get("position_sizing", [])[:6]:
+        print(
+            f"    • {s.get('symbol')}: size={s.get('position_size'):.0f}, "
+            f"notional=${s.get('notional_exposure'):,.0f}"
+        )
+    print()
+    pairs = data.get("pairs_signals", [])
+    if pairs:
+        print("  Pairs trading (stat-arb):")
+        for p in pairs:
+            print(f"    • {p.get('pair_label')}: Z={p.get('zscore'):+.2f} — {p.get('signal')}")
+        print()
+    if assessment:
+        print("  Quant assessment:")
+        if assessment.get("conclusion"):
+            print(f"    • {assessment['conclusion']}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_sales_analytics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     kpis = data.get("kpis", {})
@@ -932,6 +979,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "patents": _print_patents,
+    "quant-strategy": _print_quant_strategy,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
@@ -954,6 +1002,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "patents": run_patents_analysis,
+    "quant-strategy": run_quant_strategy_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
@@ -1035,6 +1084,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "quant-strategy":
+                catalog = args.output.parent / "quant_strategy_playbook.json"
+                if catalog.exists():
+                    print(f"  Quant strategy playbook catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():

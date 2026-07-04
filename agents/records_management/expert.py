@@ -74,6 +74,7 @@ RECORD_SERIES: list[dict[str, Any]] = [
     {"pattern": "combined_conditional.json", "series": "agent_primary_report", "agent": "combined-conditional"},
     {"pattern": "research_statistics.json", "series": "agent_primary_report", "agent": "research-statistics"},
     {"pattern": "sales_analytics.json", "series": "agent_primary_report", "agent": "sales-analytics"},
+    {"pattern": "quant_strategy.json", "series": "agent_primary_report", "agent": "quant-strategy"},
     {"pattern": "data_steward.json", "series": "stewardship_metadata", "agent": "data-steward"},
     {"pattern": "records_management.json", "series": "stewardship_metadata", "agent": "records-management"},
     {"pattern": "_views.json", "series": "reference_catalog", "agent": None},
@@ -85,6 +86,7 @@ RECORD_SERIES: list[dict[str, Any]] = [
     {"pattern": "_models.json", "series": "reference_catalog", "agent": None},
     {"pattern": "_concepts.json", "series": "reference_catalog", "agent": None},
     {"pattern": "_methods.json", "series": "reference_catalog", "agent": None},
+    {"pattern": "_playbook.json", "series": "reference_catalog", "agent": None},
     {"pattern": "_lineage.json", "series": "stewardship_metadata", "agent": None},
     {"pattern": "world_events_tracker.json", "series": "dashboard_feed", "agent": "events"},
 ]
