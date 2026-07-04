@@ -15,9 +15,12 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
+
+if TYPE_CHECKING:
+    from etrade_api import ETradeClient
 
 DASHBOARD_URL = "https://finance.yahoo.com/"
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -110,13 +113,13 @@ class MarketAnalystExpert:
             + [GROWTH_PROXY, VALUE_PROXY] + list(COMMODITIES)
         )
         self.use_etrade = use_etrade
-        self._etrade_client: Any | None = None
+        self._etrade_client: ETradeClient | None = None
         self.etrade_used = False
         if use_etrade:
             self._etrade_client = self._init_etrade_client()
 
     @staticmethod
-    def _init_etrade_client() -> Any | None:
+    def _init_etrade_client() -> ETradeClient | None:
         """Build an E*TRADE client if credentials/tokens are configured.
 
         Returns ``None`` (silently) when etrade_config.json is missing, the
@@ -130,6 +133,11 @@ class MarketAnalystExpert:
             return ETradeClient(config)
         except Exception:
             return None
+
+    @staticmethod
+    def _first(primary: dict[str, Any], fallback: dict[str, Any], key: str) -> Any:
+        """Return `primary[key]` if present, else `fallback[key]`, else None."""
+        return primary[key] if key in primary else fallback.get(key)
 
     def _fetch_etrade_quotes(self, symbols: list[str]) -> dict[str, Quote]:
         """Fetch quotes for `symbols` from E*TRADE (etrade.com market data)."""
@@ -145,20 +153,17 @@ class MarketAnalystExpert:
                 symbol = product.get("symbol") or row.get("symbol")
                 if not symbol:
                     continue
-                price = all_data.get("lastTrade", row.get("lastTrade"))
-                pct = all_data.get(
-                    "changeClosePercentage", row.get("changeClosePercentage")
-                )
+                price = self._first(all_data, row, "lastTrade")
+                pct = self._first(all_data, row, "changeClosePercentage")
                 if price is None or pct is None:
                     continue
+                name = self._first(all_data, row, "companyName") or symbol
                 quotes[symbol] = Quote(
                     symbol=symbol,
-                    name=all_data.get("companyName")
-                    or row.get("companyName")
-                    or symbol,
+                    name=name,
                     price=round(float(price), 2),
                     day_chg_pct=round(float(pct), 2),
-                    volume=all_data.get("totalVolume", row.get("volume")),
+                    volume=self._first(all_data, row, "totalVolume"),
                 )
             if quotes:
                 self.etrade_used = True
