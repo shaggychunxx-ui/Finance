@@ -3,7 +3,10 @@ Empirical (Experimental) Probability Expert Agent
 =================================================
 Expert in empirical/experimental probability applied to financial markets:
 observed frequencies, rolling win rates, Wilson confidence intervals,
-bootstrap resampling, return-bin histograms, and out-of-sample rule experiments.
+bootstrap resampling, return-bin histograms, and out-of-sample rule
+experiments. Rule experiments are walk-forward backtested with the shared
+agents.backtesting engine (Sharpe ratio, max drawdown, profit factor) so an
+in-sample win rate alone is never treated as a validated edge.
 
 Data: Yahoo Finance chart API (1-year daily history).
 """
@@ -21,6 +24,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+from agents.backtesting.engine import walk_forward_backtest
 
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Finance-Empirical-Probability/1.0 (shaggychunxx@gmail.com)"}
@@ -152,6 +157,10 @@ class RuleExperiment:
     avg_loss_pct: float
     empirical_edge: str
     stable: bool
+    out_of_sample_sharpe: float
+    out_of_sample_max_drawdown_pct: float
+    out_of_sample_profit_factor: float
+    backtest_verdict: str
 
 
 @dataclass
@@ -386,7 +395,23 @@ class EmpiricalProbabilityExpert:
         avg_win = round(statistics.mean(in_win_rets) * 100, 3) if in_win_rets else 0.0
         avg_loss = round(abs(statistics.mean(in_loss_rets)) * 100, 3) if in_loss_rets else 0.0
 
-        stable = in_trials >= 10 and out_trials >= 5 and abs(in_rate - out_rate) <= 0.15
+        # Run the shared walk-forward backtest engine for a rigorous,
+        # out-of-sample validated read (Sharpe, max drawdown, profit factor)
+        # rather than trusting the raw win rate alone.
+        backtest = walk_forward_backtest(rule_id, symbol, returns, entry_fn)
+        if backtest:
+            oos_sharpe = backtest.out_of_sample.sharpe_ratio
+            oos_drawdown = backtest.out_of_sample.max_drawdown_pct
+            oos_profit_factor = backtest.out_of_sample.profit_factor
+            backtest_verdict = backtest.verdict
+            stable = backtest.stable
+        else:
+            oos_sharpe = 0.0
+            oos_drawdown = 0.0
+            oos_profit_factor = 0.0
+            backtest_verdict = "insufficient data for backtest validation"
+            stable = in_trials >= 10 and out_trials >= 5 and abs(in_rate - out_rate) <= 0.15
+
         if in_rate >= 0.55 and stable:
             edge = f"empirical edge confirmed — {in_rate:.0%} in-sample, {out_rate:.0%} out-of-sample"
         elif in_rate >= 0.55:
@@ -406,7 +431,12 @@ class EmpiricalProbabilityExpert:
             avg_loss_pct=avg_loss,
             empirical_edge=edge,
             stable=stable,
+            out_of_sample_sharpe=oos_sharpe,
+            out_of_sample_max_drawdown_pct=oos_drawdown,
+            out_of_sample_profit_factor=oos_profit_factor,
+            backtest_verdict=backtest_verdict,
         )
+
 
     def _assessment(
         self,
@@ -815,6 +845,10 @@ class EmpiricalProbabilityExpert:
                     "avg_loss_pct": e.avg_loss_pct,
                     "empirical_edge": e.empirical_edge,
                     "stable": e.stable,
+                    "out_of_sample_sharpe": e.out_of_sample_sharpe,
+                    "out_of_sample_max_drawdown_pct": e.out_of_sample_max_drawdown_pct,
+                    "out_of_sample_profit_factor": e.out_of_sample_profit_factor,
+                    "backtest_verdict": e.backtest_verdict,
                 }
                 for e in report.experiments
             ],

@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Backtesting Expert** | `run.bat backtesting` | Yahoo Finance (1yr daily history) |
 
 ## Quick start
 
@@ -42,6 +43,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat meteorology
+run.bat backtesting
 ```
 
 Or with options:
@@ -266,7 +268,7 @@ Expert in empirical (experimental) probability applied to US market data:
 - **Conditional frequencies** — P(up | prior up/down), P(up | 2 down days)
 - **Return-bin histogram** — empirical probability mass across move sizes
 - **Bootstrap resampling** — non-parametric CI for win rate and mean return
-- **Rule experiments** — momentum and mean-reversion trials with 70/30 train/test validation
+- **Rule experiments** — momentum and mean-reversion trials with 70/30 train/test validation, walk-forward backtested (Sharpe ratio, max drawdown, profit factor) via the shared backtesting engine
 
 ```bat
 run.bat empirical-probability -o output/empirical_probability.json
@@ -328,6 +330,31 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Backtesting Expert
+
+Shared walk-forward backtesting engine (`agents/backtesting`) used to validate
+trading signals before agents act on them, plus a standalone agent that
+applies it across a watchlist of US market ETFs:
+
+- **Signal library** — 5-day momentum, 2-day mean reversion, volatility breakout
+- **Walk-forward validation** — chronological 70/30 train/out-of-sample split (no look-ahead)
+- **Backtest metrics** — win rate, Sharpe ratio, max drawdown, profit factor, total return
+- **Benchmark comparison** — out-of-sample edge vs. simple buy-and-hold
+- **Validated recommendations** — only signals that survive out-of-sample testing are surfaced
+
+Other agents (e.g., the Empirical Probability Expert) reuse
+`agents.backtesting.engine.walk_forward_backtest` to validate their own rule
+experiments rather than relying on a raw in-sample win rate.
+
+```bat
+run.bat backtesting -o output/backtesting.json
+```
+
+Outputs:
+
+- `output/backtesting.json` — full backtest report with per-strategy results and market signals
+- `output/backtest_strategies.json` — signal library catalog
 
 ## Requirements
 

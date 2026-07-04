@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.backtesting import run_backtesting_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -277,6 +278,42 @@ def _print_datascience(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_backtesting(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("backtest_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"({metrics.get('validated_count')}/{metrics.get('tested_count')} strategies validated OOS)"
+    )
+    print()
+    print("  Strategy backtests (in-sample / OOS win rate, OOS Sharpe):")
+    for s in sorted(data.get("results", []), key=lambda x: x.get("out_of_sample_sharpe", 0), reverse=True)[:6]:
+        print(
+            f"    • {s.get('symbol')} {s.get('strategy_name')}: "
+            f"{s.get('in_sample_win_rate'):.0%} / {s.get('out_of_sample_win_rate'):.0%} "
+            f"| Sharpe {s.get('out_of_sample_sharpe'):+.2f} "
+            f"({'validated' if s.get('stable') else 'unvalidated'})"
+        )
+    print()
+    if assessment:
+        print("  Backtest assessment:")
+        for key in ("best_strategy", "robustness_signal", "benchmark_comparison", "overall_edge_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_combined_conditional(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -359,12 +396,13 @@ def _print_empirical_probability(data: dict[str, Any]) -> None:
     print()
     exps = data.get("rule_experiments", [])
     if exps:
-        print("  Rule experiments (in-sample / OOS):")
+        print("  Rule experiments — backtested (in-sample / OOS win rate, OOS Sharpe):")
         for e in exps[:4]:
             print(
                 f"    • {e.get('symbol')} {e.get('rule_id')}: "
                 f"{e.get('in_sample_win_rate'):.0%} / {e.get('out_of_sample_win_rate'):.0%} "
-                f"({'stable' if e.get('stable') else 'unstable'})"
+                f"| Sharpe {e.get('out_of_sample_sharpe', 0.0):+.2f} "
+                f"({'validated' if e.get('stable') else 'unvalidated'})"
             )
         print()
     if assessment:
@@ -761,6 +799,7 @@ def _print_research_statistics(data: dict[str, Any]) -> None:
 
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "backtesting": _print_backtesting,
     "combined-conditional": _print_combined_conditional,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
@@ -780,6 +819,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "backtesting": run_backtesting_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
@@ -872,6 +912,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "backtesting":
+                catalog = args.output.parent / "backtest_strategies.json"
+                if catalog.exists():
+                    print(f"  Backtest strategies catalog: {catalog}")
             print()
 
     return 0
