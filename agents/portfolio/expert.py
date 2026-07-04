@@ -436,7 +436,8 @@ class PortfolioManagerExpert:
         fees = notional * TRADING_FEE_PCT
         total_cost = notional + fees
         if total_cost > state.cash:
-            notional = max(0.0, state.cash - state.cash * TRADING_FEE_PCT)
+            # Solve notional + notional * fee_pct = cash so the trade fits available cash.
+            notional = max(0.0, state.cash / (1 + TRADING_FEE_PCT))
             fees = notional * TRADING_FEE_PCT
             total_cost = notional + fees
             if notional < MIN_TRADE_NOTIONAL:
