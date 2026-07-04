@@ -674,6 +674,9 @@ class GoogleFinanceAnalyst:
         report = self.analyze()
         result = self.to_dict(report)
 
+        if output:
+            output.parent.mkdir(parents=True, exist_ok=True)
+
         # Learn from this agent's own logged track record: nudge the
         # opportunity score by a small confidence multiplier derived from
         # past prediction accuracy (see agents/common/tracking.py).
@@ -688,7 +691,6 @@ class GoogleFinanceAnalyst:
         }
 
         if output:
-            output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")
             views_path = output.parent / "google_finance_views.json"
             views_path.write_text(

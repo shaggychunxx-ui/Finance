@@ -809,13 +809,20 @@ def main() -> int:
         "-o",
         "--output",
         type=Path,
-        help="Write JSON report to this file (with --accuracy, used as the prediction log path)",
+        help="Write JSON report to this file",
     )
     parser.add_argument("--json", action="store_true", help="Print full JSON to stdout")
     parser.add_argument(
         "--log",
         action="store_true",
         help="Append this run's predictions/signals to prediction_log.jsonl for learning/backtesting",
+    )
+    parser.add_argument(
+        "--log-path",
+        type=Path,
+        default=None,
+        help="Prediction log file to append to / backtest against "
+        "(default: <output's directory>/prediction_log.jsonl, or output/prediction_log.jsonl)",
     )
     parser.add_argument(
         "--accuracy",
@@ -837,7 +844,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.accuracy:
-        log_path = args.output if args.output else DEFAULT_LOG_PATH
+        log_path = args.log_path or DEFAULT_LOG_PATH
         report = evaluate_accuracy(
             log_path=log_path, agent=args.for_agent, horizon_days=args.horizon_days
         )
@@ -851,7 +858,7 @@ def main() -> int:
         return 1
 
     if args.log:
-        log_prediction(args.agent, result, output=args.output)
+        log_prediction(args.agent, result, output=args.output, log_path=args.log_path)
 
     if args.json:
         print(json.dumps(result, indent=2))

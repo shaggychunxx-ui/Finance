@@ -193,7 +193,12 @@ def evaluate_accuracy(
 
         reference_price = entry["reference_price"]
         actual_return = (current_price - reference_price) / reference_price
-        actual_direction = "bullish" if actual_return > 0 else "bearish"
+        if actual_return > 0:
+            actual_direction = "bullish"
+        elif actual_return < 0:
+            actual_direction = "bearish"
+        else:
+            actual_direction = "neutral"
         hit = entry["predicted_direction"] == actual_direction
 
         stats = by_agent.setdefault(entry["agent"], {"scored": 0, "hits": 0})
@@ -237,5 +242,8 @@ def learning_adjustment(
         return 1.0
 
     hit_rate = agent_stats["hit_rate"]
+    # Scale the (hit_rate - 0.5) deviation by 0.4 so a perfect 1.0 hit rate
+    # maps to 1.0 + 0.5*0.4 = 1.2 (clipped to 1.15) and a 0.0 hit rate maps
+    # to 1.0 - 0.5*0.4 = 0.8 (clipped to 0.85) -- a modest nudge either way.
     adjustment = 1.0 + (hit_rate - 0.5) * 0.4
     return max(0.85, min(1.15, adjustment))
