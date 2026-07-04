@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Multiverse Scenario Expert** | `run.bat multiverse-scenarios` | Yahoo Finance (6mo daily history) |
 
 ## Quick start
 
@@ -42,6 +43,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat meteorology
+run.bat multiverse-scenarios
 ```
 
 Or with options:
@@ -328,6 +330,26 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Multiverse Scenario Expert
+
+Maps the mathematical formalisms used to describe "alternate realities" in physics onto real, testable financial scenario analytics — each mechanism is used as a structural metaphor, not a literal physical claim:
+
+- **Many-Worlds branching** — daily bull/bear/neutral branch-splitting with an autocorrelation-derived decoherence rate; estimates the horizon (in days) after which branch scenarios become statistically independent
+- **Wheeler-DeWitt timeless distribution** — a static, non-time-evolved joint distribution over regime/volatility outcome states
+- **String Landscape of vacua** — a volatility×trend regime grid, each combination an "alternate vacuum" with its own empirical frequency and forward-return statistics
+- **Ergodicity economics** — contrasts time-average (compounding) growth vs. ensemble-average return per ticker, flagging variance-drag/compounding risk
+- **Bekenstein-bound recurrence** — entropy-based estimate of how many observation windows are needed before a similar regime pattern statistically recurs
+- **AdS/CFT boundary-bulk analogy** — correlates a boundary indicator (VIX) with cross-sector return dispersion (the "bulk") as a duality-strength proxy
+
+```bat
+run.bat multiverse-scenarios -o output/multiverse_scenarios.json
+```
+
+Outputs:
+
+- `output/multiverse_scenarios.json` — full scenario analysis with market signals
+- `output/scenario_models.json` — catalog of scenario models and formulas
 
 ## Requirements
 
