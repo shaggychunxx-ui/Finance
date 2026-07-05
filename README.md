@@ -398,6 +398,44 @@ Analyzes US weather hazards and hub forecasts:
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
 
+## Backtest command generator
+
+Every agent draws a fresh, random `temperature` (1-8, see `agents/base.py`)
+each time it is instantiated in a new process. To build a backtest database
+with genuinely independent, randomly distributed temperatures, each backtest
+run must be its **own** `run.bat <agent>` process — a single script looping
+1000 times internally would still work, but each individual invocation below
+keeps the runs fully decoupled and easy to resume, parallelize across
+multiple agents, or re-run selectively.
+
+`generate_backtest_commands.py` writes one command file per agent under
+`backtest_commands/`, each containing 1000 individual (non-looping)
+`run.bat` commands that save a uniquely numbered report to
+`output/backtest_db/<agent>/run_XXXX.json`:
+
+```bat
+python generate_backtest_commands.py
+backtest_commands\markets.bat
+```
+
+Or run every agent's 1000 backtests in sequence:
+
+```bat
+backtest_commands\run_all_backtests.bat
+```
+
+Options:
+
+```bat
+python generate_backtest_commands.py --runs 500 --out backtest_commands
+```
+
+Outputs:
+
+- `backtest_commands/<agent>.bat` — 1000 individual backtest commands per agent
+- `backtest_commands/run_all_backtests.bat` — runs every agent's file in sequence
+- `output/backtest_db/<agent>/run_XXXX.json` — one report per backtest run, forming the backtest database
+
 ## Requirements
 
 - Python 3.10+
