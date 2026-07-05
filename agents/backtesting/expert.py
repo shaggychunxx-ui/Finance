@@ -98,6 +98,10 @@ class BacktestingExpert:
         self.watchlist = dict(WATCHLIST)
 
     def _fetch_closes(self, symbol: str) -> list[float]:
+        # `range=max` pulls whatever history Yahoo has for the symbol rather than a
+        # fixed lookback — recently listed tickers may return fewer bars than
+        # long-running index/sector ETFs, and `walk_forward_backtest` skips any
+        # series that ends up too short to split reliably.
         try:
             resp = requests.get(
                 CHART_API.format(symbol=symbol),
