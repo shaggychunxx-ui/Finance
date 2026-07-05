@@ -43,7 +43,7 @@ LEVERAGED_ETFS: list[dict[str, Any]] = [
 # Pension / balanced-fund proxy assumptions for the quarter-end drift model.
 PENSION_TARGET_EQUITY_WEIGHT = 0.60
 PENSION_TARGET_BOND_WEIGHT = 0.40
-PENSION_DRIFT_TOLERANCE_PCT = 0.25  # percentage-point band before a formal rebalance triggers
+PENSION_DRIFT_TOLERANCE_PP = 0.25  # tolerance in percentage points (pp) of equity weight before a formal rebalance triggers
 PENSION_PROXY_TOTAL_AUM_USD = 9_000_000_000_000  # US DB pensions + balanced funds (illustrative)
 EQUITY_PROXY = "SPY"
 BOND_PROXY = "AGG"
@@ -219,9 +219,9 @@ class InstitutionalFlowsExpert:
         rebalance_amount = round(abs(drift_pct) / 100.0 * total_aum_usd, 2)
         # Pensions typically tolerate a small drift band before triggering a
         # formal rebalance back to the target allocation.
-        if drift_pct > PENSION_DRIFT_TOLERANCE_PCT:
+        if drift_pct > PENSION_DRIFT_TOLERANCE_PP:  # drift_pct is already expressed in percentage points
             action = "SELL EQUITIES / BUY BONDS"
-        elif drift_pct < -PENSION_DRIFT_TOLERANCE_PCT:
+        elif drift_pct < -PENSION_DRIFT_TOLERANCE_PP:
             action = "SELL BONDS / BUY EQUITIES"
         else:
             action = "NO ACTION"
@@ -399,7 +399,7 @@ class InstitutionalFlowsExpert:
         upcoming = recon_calendar[0] if recon_calendar else None
         if upcoming:
             summary_parts.append(f"Next reconstitution: {upcoming.name} in {upcoming.days_until} days.")
-        trigger_hits = [t for t in triggers if t.status not in ("NEUTRAL",)]
+        trigger_hits = [t for t in triggers if t.status != "NEUTRAL"]
         if trigger_hits:
             summary_parts.append(f"{len(trigger_hits)} systematic trigger(s) active.")
         summary = " ".join(summary_parts)
