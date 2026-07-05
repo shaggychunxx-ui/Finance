@@ -19,6 +19,7 @@ from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
+from agents.institutional_flows import run_institutional_flows_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
@@ -516,6 +517,45 @@ def _print_events(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_institutional_flows(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print("  Leveraged ETF EOD rebalance flows:")
+    for f in data.get("leveraged_etf_flows", [])[:6]:
+        print(
+            f"    • {f.get('symbol')} ({f.get('leverage')}x): "
+            f"${f.get('rebalance_flow_usd', 0) / 1e9:.2f}B to {f.get('direction')}"
+        )
+    pension = data.get("pension_drift")
+    if pension:
+        print()
+        print(
+            f"  Pension drift: {pension.get('drift_pct', 0):+.2f}pp "
+            f"({pension.get('action')}) — ~${pension.get('rebalance_amount_usd', 0) / 1e9:.1f}B"
+        )
+    recon = data.get("reconstitution_calendar", [])
+    if recon:
+        print()
+        print(f"  Next reconstitution: {recon[0].get('name')} in {recon[0].get('days_until')} days")
+    triggers = data.get("systematic_triggers", [])
+    if triggers:
+        print()
+        print("  Systematic triggers:")
+        for t in triggers:
+            print(f"    • {t.get('indicator')}: {t.get('level')} — {t.get('status')}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_grid(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -928,6 +968,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "finance": _print_finance,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
+    "institutional-flows": _print_institutional_flows,
     "logistics": _print_logistics,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
@@ -950,6 +991,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "finance": run_finance_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
+    "institutional-flows": run_institutional_flows_analysis,
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
@@ -1003,6 +1045,10 @@ def main() -> int:
                 catalog = args.output.parent / "grid_markets.json"
                 if catalog.exists():
                     print(f"  Grid markets catalog: {catalog}")
+            if args.agent == "institutional-flows":
+                catalog = args.output.parent / "institutional_flow_playbook.json"
+                if catalog.exists():
+                    print(f"  Institutional flow playbook: {catalog}")
             if args.agent == "electricity":
                 catalog = args.output.parent / "eia_grid_monitor_views.json"
                 if catalog.exists():
