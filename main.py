@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.cash_account_builder import run_cash_account_builder_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -378,6 +379,57 @@ def _print_records_management(data: dict[str, Any]) -> None:
     if assessment:
         print("  Archivist assessment:")
         for key in ("archival_priority", "archive_coverage"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_cash_account_builder(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    tranche = data.get("settlement_tranche", {})
+    phase = data.get("phase", {})
+    plan = data.get("position_sizing_plan", {})
+    assessment = data.get("assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Balance ${tranche.get('total_balance', 0):,.2f} → Tranche A/B "
+        f"${tranche.get('tranche_a', 0):,.2f} / ${tranche.get('tranche_b', 0):,.2f} "
+        f"(T+{tranche.get('settlement_days', 1)})"
+    )
+    print(
+        f"  {phase.get('phase')} | max risk/trade ${phase.get('max_risk_per_trade', 0):,.2f} "
+        f"| {phase.get('trades_per_day')} trade(s)/day"
+    )
+    print(f"    {phase.get('execution')}")
+    print()
+    print(
+        f"  Position sizing example: {plan.get('example_symbol')} — "
+        f"{plan.get('example_contracts')} contract(s), "
+        f"${plan.get('example_capital_deployed', 0):,.2f} deployed, "
+        f"risk capped at ${plan.get('max_risk_dollars', 0):,.2f}"
+    )
+    print()
+    print("  Screened assets:")
+    for a in data.get("screened_assets", []):
+        mark = "✓" if a.get("suitable") else "✗"
+        print(f"    {mark} {a.get('symbol')} ({a.get('name')}): {a.get('reason')}")
+    print()
+    print("  Opening range signals:")
+    for o in data.get("opening_range_signals", []):
+        print(f"    • {o.get('symbol')}: {o.get('signal')} — {o.get('note')}")
+    print()
+    if assessment:
+        print("  Assessment:")
+        for key in ("conclusion", "structural_edge"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -918,6 +970,7 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
 
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "cash-account-builder": _print_cash_account_builder,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "datascience": _print_datascience,
@@ -940,6 +993,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "cash-account-builder": run_cash_account_builder_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "datascience": run_datascience_analysis,
@@ -999,6 +1053,10 @@ def main() -> int:
                 catalog = args.output.parent / "dot_resources.json"
                 if catalog.exists():
                     print(f"  DOT resource catalog: {catalog}")
+            if args.agent == "cash-account-builder":
+                catalog = args.output.parent / "cash_account_playbook.json"
+                if catalog.exists():
+                    print(f"  Cash account playbook catalog: {catalog}")
             if args.agent == "grid":
                 catalog = args.output.parent / "grid_markets.json"
                 if catalog.exists():

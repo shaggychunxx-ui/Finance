@@ -25,6 +25,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Cash Account Builder Expert** | `run.bat cash-account-builder` | Yahoo Finance (daily + 15-min intraday) |
 
 ## Quick start
 
@@ -48,6 +49,7 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat cash-account-builder
 ```
 
 Or with options:
@@ -397,6 +399,26 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Cash Account Builder Expert
+
+Cash-account trading strategist analysis for scaling a sub-$25,000 account toward the Pattern Day Trader (PDT) threshold:
+
+- **T+1 settlement tranches** — splits the balance into Tranche A/B so settled cash rotates daily
+- **Phase-based compounding ladder** — Foundation (<$5k), Core Scale ($5k-$15k), Velocity Push ($15k-$25k), and the margin-conversion transition at $25k+
+- **Fractional risk position sizing** — caps risk per trade at 3% of the daily tranche, with a worked options-contract example
+- **Mega-cap options screening** — checks NVDA, AAPL, AMD, TSLA, and MSFT for price/liquidity suitability
+- **15-minute opening range breakout signals** — flags long/short breakouts on the 9:30-9:45 AM ET candle
+- **Broker structural checklist** — cash-account settings, share-lending, and execution quality reminders
+
+```bat
+run.bat cash-account-builder -o output/cash_account_builder.json
+```
+
+Outputs:
+
+- `output/cash_account_builder.json` — full cash-account strategy report with market signals
+- `output/cash_account_playbook.json` — phase ladder and broker structural checklist catalog
 
 ## Requirements
 
