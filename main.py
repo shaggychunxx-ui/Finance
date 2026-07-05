@@ -19,6 +19,7 @@ from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
+from agents.information_theory import run_information_theory_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
@@ -160,6 +161,51 @@ def _print_financial_data(data: dict[str, Any]) -> None:
         ):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_information_theory(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(avg H_norm {metrics.get('average_normalized_entropy')}, "
+        f"avg Hurst {metrics.get('average_hurst')})"
+    )
+    print(f"  Methods: {', '.join(meta.get('methods_applied', []))}")
+    print()
+    print("  Entropy (randomness of returns):")
+    for e in sorted(data.get("entropy_results", []), key=lambda x: x.get("normalized_entropy", 0))[:6]:
+        print(
+            f"    • {e.get('symbol')}: H={e.get('shannon_entropy_bits'):.3f} bits "
+            f"(norm {e.get('normalized_entropy'):.3f}) — {e.get('efficiency_label')}"
+        )
+    print()
+    print("  Hurst exponent (memory / persistence):")
+    for h in data.get("hurst_results", [])[:6]:
+        print(f"    • {h.get('symbol')}: H={h.get('hurst_exponent'):.3f} ({h.get('regime')})")
+    print()
+    findings = data.get("findings", [])
+    if findings:
+        print("  Findings:")
+        for f in findings[:5]:
+            print(f"    • {f.get('title')} — {f.get('practical_implication')}")
+        print()
+    if assessment:
+        print("  Information assessment:")
+        if assessment.get("information_conclusion"):
+            print(f"    • {assessment['information_conclusion']}")
         print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -928,6 +974,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "finance": _print_finance,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
+    "information-theory": _print_information_theory,
     "logistics": _print_logistics,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
@@ -950,6 +997,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "finance": run_finance_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
+    "information-theory": run_information_theory_analysis,
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
@@ -1035,6 +1083,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "information-theory":
+                catalog = args.output.parent / "information_theory_methods.json"
+                if catalog.exists():
+                    print(f"  Information theory methods catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():
