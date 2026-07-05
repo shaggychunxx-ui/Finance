@@ -231,7 +231,14 @@ def evaluate_reg_sho_threshold(
     daily_ftd_balances: list[tuple[str, int]],
     shares_outstanding: int,
 ) -> RegShoStatus:
-    """Evaluate the Reg SHO Threshold List test from chronological net-balance history."""
+    """Evaluate the Reg SHO Threshold List test from chronological net-balance history.
+
+    Counts the *trailing* run of qualifying settlement days ending on the most
+    recent date in ``daily_ftd_balances`` (i.e. whether the security qualifies
+    for the list as of today), not the longest qualifying run anywhere in the
+    history — a qualifying streak that ended in the past is no longer relevant
+    to the security's current threshold-list status.
+    """
     ordered = sorted(daily_ftd_balances, key=lambda pair: pair[0])
     consecutive = 0
     for _, balance in reversed(ordered):
@@ -303,14 +310,27 @@ def compute_risk_multiplier(
     return risk, label
 
 
+CTB_BASELINE_PCT = 1.0
+CTB_SCARCITY_FLOAT_THRESHOLD_PCT = 15.0
+CTB_SCARCITY_MULTIPLIER = 3.0
+CTB_BOTTLENECK_DTC_THRESHOLD_DAYS = 2.0
+CTB_BOTTLENECK_MULTIPLIER = 8.0
+CTB_MAX_PCT = 500.0
+
+
 def estimate_annualized_ctb_pct(short_float_pct: float, days_to_cover: float) -> float:
     """Model an implied Cost-to-Borrow rate from float scarcity and the liquidity
     bottleneck (DTC) when no live prime-broker borrow feed is available. This is
-    a heuristic proxy, not a desk-quoted rate — treat as directional only."""
-    baseline = 1.0
-    scarcity_premium = max(0.0, short_float_pct - 15.0) * 3.0
-    bottleneck_premium = max(0.0, days_to_cover - 2.0) * 8.0
-    return round(min(baseline + scarcity_premium + bottleneck_premium, 500.0), 2)
+    a heuristic proxy, not a desk-quoted rate — treat as directional only.
+
+    - Below CTB_SCARCITY_FLOAT_THRESHOLD_PCT short float, no scarcity premium applies.
+    - Above it, each extra point of short float adds CTB_SCARCITY_MULTIPLIER points of CTB.
+    - Below CTB_BOTTLENECK_DTC_THRESHOLD_DAYS days-to-cover, no bottleneck premium applies.
+    - Above it, each extra day of DTC adds CTB_BOTTLENECK_MULTIPLIER points of CTB.
+    """
+    scarcity_premium = max(0.0, short_float_pct - CTB_SCARCITY_FLOAT_THRESHOLD_PCT) * CTB_SCARCITY_MULTIPLIER
+    bottleneck_premium = max(0.0, days_to_cover - CTB_BOTTLENECK_DTC_THRESHOLD_DAYS) * CTB_BOTTLENECK_MULTIPLIER
+    return round(min(CTB_BASELINE_PCT + scarcity_premium + bottleneck_premium, CTB_MAX_PCT), 2)
 
 
 def classify_ctb_tier(annualized_ctb_pct: float) -> str:
@@ -400,8 +420,8 @@ class ShortSqueezeExpert:
             rows = parse_finra_short_volume_file(resp.text)
             for row in rows:
                 if row.get("Symbol", "").upper() == symbol.upper():
-                    short_vol = int(row.get("ShortVolume", "0") or 0)
-                    total_vol = int(row.get("TotalVolume", "0") or 0)
+                    short_vol = int(row.get("ShortVolume") or 0)
+                    total_vol = int(row.get("TotalVolume") or 0)
                     ratio, warning = compute_daily_short_ratio(short_vol, total_vol)
                     return DailyShortVolumeRecord(
                         symbol=symbol.upper(),
@@ -422,12 +442,13 @@ class ShortSqueezeExpert:
         following month. Approximate the most recently published cycle."""
         today = datetime.now(timezone.utc)
         if today.day <= 15:
-            month = today.month - 1 or 12
-            year = today.year if today.month > 1 else today.year - 1
+            if today.month == 1:
+                month, year = 12, today.year - 1
+            else:
+                month, year = today.month - 1, today.year
             half = "b"
         else:
-            month = today.month
-            year = today.year
+            month, year = today.month, today.year
             half = "a"
         return SEC_FTD_URL.format(year=year, month=f"{month:02d}", half=half)
 
