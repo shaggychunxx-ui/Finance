@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="E*TRADE Trader" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#6c5ce7" />
+  <link rel="manifest" href="/mobile_manifest.json" />
+  <link rel="apple-touch-icon" href="/mobile_icons/icon-192.png" />
+  <title>E*TRADE Trader</title>
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --panel: #121a2b;
+      --border: #1e2d4a;
+      --text: #e8edf5;
+      --muted: #8b9cb8;
+      --accent: #6c5ce7;
+      --accent2: #00cec9;
+      --up: #00e676;
+      --down: #ff5252;
+      --warn: #ffd54f;
+      --row-odd: #0d1424;
+      --row-even: #152238;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
+      min-height: 100%;
+    }
+    .app { max-width: 720px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+    header {
+      padding: 14px 16px 8px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 0.82rem; margin-top: 4px; }
+    .conn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      margin-top: 8px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.up { background: var(--up); }
+    .dot.down { background: var(--down); }
+    .dot.wait { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    nav {
+      display: flex;
+      gap: 4px;
+      padding: 8px 10px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      position: sticky;
+      top: 72px;
+      z-index: 9;
+    }
+    nav button {
+      flex: 1;
+      min-width: 72px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 10px 8px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    nav button.active { background: var(--border); color: var(--text); }
+    main { flex: 1; padding: 12px 12px 80px; }
+    .panel {
+      display: none;
+      animation: fade 0.2s ease;
+    }
+    .panel.active { display: block; }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .card {
+      background: var(--row-odd);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .card .label { color: var(--muted); font-size: 0.75rem; }
+    .card .value { font-size: 1.1rem; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .section h2 {
+      margin: 0;
+      padding: 10px 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+    .row {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.88rem;
+    }
+    .row:last-child { border-bottom: none; }
+    .row:nth-child(even) { background: var(--row-even); }
+    .row-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+    .muted { color: var(--muted); font-size: 0.78rem; }
+    .buy { color: var(--up); }
+    .sell { color: var(--down); }
+    .warn { color: var(--warn); }
+    .agent-list { max-height: 52vh; overflow-y: auto; }
+    .agent-item {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .agent-item:active { background: var(--border); }
+    pre.report {
+      margin: 0;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      max-height: 55vh;
+      overflow: auto;
+      background: var(--row-odd);
+    }
+    .log {
+      font-family: Consolas, monospace;
+      font-size: 0.72rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      padding: 12px;
+      max-height: 60vh;
+      overflow: auto;
+      background: var(--row-odd);
+    }
+    .setup {
+      padding: 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .setup input {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--row-odd);
+      color: var(--text);
+      font: inherit;
+    }
+    .setup button, .btn {
+      margin-top: 10px;
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .install-bar {
+      display: none;
+      margin: 10px 16px 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #1a2744, #121a2b);
+      border: 1px solid var(--border);
+    }
+    .install-bar.show { display: block; }
+    .install-bar strong { display: block; margin-bottom: 6px; }
+    .install-bar button {
+      margin-top: 8px;
+      width: 100%;
+      border: none;
+      border-radius: 8px;
+      padding: 12px;
+      font: inherit;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), #4b3fd8);
+      cursor: pointer;
+    }
+    .install-steps { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 0.82rem; }
+    .control-bar {
+      margin: 12px 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .action-btn {
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font: inherit;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .action-btn.stop { background: linear-gradient(135deg, #ff5252, #d32f2f); }
+    .action-btn.resume { background: linear-gradient(135deg, #00e676, #00b248); }
+    .action-btn:disabled { opacity: 0.55; cursor: wait; }
+    .control-hint { color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
+    .toast {
+      display: none;
+      margin: 10px 16px 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      border: 1px solid var(--border);
+    }
+    .toast.show { display: block; }
+    .toast.ok { background: #0f2a1d; color: var(--up); border-color: #1f5c38; }
+    .toast.err { background: #2a1218; color: #ff8a80; border-color: #6b2230; }
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      width: 100%;
+      max-width: 360px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .modal h3 { margin: 0 0 10px; font-size: 1.05rem; }
+    .modal p { margin: 0 0 16px; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions button {
+      flex: 1;
+      border: none;
+      border-radius: 8px;
+      padding: 12px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .modal-cancel { background: #24314d; color: var(--text); }
+    .modal-confirm { background: #d32f2f; color: #fff; }
+    footer {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      padding: 8px 12px;
+      background: var(--border);
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-align: center;
+    }
+    .hidden { display: none !important; }
+    .back { color: var(--accent2); font-size: 0.85rem; cursor: pointer; padding: 8px 12px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>E*TRADE Trader</h1>
+      <div class="sub">Mobile monitor — same data as your desktop app</div>
+      <div class="conn" id="connBadge">
+        <span class="dot down" id="connDot"></span>
+        <span id="connText">Connecting…</span>
+      </div>
+    </header>
+    <div id="installBar" class="install-bar">
+      <strong>Install on your phone</strong>
+      <span class="muted">Add this monitor to your home screen like an app.</span>
+      <button type="button" id="installBtn">Install app</button>
+      <ol class="install-steps" id="installSteps">
+        <li>Tap the browser menu (three dots)</li>
+        <li>Choose <strong>Add to Home screen</strong> or <strong>Install app</strong></li>
+        <li>Open the new icon anytime to monitor</li>
+      </ol>
+    </div>
+    <nav>
+      <button type="button" class="active" data-tab="home">Home</button>
+      <button type="button" data-tab="agents">Agents</button>
+      <button type="button" data-tab="trades">Trades</button>
+      <button type="button" data-tab="activity">Activity</button>
+    </nav>
+    <div id="confirmModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal">
+        <h3>Stop all automation?</h3>
+        <p>This halts agents, strategy updates, swing trades, and day trading until you resume.</p>
+        <div class="modal-actions">
+          <button type="button" class="modal-cancel" id="confirmCancelBtn">Cancel</button>
+          <button type="button" class="modal-confirm" id="confirmStopBtn">Stop all</button>
+        </div>
+      </div>
+    </div>
+    <main>
+      <div id="toast" class="toast"></div>
+      <div id="setupPanel" class="setup hidden">
+        <strong>Access token required</strong>
+        <p class="muted">Copy the token from Start Mobile Server.bat output or etrade_config.json → mobile_monitor.token</p>
+        <input id="tokenInput" type="password" placeholder="Paste token" autocomplete="off" />
+        <button type="button" id="saveTokenBtn">Save & connect</button>
+      </div>
+
+      <div id="home" class="panel active">
+        <div class="control-bar">
+          <button type="button" id="automationBtn" class="action-btn stop">Stop all</button>
+          <div class="control-hint" id="automationHint">
+            Halts agents, strategy updates, swing trades, and day trading until you resume.
+          </div>
+        </div>
+        <div class="cards" id="homeCards"></div>
+        <div class="section">
+          <h2>Automation</h2>
+          <div id="automationRows"></div>
+        </div>
+        <div class="section">
+          <h2>Background worker</h2>
+          <div id="workerRows"></div>
+        </div>
+      </div>
+
+      <div id="agents" class="panel">
+        <div id="agentListView">
+          <div class="section agent-list">
+            <h2>Agent reports</h2>
+            <div id="agentList"></div>
+          </div>
+        </div>
+        <div id="agentDetailView" class="hidden">
+          <div class="back" id="agentBack">← All agents</div>
+          <div class="section">
+            <h2 id="agentDetailTitle">Report</h2>
+            <pre class="report" id="agentReport"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div id="trades" class="panel">
+        <div class="section">
+          <h2>Portfolio holdings</h2>
+          <div id="holdingsList"></div>
+        </div>
+        <div class="section">
+          <h2>Swing orders</h2>
+          <div id="ordersList"></div>
+        </div>
+        <div class="section">
+          <h2>Day trading</h2>
+          <div id="dayList"></div>
+        </div>
+      </div>
+
+      <div id="activity" class="panel">
+        <div class="section">
+          <h2>Recent log</h2>
+          <div class="log" id="logBox"></div>
+        </div>
+      </div>
+    </main>
+    <footer id="footerStatus">Updated —</footer>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const TOKEN_KEY = "etrade_mobile_token";
+    const LAN_KEY = "etrade_mobile_lan";
+
+    function getToken() {
+      const params = new URLSearchParams(location.search);
+      const fromUrl = params.get("token");
+      if (fromUrl) {
+        localStorage.setItem(TOKEN_KEY, fromUrl);
+        history.replaceState({}, "", location.pathname);
+      }
+      return localStorage.getItem(TOKEN_KEY) || "";
+    }
+
+    function showToast(message, kind) {
+      const toast = $("toast");
+      toast.textContent = message;
+      toast.className = "toast show " + (kind || "ok");
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => toast.classList.remove("show"), 4500);
+    }
+
+    function isTunnelExpiredText(text) {
+      return /error\s*1033/i.test(text) || /cloudflare tunnel error/i.test(text) || /unable to resolve/i.test(text);
+    }
+
+    async function readApiError(res) {
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        if (data && data.error) return String(data.error);
+      } catch (_) {}
+      if (isTunnelExpiredText(text)) {
+        return "Tunnel link expired (error 1033). On your PC open output/mobile_phone_url.txt and open that new link on your phone. Delete the old home-screen icon and add again.";
+      }
+      if (res.status === 502 || res.status === 503 || res.status === 530) {
+        return "PC monitor unavailable. Run Start Mobile Remote Access.bat on your computer.";
+      }
+      if (res.status === 404) {
+        return "This action is not supported yet. Run Install Phone Monitor on your computer to update.";
+      }
+      if (text && text.length < 180 && !/[<>]/.test(text)) return text;
+      return "Request failed (" + res.status + "). Try again.";
+    }
+
+    function storeAccessHints(data) {
+      const access = data && data.access;
+      if (access && access.lan_url) localStorage.setItem(LAN_KEY, access.lan_url);
+    }
+
+    function lanFallbackUrl(path) {
+      const lan = localStorage.getItem(LAN_KEY);
+      if (!lan) return "";
+      try {
+        return new URL(path, new URL(lan).origin).href;
+      } catch (_) {
+        return "";
+      }
+    }
+
+    let activeController = null;
+    let monitorOnline = false;
+    let monitorActive = !document.hidden;
+    let pollTimer = null;
+    let agentPollTimer = null;
+    let reconnectTimer = null;
+    let reconnectDelay = 2000;
+    const POLL_MS = 15000;
+    const AGENT_POLL_MS = 30000;
+
+    function setLinkState(state, message) {
+      const dot = $("connDot");
+      const text = $("connText");
+      if (state === "connected") {
+        dot.className = "dot up";
+        text.textContent = message || "Connected";
+      } else if (state === "reconnecting") {
+        dot.className = "dot wait";
+        text.textContent = message || "Reconnecting to desktop…";
+      } else {
+        dot.className = "dot down";
+        text.textContent = message || "Monitoring paused";
+      }
+    }
+
+    function stopMonitoring() {
+      monitorActive = false;
+      if (activeController) {
+        activeController.abort();
+        activeController = null;
+      }
+      if (pollTimer) clearInterval(pollTimer);
+      if (agentPollTimer) clearInterval(agentPollTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      pollTimer = null;
+      agentPollTimer = null;
+      reconnectTimer = null;
+      monitorOnline = false;
+      setLinkState("paused", "Monitoring paused — no data while app is closed");
+      $("footerStatus").textContent = "Monitoring paused";
+    }
+
+    function scheduleReconnect() {
+      if (!monitorActive) return;
+      setLinkState("reconnecting");
+      $("footerStatus").textContent = "Reconnecting…";
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(async () => {
+        reconnectTimer = null;
+        if (!monitorActive) return;
+        try {
+          await refresh({ allowRetry: false });
+        } catch (_) {
+          if (!monitorActive) return;
+          reconnectDelay = Math.min(Math.round(reconnectDelay * 1.5), 30000);
+          scheduleReconnect();
+        }
+      }, reconnectDelay);
+    }
+
+    function startMonitoring() {
+      if (document.hidden) return;
+      monitorActive = true;
+      reconnectDelay = 2000;
+      if (pollTimer) clearInterval(pollTimer);
+      if (agentPollTimer) clearInterval(agentPollTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      refresh({ allowRetry: true }).catch(() => {});
+      pollTimer = setInterval(() => {
+        if (monitorActive) refresh({ allowRetry: true }).catch(() => {});
+      }, POLL_MS);
+      agentPollTimer = setInterval(() => {
+        if (monitorActive && $("agents").classList.contains("active")) {
+          loadAgents().catch(() => {});
+        }
+      }, AGENT_POLL_MS);
+    }
+
+    async function apiOnce(url, options, controller) {
+      const token = getToken();
+      const headers = { ...(options.headers || {}) };
+      if (token) headers.Authorization = "Bearer " + token;
+      if (options.body) headers["Content-Type"] = "application/json";
+      let res;
+      try {
+        res = await fetch(url, {
+          method: options.method || "GET",
+          headers,
+          body: options.body,
+          cache: "no-store",
+          signal: controller.signal,
+        });
+      } catch (err) {
+        if (err && err.name === "AbortError") throw err;
+        throw new Error("Cannot reach desktop. Check PC monitor and network.");
+      }
+      if (res.status === 401) {
+        $("setupPanel").classList.remove("hidden");
+        throw new Error("Unauthorized — check your access token.");
+      }
+      if (!res.ok) throw new Error(await readApiError(res));
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (!ct.includes("application/json")) {
+        const text = await res.text();
+        if (isTunnelExpiredText(text)) {
+          throw new Error("Tunnel link expired (error 1033). Open the new URL from output/mobile_phone_url.txt on your PC.");
+        }
+        throw new Error("Unexpected server response. Refresh and try again.");
+      }
+      return res.json();
+    }
+
+    async function api(path, options = {}) {
+      const controller = new AbortController();
+      activeController = controller;
+      try {
+        try {
+          return await apiOnce(path, options, controller);
+        } catch (err) {
+          if (err && err.name === "AbortError") throw err;
+          const fallback = lanFallbackUrl(path);
+          if (fallback && !String(err.message || "").includes("Unauthorized")) {
+            return await apiOnce(fallback, options, controller);
+          }
+          throw err;
+        }
+      } finally {
+        if (activeController === controller) activeController = null;
+      }
+    }
+
+    function askStopAll() {
+      return new Promise((resolve) => {
+        const modal = $("confirmModal");
+        const done = (value) => {
+          modal.classList.remove("show");
+          modal.setAttribute("aria-hidden", "true");
+          $("confirmCancelBtn").onclick = null;
+          $("confirmStopBtn").onclick = null;
+          resolve(value);
+        };
+        $("confirmCancelBtn").onclick = () => done(false);
+        $("confirmStopBtn").onclick = () => done(true);
+        modal.classList.add("show");
+        modal.setAttribute("aria-hidden", "false");
+      });
+    }
+
+    function updateAutomationButton(auto) {
+      const btn = $("automationBtn");
+      const hint = $("automationHint");
+      const paused = !!(auto && auto.paused);
+      btn.disabled = false;
+      if (paused) {
+        btn.textContent = "Resume all";
+        btn.className = "action-btn resume";
+        hint.textContent = "All automation is stopped. Tap Resume all to restart agents and trading.";
+      } else {
+        btn.textContent = "Stop all";
+        btn.className = "action-btn stop";
+        hint.textContent = "Halts agents, strategy updates, swing trades, and day trading until you resume.";
+      }
+    }
+
+    async function toggleAutomation() {
+      const btn = $("automationBtn");
+      const paused = btn.textContent.trim() === "Resume all";
+      if (!paused) {
+        const ok = await askStopAll();
+        if (!ok) return;
+      }
+      btn.disabled = true;
+      btn.textContent = paused ? "Resuming…" : "Stopping…";
+      try {
+        const data = await api("/api/automation/pause", {
+          method: "POST",
+          body: JSON.stringify({ paused: !paused }),
+        });
+        if (data.status) renderStatus(data.status);
+        else await refresh();
+        showToast(
+          paused ? "Automation resumed." : "All automation stopped.",
+          "ok"
+        );
+      } catch (e) {
+        showToast(e.message || "Could not update automation.", "err");
+        await refresh().catch(() => updateAutomationButton({ paused: paused }));
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function card(label, value, cls) {
+      return `<div class="card"><div class="label">${label}</div><div class="value ${cls || ""}">${value}</div></div>`;
+    }
+
+    function row(title, sub, cls) {
+      return `<div class="row"><div class="row-head"><span>${title}</span></div><div class="muted ${cls || ""}">${sub || ""}</div></div>`;
+    }
+
+    function renderStatus(data) {
+      storeAccessHints(data);
+      const c = data.connection || {};
+      monitorOnline = true;
+      reconnectDelay = 2000;
+      if (c.connected) {
+        setLinkState(
+          "connected",
+          `Connected · ${c.environment || ""} ${c.account ? "· " + c.account : ""}`
+        );
+      } else {
+        const env = String(c.environment || "");
+        let msg = `Desktop reachable · ${env || "E*TRADE not connected"}`;
+        if (env.startsWith("error:")) msg = `Status error · ${env.slice(6).trim()}`;
+        else if (env === "not_configured") msg = "Desktop reachable · E*TRADE not configured on PC";
+        setLinkState("connected", msg);
+      }
+
+      const p = data.portfolio || {};
+      const a = data.agents || {};
+      const d = data.day_trading || {};
+      $("homeCards").innerHTML = [
+        card("Account value", p.account_value != null ? "$" + Number(p.account_value).toLocaleString() : "—"),
+        card("Agent reports", `${a.fresh || 0}/${a.total || 0} fresh`, "warn"),
+        card("Pending trades", String(p.order_count ?? "—")),
+        card("Day P&amp;L", d.realized_pnl != null ? "$" + Number(d.realized_pnl).toFixed(2) : "—"),
+      ].join("");
+
+      const auto = data.automation || {};
+      updateAutomationButton(auto);
+      $("automationRows").innerHTML = [
+        row("Paused", auto.paused ? "Yes — automation stopped" : "No — running", auto.paused ? "warn" : "buy"),
+        row("Swing auto-execute", auto.auto_execute ? "On" : "Off"),
+        row("Day trading", auto.day_trading ? "On" : "Off"),
+        row("Practice mode", auto.dry_run ? "Dry run only" : "Live orders enabled", auto.dry_run ? "warn" : ""),
+      ].join("");
+
+      const w = data.worker || {};
+      $("workerRows").innerHTML = [
+        row("Last agents run", w.last_pipeline_at || "—"),
+        row("Last plan build", w.last_plan_at || "—"),
+        row("Last order batch", w.last_execute_at || "—"),
+        row("Last day scan", w.last_day_trading_at || "—"),
+      ].join("");
+
+      const holdings = data.holdings || [];
+      $("holdingsList").innerHTML = holdings.length
+        ? holdings.map((h) => row(
+            h.symbol,
+            `Cur ${h.current_pct}% → Tgt ${h.target_pct}% (drift ${h.drift > 0 ? "+" : ""}${h.drift}%)`,
+            Math.abs(h.drift) >= 2 ? "warn" : ""
+          )).join("")
+        : row("No plan yet", "Connect E*TRADE or wait for background plan");
+
+      const orders = data.orders || [];
+      $("ordersList").innerHTML = orders.length
+        ? orders.map((o) => row(
+            `${o.symbol} ${o.action}`,
+            `Qty ${o.qty} · ${o.status || ""} ${o.message || ""}`,
+            (o.action || "").toUpperCase() === "BUY" ? "buy" : "sell"
+          )).join("")
+        : row("No swing orders", "—");
+
+      const positions = d.positions || [];
+      $("dayList").innerHTML = [
+        row("Open today", String(d.open_positions || 0)),
+        ...(positions.length
+          ? positions.map((p) => row(p.symbol || "?", `Qty ${p.quantity} @ $${p.entry_price}`))
+          : [row("No open day positions", "—")]),
+      ].join("");
+
+      const logBox = $("logBox");
+      logBox.textContent = (data.log || []).join("\n") || "No log lines yet.";
+      logBox.scrollTop = 0;
+      $("footerStatus").textContent = "Updated " + (data.updated_at || "—");
+      $("setupPanel").classList.add("hidden");
+    }
+
+    async function loadAgents() {
+      const data = await api("/api/agents");
+      const list = data.agents || [];
+      $("agentList").innerHTML = list.map((a) => `
+        <div class="agent-item" data-id="${a.id}">
+          <div class="row-head"><span>${a.label}</span><span class="muted">${a.updated}</span></div>
+          <div class="muted">${a.category} · ${a.status}</div>
+        </div>
+      `).join("");
+      document.querySelectorAll(".agent-item").forEach((el) => {
+        el.addEventListener("click", () => showAgent(el.dataset.id, el.querySelector(".row-head span").textContent));
+      });
+    }
+
+    async function showAgent(id, label) {
+      $("agentListView").classList.add("hidden");
+      $("agentDetailView").classList.remove("hidden");
+      $("agentDetailTitle").textContent = label || id;
+      $("agentReport").textContent = "Loading…";
+      const data = await api("/api/agents/" + encodeURIComponent(id));
+      $("agentReport").textContent = data.text || "No report.";
+    }
+
+    $("agentBack").addEventListener("click", () => {
+      $("agentDetailView").classList.add("hidden");
+      $("agentListView").classList.remove("hidden");
+    });
+
+    document.querySelectorAll("nav button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("nav button").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        $(btn.dataset.tab).classList.add("active");
+        if (btn.dataset.tab === "agents" && !$("agentList").innerHTML) loadAgents();
+        if (btn.dataset.tab === "activity") $("logBox").scrollTop = 0;
+      });
+    });
+
+    $("automationBtn").addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleAutomation();
+    });
+
+    $("saveTokenBtn").addEventListener("click", () => {
+      const t = $("tokenInput").value.trim();
+      if (!t) return;
+      localStorage.setItem(TOKEN_KEY, t);
+      refresh({ allowRetry: true });
+    });
+
+    async function refresh(options = {}) {
+      const allowRetry = options.allowRetry !== false;
+      if (!monitorActive && allowRetry) return;
+      try {
+        const data = await api("/api/status");
+        renderStatus(data);
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        monitorOnline = false;
+        if (!monitorActive) return;
+        if (allowRetry) scheduleReconnect();
+        else throw e;
+      }
+    }
+
+    let deferredInstall = null;
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredInstall = e;
+      $("installBar").classList.add("show");
+      $("installSteps").classList.add("hidden");
+    });
+    $("installBtn").addEventListener("click", async () => {
+      if (deferredInstall) {
+        deferredInstall.prompt();
+        await deferredInstall.userChoice;
+        deferredInstall = null;
+        $("installBar").classList.remove("show");
+        return;
+      }
+      $("installBar").classList.add("show");
+      $("installSteps").classList.remove("hidden");
+    });
+    if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      $("installBar").classList.add("show");
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/mobile_sw.js").catch(() => {});
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopMonitoring();
+      else startMonitoring();
+    });
+    window.addEventListener("pagehide", () => stopMonitoring());
+    window.addEventListener("pageshow", () => {
+      if (!document.hidden) startMonitoring();
+    });
+    window.addEventListener("focus", () => {
+      if (!document.hidden && monitorActive) refresh({ allowRetry: true }).catch(() => {});
+    });
+
+    if (!getToken()) $("setupPanel").classList.remove("hidden");
+    if (document.hidden) {
+      stopMonitoring();
+    } else {
+      startMonitoring();
+    }
+  </script>
+</body>
+</html>

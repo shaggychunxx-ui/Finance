@@ -1,0 +1,79 @@
+{
+  "consumer_key": "YOUR_CONSUMER_KEY",
+  "consumer_secret": "YOUR_CONSUMER_SECRET",
+  "sandbox": true,
+  "callback_url": "http://127.0.0.1:8765/callback",
+  "use_oob": true,
+  "token_path": "etrade_tokens.json",
+  "strategy": {
+    "cash_buffer_pct": 5.0,
+    "min_drift_pct": 1.5,
+    "min_trade_usd": 50.0,
+    "growth_mode": true,
+    "prioritize_buys": true,
+    "optimize_profit_horizons": true,
+    "min_buy_return_pct": 0.05,
+    "min_sell_return_pct": -0.10,
+    "max_deploy_pct": 0.94,
+    "profit_horizons": {
+      "daily": {"weight": 0.25, "label": "24h"},
+      "weekly": {"weight": 0.25, "label": "1wk"},
+      "monthly": {"weight": 0.25, "label": "1mo"},
+      "yearly": {"weight": 0.25, "label": "1yr"}
+    }
+  },
+  "selected_account": {
+    "account_id_key": "",
+    "display_label": "",
+    "confirmed_at": ""
+  },
+  "day_trading": {
+    "enabled": true,
+    "interval_minutes": 5,
+    "max_positions": 3,
+    "capital_pct": 25.0,
+    "min_daily_return_pct": 0.35,
+    "min_confidence": 0.52,
+    "take_profit_pct": 0.75,
+    "stop_loss_pct": 0.5,
+    "flatten_minutes_before_close": 15,
+    "max_trade_usd": 750.0,
+    "min_trade_usd": 75.0
+  },
+  "market_data_enhancement": {
+    "enabled": true,
+    "max_symbols": 50,
+    "min_priority": 0.4,
+    "detail_flag": "ALL",
+    "require_production": true
+  },
+  "background_worker": {
+    "auto_execute": true,
+    "live_trading": true,
+    "day_trading": true,
+    "paused": false,
+    "dry_run": false,
+    "pipeline_interval_minutes": 5,
+    "plan_interval_minutes": 30,
+    "execute_min_interval_minutes": 15,
+    "day_trading_interval_minutes": 5,
+    "allow_off_hours_trading": false,
+    "gui_defer_to_worker": true,
+    "ui_poll_ms": 500,
+    "day_panel_refresh_minutes": 5,
+    "worker_status_poll_ms": 60000
+  },
+  "mobile_monitor": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8766,
+    "token": "",
+    "allow_lan_without_auth": false
+  },
+  "trading_tasks": {
+    "agents": "Every 5 min — run Finance agents and Market Predictor",
+    "plan": "Every 30 min — rebuild strategy plan from agent research",
+    "live_trading": "Every 15 min — submit LIVE swing orders (market hours)",
+    "day_trading": "Every 5 min — intraday entries/exits from 24h signals (market hours)"
+  }
+}

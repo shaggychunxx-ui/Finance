@@ -1,6 +1,36 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
-output/
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+
+# Build / packaging
+build/
+dist/
+*.spec
+
+# Secrets and local config
 config.json
+etrade_config.json
+etrade_tokens.json
+
+# Runtime output
+output/
 *.db
+*.log
+*.lock
+
+# Frozen / downloaded binaries
+ETrade Trader.exe
+tools/cloudflared.exe
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
