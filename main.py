@@ -22,6 +22,7 @@ from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
+from agents.oceanography import run_oceanography_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
@@ -67,6 +68,27 @@ def _print_meteorology(data: dict[str, Any]) -> None:
     print(f"  Heat: {metrics.get('heat_stress_score')}  |  Cold: {metrics.get('cold_stress_score')}")
     print(f"  Severe: {metrics.get('severe_weather_score')}  |  Flood: {metrics.get('flood_risk_score')}")
     print(f"  Energy demand: {metrics.get('energy_demand_score')}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_oceanography(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('region_name', '')}")
+    print("=" * 60)
+    print(f"  {meta.get('national_headline', '')}")
+    print()
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Disruption: {metrics.get('disruption_label')} ({metrics.get('port_disruption_score')})")
+    print(f"  Storm surge: {metrics.get('storm_surge_score')}  |  Tidal extreme: {metrics.get('tidal_extreme_score')}")
+    print(f"  Marine heatwave: {metrics.get('marine_heatwave_score')}")
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -931,6 +953,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "logistics": _print_logistics,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
+    "oceanography": _print_oceanography,
     "patents": _print_patents,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
@@ -953,6 +976,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
+    "oceanography": run_oceanography_analysis,
     "patents": run_patents_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
@@ -1011,6 +1035,10 @@ def main() -> int:
                 catalog = args.output.parent / "marine_traffic_corridors.json"
                 if catalog.exists():
                     print(f"  MarineTraffic corridor catalog: {catalog}")
+            if args.agent == "oceanography":
+                catalog = args.output.parent / "noaa_tide_stations.json"
+                if catalog.exists():
+                    print(f"  NOAA tide station catalog: {catalog}")
             if args.agent == "financial-data":
                 catalog = args.output.parent / "yahoo_finance_views.json"
                 if catalog.exists():

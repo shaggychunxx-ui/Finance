@@ -25,6 +25,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Oceanography Expert** | `run.bat oceanography` | [tidesandcurrents.noaa.gov](https://tidesandcurrents.noaa.gov/) (NOAA CO-OPS API), [tide-forecast.com](https://www.tide-forecast.com/) |
 
 ## Quick start
 
@@ -48,6 +49,7 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat oceanography
 ```
 
 Or with options:
@@ -352,7 +354,7 @@ Outputs:
 Expert data stewardship and management for the Finance intelligence platform:
 
 - **Data catalog** — 8 external sources with refresh policies and SLA metadata
-- **Agent registry** — 17 agents with lineage (source → agent → output)
+- **Agent registry** — 18 agents with lineage (source → agent → output)
 - **Health checks** — live endpoint monitoring (Yahoo Finance, OpenAlex, BBC RSS, NWS)
 - **Artifact validation** — schema, completeness, and freshness of `output/*.json`
 - **Stewardship issues** — severity-ranked gaps with remediation steps
@@ -397,6 +399,26 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Oceanography Expert
+
+Analyzes US coastal tides, water levels, and sea-surface conditions from NOAA Tides &
+Currents (CO-OPS), cross-referenced against the public tide-forecast.com outlook:
+
+- Astronomical tide predictions (next high/low) and tidal-range extremes per station
+- Storm surge anomaly (observed vs. predicted water level) across major coastal/port stations
+- Sea-surface temperature vs. seasonal norms (marine heatwave signal)
+- Stress scores for storm surge, tidal extremes, marine heatwave, and port disruption
+- Sector signals (insurance, Gulf energy/LNG, shipping/port logistics, fisheries, coastal tourism)
+
+```bat
+run.bat oceanography -o output/oceanography.json
+```
+
+Outputs:
+
+- `output/oceanography.json` — full oceanography report with market signals
+- `output/noaa_tide_stations.json` — catalog of NOAA CO-OPS stations and dashboard links
 
 ## Requirements
 

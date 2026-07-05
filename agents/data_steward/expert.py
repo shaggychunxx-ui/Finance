@@ -121,6 +121,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "oceanography",
+        "agent": "Oceanography Expert",
+        "primary_output": "oceanography.json",
+        "sidecars": ["noaa_tide_stations.json"],
+        "sources": ["tidesandcurrents.noaa.gov NOAA CO-OPS API", "tide-forecast.com"],
+        "owner": "platform",
+    },
+    {
         "command": "theoretical-probability",
         "agent": "Theoretical Probability Expert",
         "primary_output": "theoretical_probability.json",
