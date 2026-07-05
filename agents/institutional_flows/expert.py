@@ -43,6 +43,7 @@ LEVERAGED_ETFS: list[dict[str, Any]] = [
 # Pension / balanced-fund proxy assumptions for the quarter-end drift model.
 PENSION_TARGET_EQUITY_WEIGHT = 0.60
 PENSION_TARGET_BOND_WEIGHT = 0.40
+PENSION_DRIFT_TOLERANCE_PCT = 0.25  # percentage-point band before a formal rebalance triggers
 PENSION_PROXY_TOTAL_AUM_USD = 9_000_000_000_000  # US DB pensions + balanced funds (illustrative)
 EQUITY_PROXY = "SPY"
 BOND_PROXY = "AGG"
@@ -161,7 +162,13 @@ class InstitutionalFlowsExpert:
     def calculate_leveraged_etf_flow(
         self, symbol: str, name: str, leverage: int, aum_usd: float, underlying_daily_return_pct: float,
     ) -> LeveragedETFFlow:
-        """Rebalance Flow = AUM x L x (L - 1) x Daily Return of Underlying Index."""
+        """Rebalance Flow = AUM x L x (L - 1) x Daily Return of Underlying Index.
+
+        Note: for inverse funds (negative L), L*(L-1) is positive (e.g. -3 * -4 = 12),
+        which correctly reflects daily-reset mechanics — inverse ETFs must cover part of
+        their short notional when the index rises (and add to it when the index falls),
+        so both bull and bear leveraged ETFs trade procyclically in the same direction.
+        """
         l = leverage
         daily_return = underlying_daily_return_pct / 100.0
         flow_usd = aum_usd * l * (l - 1) * daily_return
@@ -210,12 +217,11 @@ class InstitutionalFlowsExpert:
         new_weight = equity_component / denom if denom else PENSION_TARGET_EQUITY_WEIGHT
         drift_pct = round((new_weight - PENSION_TARGET_EQUITY_WEIGHT) * 100, 2)
         rebalance_amount = round(abs(drift_pct) / 100.0 * total_aum_usd, 2)
-        # Pensions typically tolerate a small drift band (here, 25 basis points)
-        # before triggering a formal rebalance back to the target allocation.
-        drift_tolerance_pct = 0.25
-        if drift_pct > drift_tolerance_pct:
+        # Pensions typically tolerate a small drift band before triggering a
+        # formal rebalance back to the target allocation.
+        if drift_pct > PENSION_DRIFT_TOLERANCE_PCT:
             action = "SELL EQUITIES / BUY BONDS"
-        elif drift_pct < -drift_tolerance_pct:
+        elif drift_pct < -PENSION_DRIFT_TOLERANCE_PCT:
             action = "SELL BONDS / BUY EQUITIES"
         else:
             action = "NO ACTION"
@@ -297,7 +303,9 @@ class InstitutionalFlowsExpert:
             )
         )
 
-        events.sort(key=lambda e: e.days_until if e.days_until >= 0 else float("inf"))
+        # Rollover logic above guarantees every event is today or in the future,
+        # so a plain ascending sort by days_until is sufficient.
+        events.sort(key=lambda e: e.days_until)
         return events
 
     def _systematic_triggers(self) -> tuple[list[SystematicTrigger], list[str]]:
@@ -373,8 +381,7 @@ class InstitutionalFlowsExpert:
         triggers, trigger_sources = self._systematic_triggers()
         sources.extend(trigger_sources)
 
-        seen: set[str] = set()
-        dedup_sources = [s for s in sources if not (s in seen or seen.add(s))]
+        dedup_sources = list(dict.fromkeys(sources))
 
         total_buy = sum(f.rebalance_flow_usd for f in leveraged_flows if f.direction == "BUY")
         total_sell = sum(f.rebalance_flow_usd for f in leveraged_flows if f.direction == "SELL")
