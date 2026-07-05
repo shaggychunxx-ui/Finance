@@ -89,6 +89,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "financial-education",
+        "agent": "Financial Education Expert",
+        "primary_output": "financial_education.json",
+        "sidecars": ["khan_academy_lessons.json"],
+        "sources": ["Yahoo Finance Chart API", "Khan Academy curriculum (static reference)"],
+        "owner": "platform",
+    },
+    {
         "command": "markets",
         "agent": "Market Analyst Expert",
         "primary_output": "markets.json",

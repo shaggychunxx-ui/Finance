@@ -17,6 +17,7 @@ from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
+from agents.financial_education import run_financial_education_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
@@ -158,6 +159,52 @@ def _print_financial_data(data: dict[str, Any]) -> None:
             "volatility_regime",
             "trend_signal",
             "mathematical_edge",
+        ):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_financial_education(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    div = data.get("diversification", {})
+    assessment = data.get("education_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — Khan Academy curriculum")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print("  Compound interest (30yr, $1,000 + $200/mo):")
+    for p in data.get("compound_interest_projections", []):
+        if p.get("years") == 30:
+            print(f"    • {p.get('scenario')}: ${p.get('future_value'):,.0f}")
+    print()
+    if data.get("dollar_cost_averaging"):
+        print("  Dollar-cost averaging vs. lump sum:")
+        for r in data["dollar_cost_averaging"]:
+            print(
+                f"    • {r.get('symbol')}: DCA {r.get('dca_return_pct'):+.2f}% vs "
+                f"lump sum {r.get('lump_sum_return_pct'):+.2f}% — {r.get('better_strategy')} won"
+            )
+        print()
+    print(f"  Diversification: {div.get('label')} (avg correlation {div.get('avg_correlation')})")
+    print()
+    print("  Retirement contribution ladder:")
+    for step in data.get("retirement_contribution_ladder", [])[:4]:
+        print(f"    {step.get('step')}. {step.get('action')}")
+    print()
+    if assessment:
+        print("  Education assessment:")
+        for key in (
+            "compounding_takeaway",
+            "dca_takeaway",
+            "diversification_takeaway",
+            "risk_horizon_takeaway",
         ):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
@@ -961,6 +1008,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "empirical-probability": _print_empirical_probability,
     "events": _print_events,
     "financial-data": _print_financial_data,
+    "financial-education": _print_financial_education,
     "finance": _print_finance,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
@@ -984,6 +1032,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "empirical-probability": run_empirical_probability_analysis,
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
+    "financial-education": run_financial_education_analysis,
     "finance": run_finance_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
@@ -1057,6 +1106,10 @@ def main() -> int:
                 catalog = args.output.parent / "google_finance_views.json"
                 if catalog.exists():
                     print(f"  Google Finance views: {catalog}")
+            if args.agent == "financial-education":
+                catalog = args.output.parent / "khan_academy_lessons.json"
+                if catalog.exists():
+                    print(f"  Khan Academy lesson catalog: {catalog}")
             if args.agent == "theoretical-probability":
                 catalog = args.output.parent / "probability_models.json"
                 if catalog.exists():
