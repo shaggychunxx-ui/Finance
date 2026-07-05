@@ -42,6 +42,12 @@ WATCHLIST = {
 
 MIN_OPTIONABLE_PRICE = 50.0
 MIN_LIQUID_AVG_VOLUME = 5_000_000
+# Illustrative heuristic: a short-dated near-the-money contract on a liquid
+# mega-cap typically costs ~3% of the underlying's share price.
+OPTION_PREMIUM_ESTIMATE_PCT = 0.03
+# Illustrative heuristic: a technical stop-loss on the option contract itself,
+# set at 75% of the entry premium (i.e. a 25% stop-loss on the contract).
+STOP_LOSS_PCT_OF_PREMIUM = 0.75
 
 PHASE_LADDER: list[dict[str, Any]] = [
     {
@@ -409,10 +415,10 @@ class CashAccountBuilderExpert:
         max_risk_dollars = round(tranche.max_daily_exposure * risk_pct, 2)
         example = next((a for a in screened if a.suitable and a.last_price), None)
         if example and example.last_price:
-            example_premium = round(example.last_price * 0.03, 2) or 1.0
+            example_premium = round(example.last_price * OPTION_PREMIUM_ESTIMATE_PCT, 2) or 1.0
         else:
             example_premium = 3.0
-        example_stop = round(example_premium * 0.75, 2)
+        example_stop = round(example_premium * STOP_LOSS_PCT_OF_PREMIUM, 2)
         risk_per_contract = round((example_premium - example_stop) * 100, 2)
         contracts = int(max_risk_dollars // risk_per_contract) if risk_per_contract > 0 else 0
         contracts = max(contracts, 1) if max_risk_dollars > 0 else 0
