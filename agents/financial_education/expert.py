@@ -253,7 +253,7 @@ class FinancialEducationExpert(BaseExpert):
         if len(closes) < 40:
             return None
         # Sample ~monthly closes over the trailing year (roughly 21 trading days/month).
-        monthly_closes = closes[::21] or closes
+        monthly_closes = closes[::21] if len(closes) >= 21 else closes
         if len(monthly_closes) < 2:
             return None
 
@@ -350,6 +350,8 @@ class FinancialEducationExpert(BaseExpert):
             ("Personal loan", 6000.0, 0.11),
             ("Student loan", 15000.0, 0.06),
         ]
+        MAX_PAYOFF_MONTHS = 600  # safety cap (50 years) so the simulation always terminates
+        PAID_OFF_THRESHOLD = 0.01  # balances below one cent are treated as fully paid off
 
         def simulate(order: list[tuple[str, float, float]], monthly_payment: float = 600.0) -> tuple[float, int]:
             balances = {name: bal for name, bal, _ in order}
@@ -357,20 +359,21 @@ class FinancialEducationExpert(BaseExpert):
             months = 0
             total_interest = 0.0
             names_order = [name for name, _, _ in order]
-            while any(balances[n] > 0.01 for n in names_order) and months < 600:
+
+            def remaining_names() -> list[str]:
+                return [n for n in names_order if balances[n] > PAID_OFF_THRESHOLD]
+
+            while remaining_names() and months < MAX_PAYOFF_MONTHS:
                 months += 1
-                payment_left = monthly_payment
-                for name in names_order:
-                    if balances[name] <= 0:
-                        continue
+                active = remaining_names()
+                for name in active:
                     interest = balances[name] * (rates[name] / 12)
                     total_interest += interest
                     balances[name] += interest
-                for name in names_order:
+                payment_left = monthly_payment
+                for name in remaining_names():
                     if payment_left <= 0:
                         break
-                    if balances[name] <= 0:
-                        continue
                     pay = min(payment_left, balances[name])
                     balances[name] -= pay
                     payment_left -= pay
