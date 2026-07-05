@@ -267,7 +267,11 @@ class OceanographyExpert:
     def _tidal_extreme_score(self, stations: list[StationReading]) -> float:
         ratios = []
         for s in stations:
-            if s.tidal_range_ft is not None and s.normal_range_ft:
+            if (
+                s.tidal_range_ft is not None
+                and s.normal_range_ft is not None
+                and s.normal_range_ft > 0
+            ):
                 ratios.append(s.tidal_range_ft / s.normal_range_ft)
         if not ratios:
             return 0.0
@@ -344,7 +348,7 @@ class OceanographyExpert:
         draft_risk = "normal"
         low_stations = [
             s for s in stations
-            if s.tidal_range_ft is not None and s.normal_range_ft
+            if s.tidal_range_ft is not None and s.normal_range_ft is not None
             and s.tidal_range_ft > s.normal_range_ft * 1.2
         ]
         if low_stations:
