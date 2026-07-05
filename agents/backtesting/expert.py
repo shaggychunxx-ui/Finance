@@ -8,7 +8,10 @@ whether each signal has a validated edge — win rate, Sharpe ratio, max
 drawdown, profit factor, and performance versus a simple buy-and-hold
 benchmark.
 
-Data: Yahoo Finance chart API (1-year daily history).
+Data: Yahoo Finance chart API (full available daily history — no fixed
+lookback window; each signal is backtested as far back as data allows so the
+walk-forward split reflects however much history is actually needed to judge
+whether a strategy holds up).
 """
 
 from __future__ import annotations
@@ -98,7 +101,7 @@ class BacktestingExpert:
         try:
             resp = requests.get(
                 CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1y"},
+                params={"interval": "1d", "range": "max"},
                 headers=HEADERS,
                 timeout=25,
             )
@@ -106,7 +109,7 @@ class BacktestingExpert:
                 time.sleep(3)
                 resp = requests.get(
                     CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1y"},
+                    params={"interval": "1d", "range": "max"},
                     headers=HEADERS,
                     timeout=25,
                 )
@@ -271,7 +274,7 @@ class BacktestingExpert:
             expert_summary=summary,
             market_signals=signals,
             recommendations=recs,
-            data_source="Yahoo Finance (1yr daily, walk-forward backtest)",
+            data_source="Yahoo Finance (full available daily history, walk-forward backtest)",
         )
 
     def to_dict(self, report: BacktestingReport) -> dict[str, Any]:

@@ -8,7 +8,9 @@ experiments. Rule experiments are walk-forward backtested with the shared
 agents.backtesting engine (Sharpe ratio, max drawdown, profit factor) so an
 in-sample win rate alone is never treated as a validated edge.
 
-Data: Yahoo Finance chart API (1-year daily history).
+Data: Yahoo Finance chart API (full available daily history — no fixed
+lookback window; rule experiments are backtested as far back as data allows
+rather than a hardcoded timeframe).
 """
 
 from __future__ import annotations
@@ -203,7 +205,7 @@ class EmpiricalProbabilityExpert:
         try:
             resp = requests.get(
                 CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1y"},
+                params={"interval": "1d", "range": "max"},
                 headers=HEADERS,
                 timeout=25,
             )
@@ -211,7 +213,7 @@ class EmpiricalProbabilityExpert:
                 time.sleep(3)
                 resp = requests.get(
                     CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1y"},
+                    params={"interval": "1d", "range": "max"},
                     headers=HEADERS,
                     timeout=25,
                 )

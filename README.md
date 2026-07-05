@@ -18,11 +18,11 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
-| **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
+| **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (full available daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
-| **Backtesting Expert** | `run.bat backtesting` | Yahoo Finance (1yr daily history) |
+| **Backtesting Expert** | `run.bat backtesting` | Yahoo Finance (full available daily history) |
 
 ## Quick start
 
