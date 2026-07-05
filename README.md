@@ -25,6 +25,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Short Squeeze / FTD Expert** | `run.bat short-squeeze` | Yahoo Finance key stats, [FINRA](https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data) short volume, [SEC FTD data](https://www.sec.gov/data-research/sec-markets-data/fails-deliver-data) |
 
 ## Quick start
 
@@ -48,6 +49,7 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat short-squeeze
 ```
 
 Or with options:
@@ -397,6 +399,31 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Short Squeeze / FTD Expert
+
+Tracks structural and operational short "failures" across a heavily-shorted watchlist:
+
+- **Reg SHO Threshold List test** — parses pipe-delimited SEC Failure-to-Deliver (FTD)
+  net-balance files and flags tickers with 5 consecutive settlement days of
+  >=10,000 FTD shares *and* >=0.5% of shares outstanding
+- **Squeeze metrics** — Days-to-Cover, Short Float %, and a composite Risk Multiplier
+  that weights float scarcity over raw short interest
+- **FINRA Daily Short Ratio** — parses the consolidated off-exchange short volume file
+  and flags sessions >60% (mostly market-maker inventory balancing, not new shorting)
+- **Cost-to-Borrow (CTB) model** — estimates annualized borrow fees and the resulting
+  daily capital charge on short sellers when float scarcity and liquidity bottlenecks
+  compound (Easy-to-Borrow → Warm → Hard-to-Borrow → Squeeze-Tier)
+
+```bat
+run.bat short-squeeze -o output/short_squeeze.json
+```
+
+Outputs:
+
+- `output/short_squeeze.json` — full report with squeeze metrics, CTB estimates, FINRA
+  daily short volume, Reg SHO threshold status, market signals, and recommendations
+- `output/squeeze_models.json` — catalog of the formulas/models applied
 
 ## Requirements
 

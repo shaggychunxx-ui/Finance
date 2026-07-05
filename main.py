@@ -26,6 +26,7 @@ from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
+from agents.short_squeeze import run_short_squeeze_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 
@@ -917,6 +918,53 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_short_squeeze(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("squeeze_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(composite risk {metrics.get('composite_risk_score')})"
+    )
+    print()
+    print("  Squeeze metrics:")
+    for m in sorted(data.get("squeeze_metrics", []), key=lambda x: -(x.get("risk_multiplier") or 0))[:6]:
+        print(
+            f"    • {m.get('symbol')} {m.get('squeeze_risk_label')} (score {m.get('risk_multiplier')}): "
+            f"{m.get('short_float_pct')}% short float, {m.get('days_to_cover')}d to cover"
+        )
+    print()
+    print("  Cost-to-borrow (estimated):")
+    for c in sorted(data.get("ctb_estimates", []), key=lambda x: -(x.get("estimated_annualized_ctb_pct") or 0))[:5]:
+        print(
+            f"    • {c.get('symbol')}: {c.get('estimated_annualized_ctb_pct')}% CTB ({c.get('tier')}), "
+            f"${c.get('daily_borrow_fee_capital_charge'):,.0f}/day"
+        )
+    print()
+    reg_sho = [r for r in data.get("reg_sho_status", []) if r.get("on_threshold_list")]
+    if reg_sho:
+        print("  Reg SHO threshold list:")
+        for r in reg_sho:
+            print(f"    • {r.get('ticker')}: {r.get('rationale')}")
+        print()
+    if assessment:
+        print("  Squeeze assessment:")
+        for key in ("structural_signal", "liquidity_signal", "capital_burn_signal", "conclusion"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
@@ -935,6 +983,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
+    "short-squeeze": _print_short_squeeze,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
@@ -957,6 +1006,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
+    "short-squeeze": run_short_squeeze_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
@@ -1035,6 +1085,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "short-squeeze":
+                catalog = args.output.parent / "squeeze_models.json"
+                if catalog.exists():
+                    print(f"  Squeeze models catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():
