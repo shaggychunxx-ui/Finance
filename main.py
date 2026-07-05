@@ -22,6 +22,7 @@ from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
+from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
@@ -818,6 +819,41 @@ def _print_logistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_order_execution(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("execution_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  VIX: {meta.get('vix_level')}  |  Execution risk: {metrics.get('execution_risk_score')}  |  "
+        f"Price risk: {metrics.get('price_risk_score')}"
+    )
+    print()
+    print("  Symbol microstructure:")
+    for s in data.get("symbol_microstructure", [])[:8]:
+        print(
+            f"    • {s.get('symbol')} [{s.get('liquidity_tier')}]: "
+            f"slippage≈{s.get('estimated_slippage_bps')}bps, "
+            f"gap≈{s.get('max_overnight_gap_pct')}% → {s.get('recommended_order_type')}"
+        )
+    print()
+    if assessment:
+        print("  Execution assessment:")
+        for key in ("volatility_regime", "order_routing_conclusion"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -931,6 +967,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "logistics": _print_logistics,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
+    "order-execution": _print_order_execution,
     "patents": _print_patents,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
@@ -953,6 +990,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
+    "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
@@ -1035,6 +1073,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "order-execution":
+                catalog = args.output.parent / "order_type_playbook.json"
+                if catalog.exists():
+                    print(f"  Order type playbook catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():
