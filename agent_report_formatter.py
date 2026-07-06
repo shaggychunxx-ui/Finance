@@ -53,6 +53,23 @@ def format_report_summary(data: dict[str, Any]) -> str:
     lines.append("=" * min(60, len(agent) + 10))
     lines.append("")
 
+    try:
+        from agents.platform_catalog import full_agent_catalog
+        from prediction_accuracy import agent_accuracy_label as _acc_label
+
+        catalog = full_agent_catalog(check_remote=False)
+        agent_row = next(
+            (row for row in catalog if row.get("label") == agent or row.get("id") == agent),
+            None,
+        )
+        if agent_row:
+            acc = _acc_label(agent_row["id"])
+            if acc not in ("—", ""):
+                lines.append(f"Tracked accuracy: {acc}")
+                lines.append("")
+    except Exception:
+        pass
+
     summary = meta.get("expert_summary") or meta.get("national_headline")
     if summary:
         lines.append(summary)

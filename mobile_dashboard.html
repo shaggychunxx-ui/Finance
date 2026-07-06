@@ -4,9 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="E*TRADE Trader" />
   <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="application-name" content="E*TRADE Trader" />
   <meta name="theme-color" content="#6c5ce7" />
+  <meta name="color-scheme" content="dark" />
   <link rel="manifest" href="/mobile_manifest.json" />
   <link rel="apple-touch-icon" href="/mobile_icons/icon-192.png" />
   <title>E*TRADE Trader</title>
@@ -35,6 +38,16 @@
       line-height: 1.45;
       min-height: 100%;
     }
+    html.standalone body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    html.standalone .install-bar { display: none !important; }
     .app { max-width: 720px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
     header {
       padding: 14px 16px 8px;
@@ -306,13 +319,14 @@
       </div>
     </header>
     <div id="installBar" class="install-bar">
-      <strong>Install on your phone</strong>
-      <span class="muted">Add this monitor to your home screen like an app.</span>
+      <strong>Install as phone app</strong>
+      <span class="muted" id="installHint">Opens full screen without Chrome browser bars.</span>
       <button type="button" id="installBtn">Install app</button>
       <ol class="install-steps" id="installSteps">
-        <li>Tap the browser menu (three dots)</li>
-        <li>Choose <strong>Add to Home screen</strong> or <strong>Install app</strong></li>
-        <li>Open the new icon anytime to monitor</li>
+        <li>If you see a security warning, tap <strong>Advanced</strong> then <strong>Proceed</strong></li>
+        <li>Tap <strong>Install app</strong> above, or use the browser menu</li>
+        <li>Choose <strong>Install app</strong> (Android) or <strong>Add to Home Screen</strong> (iPhone)</li>
+        <li>Open the new home screen icon — it runs as its own app</li>
       </ol>
     </div>
     <nav>
@@ -321,6 +335,20 @@
       <button type="button" data-tab="trades">Trades</button>
       <button type="button" data-tab="activity">Activity</button>
     </nav>
+    <div id="installModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal">
+        <h3>Install on home screen</h3>
+        <p id="installModalText">Use Chrome menu to install this as a full-screen app.</p>
+        <ol class="install-steps" id="installModalSteps">
+          <li>Tap the <strong>three dots</strong> menu (top right in Chrome)</li>
+          <li>Tap <strong>Install app</strong> or <strong>Add to Home screen</strong></li>
+          <li>Confirm, then open the new icon on your home screen</li>
+        </ol>
+        <div class="modal-actions">
+          <button type="button" class="modal-cancel" id="installModalClose">Got it</button>
+        </div>
+      </div>
+    </div>
     <div id="confirmModal" class="modal-backdrop" aria-hidden="true">
       <div class="modal">
         <h3>Stop all automation?</h3>
@@ -335,7 +363,7 @@
       <div id="toast" class="toast"></div>
       <div id="setupPanel" class="setup hidden">
         <strong>Access token required</strong>
-        <p class="muted">Copy the token from Start Mobile Server.bat output or etrade_config.json → mobile_monitor.token</p>
+        <p class="muted">On your PC run Install Phone App.bat, or paste the token from etrade_config.json → mobile_monitor.token</p>
         <input id="tokenInput" type="password" placeholder="Paste token" autocomplete="off" />
         <button type="button" id="saveTokenBtn">Save & connect</button>
       </div>
@@ -404,11 +432,15 @@
     const LAN_KEY = "etrade_mobile_lan";
 
     function getToken() {
+      if (window.__MOBILE_TOKEN__) {
+        localStorage.setItem(TOKEN_KEY, window.__MOBILE_TOKEN__);
+        return window.__MOBILE_TOKEN__;
+      }
       const params = new URLSearchParams(location.search);
       const fromUrl = params.get("token");
       if (fromUrl) {
         localStorage.setItem(TOKEN_KEY, fromUrl);
-        history.replaceState({}, "", location.pathname);
+        return fromUrl;
       }
       return localStorage.getItem(TOKEN_KEY) || "";
     }
@@ -743,7 +775,7 @@
       const list = data.agents || [];
       $("agentList").innerHTML = list.map((a) => `
         <div class="agent-item" data-id="${a.id}">
-          <div class="row-head"><span>${a.label}</span><span class="muted">${a.updated}</span></div>
+          <div class="row-head"><span>${a.label}</span><span class="muted">${a.updated}${a.accuracy && a.accuracy !== "—" ? " · " + a.accuracy : ""}</span></div>
           <div class="muted">${a.category} · ${a.status}</div>
         </div>
       `).join("");
@@ -804,30 +836,97 @@
       }
     }
 
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: fullscreen)").matches ||
+      window.navigator.standalone === true ||
+      document.referrer.startsWith("android-app://");
+    const isAndroid = /android/i.test(navigator.userAgent);
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+    function showInstallModal(message) {
+      if (message) $("installModalText").textContent = message;
+      $("installModal").classList.add("show");
+      $("installModal").setAttribute("aria-hidden", "false");
+    }
+
+    function hideInstallModal() {
+      $("installModal").classList.remove("show");
+      $("installModal").setAttribute("aria-hidden", "true");
+    }
+
+    if (isStandalone) {
+      document.documentElement.classList.add("standalone");
+    } else if (isAndroid && !window.isSecureContext) {
+      $("installHint").textContent =
+        "Use the HTTPS link from Install Phone App.bat — HTTP opens inside Chrome.";
+      $("installBar").classList.add("show");
+    } else if (!isStandalone) {
+      $("installBar").classList.add("show");
+    }
+
     let deferredInstall = null;
+    let installReady = false;
+
+    async function initInstall() {
+      if ("serviceWorker" in navigator) {
+        try {
+          await navigator.serviceWorker.register("/mobile_sw.js", { scope: "/" });
+          await navigator.serviceWorker.ready;
+        } catch (_) {}
+      }
+      installReady = true;
+      if (deferredInstall && !isStandalone) {
+        $("installBtn").textContent = "Install app";
+        $("installSteps").classList.add("hidden");
+      }
+    }
+
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
       deferredInstall = e;
-      $("installBar").classList.add("show");
-      $("installSteps").classList.add("hidden");
+      if (!isStandalone) {
+        $("installBar").classList.add("show");
+        $("installBtn").textContent = "Install app";
+        $("installSteps").classList.add("hidden");
+        $("installHint").textContent = "Tap Install app to add a full-screen home screen icon.";
+      }
     });
+
     $("installBtn").addEventListener("click", async () => {
+      if (!installReady) await initInstall();
       if (deferredInstall) {
-        deferredInstall.prompt();
-        await deferredInstall.userChoice;
-        deferredInstall = null;
-        $("installBar").classList.remove("show");
+        try {
+          await deferredInstall.prompt();
+          const choice = await deferredInstall.userChoice;
+          if (choice.outcome === "accepted") {
+            $("installBar").classList.remove("show");
+            showToast("App installed — open the new home screen icon.", "ok");
+          } else {
+            showInstallModal("Install cancelled. Use Chrome menu → Install app when ready.");
+          }
+        } catch (_) {
+          showInstallModal(
+            "Chrome blocked the install prompt. Tap the three-dots menu → Install app."
+          );
+        }
         return;
       }
-      $("installBar").classList.add("show");
-      $("installSteps").classList.remove("hidden");
+      if (isIOS) {
+        showInstallModal("Tap Share, then Add to Home Screen.");
+        return;
+      }
+      showInstallModal(
+        "If Install app is not in the menu yet, run Install Phone App.bat on your PC to trust the certificate, then reload this page."
+      );
     });
-    if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
-      $("installBar").classList.add("show");
-    }
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/mobile_sw.js").catch(() => {});
-    }
+
+    $("installModalClose").addEventListener("click", hideInstallModal);
+    $("installModal").addEventListener("click", (e) => {
+      if (e.target === $("installModal")) hideInstallModal();
+    });
+
+    initInstall();
 
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) stopMonitoring();

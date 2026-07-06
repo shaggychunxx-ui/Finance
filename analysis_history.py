@@ -310,9 +310,19 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
                 }
             )
 
+    accuracy_board: list[dict[str, Any]] = []
+    try:
+        from prediction_accuracy import accuracy_leaderboard
+
+        accuracy_board = accuracy_leaderboard(top_n=12)
+    except Exception:
+        pass
+
     context = {
         "generated_at": _now_iso(),
         "objective": "maximize_multi_horizon_profit",
+        "accuracy_objective": "maximize_prediction_accuracy",
+        "accuracy_leaderboard": accuracy_board,
         "lookback_cycles": lookback_cycles,
         "account_growth": {
             "baseline_value": growth.get("baseline_value"),
@@ -325,7 +335,7 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
         "snapshot_count": len(index.get("snapshots", [])),
         "usage": (
             "Agents and portfolio logic read this file to weight tickers with sustained bullish "
-            "signals and favor trades that grow total account value."
+            "signals, favor high-accuracy agents, and grow total account value."
         ),
     }
     _write_json(AGENT_CONTEXT_FILE, context)

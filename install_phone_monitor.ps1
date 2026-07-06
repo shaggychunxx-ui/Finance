@@ -193,8 +193,8 @@ $opened = Open-OnPhone $phoneUrl
 if ($opened) {
     Write-Host "Monitor opened on your phone."
     Write-Host ""
-    Write-Host "HOME SCREEN (avoids error 1033):"
-    Write-Host "  Run Fix Phone Home Screen.bat while phone is on same Wi-Fi."
+    Write-Host "INSTALL AS PHONE APP (no Chrome browser):"
+    Write-Host "  Run Install Phone App.bat while phone is on same Wi-Fi."
     Write-Host "  Do NOT add trycloudflare.com links to your home screen."
     Write-Host ""
     Write-Host "Temporary remote open (cellular):"

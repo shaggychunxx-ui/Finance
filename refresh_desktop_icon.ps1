@@ -132,10 +132,13 @@ if (Test-Path $mobileRemoteBat) {
         -Description 'Phone monitor tunnel - runs hidden in background'
 }
 
-$fixHomeBat = Join-Path $root "Fix Phone Home Screen.bat"
+$fixHomeBat = Join-Path $root "Install Phone App.bat"
+if (-not (Test-Path $fixHomeBat)) {
+    $fixHomeBat = Join-Path $root "Fix Phone Home Screen.bat"
+}
 if (Test-Path $fixHomeBat) {
     Set-ETradeShortcut `
-        -LinkPath (Join-Path $desktop "Fix Phone Home Screen.lnk") `
+        -LinkPath (Join-Path $desktop "Install Phone App.lnk") `
         -TargetPath $fixHomeBat `
         -Description 'Fix phone error 1033 - stable Wi-Fi home screen icon'
 }

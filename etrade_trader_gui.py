@@ -73,6 +73,7 @@ from strategy_engine import (
     DEFAULT_MIN_TRADE_USD,
     PLAN_FILE,
     StrategyPlan,
+    TradeOrder,
     build_strategy_plan,
     execute_orders,
     load_strategy_plan,
@@ -260,6 +261,7 @@ class ETradeTraderApp(tk.Frame):
         self._client: ETradeClient | None = None
         self._accounts: list[dict[str, Any]] = []
         self._plan: StrategyPlan | None = None
+        self._trade_analysis_context = "portfolio"
         self._busy = False
         self._refresh_running = False
         self._bg_pipeline_running = False
@@ -784,7 +786,7 @@ class ETradeTraderApp(tk.Frame):
         tk.Label(swing_in, text="Swing investing", bg="#0d1424", fg=TEXT, font=self._m.font(11, "bold")).pack(anchor="w")
         tk.Label(
             swing_in,
-            text="Uses fused agent research to build swing trades. Strategy updates every 30 minutes.",
+            text="Agents choose all stocks — swing trades follow the agent portfolio. Strategy updates every 30 minutes.",
             bg="#0d1424", fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
         ).pack(anchor="w", pady=(2, 0))
         tk.Checkbutton(
@@ -800,7 +802,7 @@ class ETradeTraderApp(tk.Frame):
         tk.Label(day_in, text="Day trading", bg="#0d1424", fg=ACCENT2, font=self._m.font(11, "bold")).pack(anchor="w")
         tk.Label(
             day_in,
-            text="Shorter trades on today's best 24-hour signals. Runs automatically every 5 minutes "
+            text="Shorter trades on agent portfolio picks. Runs automatically every 5 minutes "
                  "(in this app and when closed via the background worker). Closes positions same day.",
             bg="#0d1424", fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
         ).pack(anchor="w", pady=(2, 0))
@@ -964,8 +966,22 @@ class ETradeTraderApp(tk.Frame):
         self._build_agents_tab()
         self._build_setup_tab()
 
-        self._trades_notebook = ttk.Notebook(self._tab_trades, style="Trader.TNotebook")
-        self._trades_notebook.pack(fill=tk.BOTH, expand=True, padx=self._m.px(4), pady=self._m.px(4))
+        self._trades_splitter = tk.PanedWindow(
+            self._tab_trades,
+            orient=tk.VERTICAL,
+            bg=PANEL,
+            sashwidth=self._m.px(6),
+            sashrelief=tk.FLAT,
+            opaqueresize=True,
+            showhandle=False,
+        )
+        self._trades_splitter.pack(fill=tk.BOTH, expand=True, padx=self._m.px(4), pady=self._m.px(4))
+
+        trades_upper = tk.Frame(self._trades_splitter, bg=PANEL)
+        self._trades_splitter.add(trades_upper, minsize=self._m.px(220))
+
+        self._trades_notebook = ttk.Notebook(trades_upper, style="Trader.TNotebook")
+        self._trades_notebook.pack(fill=tk.BOTH, expand=True)
         self._tab_portfolio = tk.Frame(self._trades_notebook, bg=PANEL)
         self._tab_orders = tk.Frame(self._trades_notebook, bg=PANEL)
         self._tab_day = tk.Frame(self._trades_notebook, bg=PANEL)
@@ -975,7 +991,7 @@ class ETradeTraderApp(tk.Frame):
 
         tk.Label(
             self._tab_portfolio,
-            text="How your holdings compare to the agent-built target portfolio",
+            text="How your holdings compare to the agent-built target portfolio — click a row for full analysis",
             bg=PANEL, fg=MUTED, font=self._m.font(9), anchor="w",
         ).pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(10), 0))
         self._holdings_tree = self._make_tree(
@@ -985,18 +1001,20 @@ class ETradeTraderApp(tk.Frame):
              "current_usd": ("Current $", 108), "target_usd": ("Target $", 108), "drift": ("Drift", 80),
              "rationale": ("Why chosen", 360)},
         )
+        self._bind_trade_tree_select(self._holdings_tree, "portfolio")
 
         tk.Label(
             self._tab_orders,
-            text="Swing trade orders — built every 30 minutes from multi-horizon agent research",
+            text="Swing trade orders — click a row for the agent analysis behind each trade",
             bg=PANEL, fg=MUTED, font=self._m.font(9), anchor="w",
         ).pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(10), 0))
         self._orders_tree = self._make_tree(
             self._tab_orders,
-            ("symbol", "action", "qty", "price", "est_usd", "status", "message"),
-            {"symbol": ("Symbol", 88), "action": ("Action", 64), "qty": ("Qty", 56),
-             "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 320)},
+            ("symbol", "action", "type", "qty", "price", "est_usd", "status", "message"),
+            {"symbol": ("Symbol", 88), "action": ("Action", 64), "type": ("Type", 108), "qty": ("Qty", 56),
+             "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 280)},
         )
+        self._bind_trade_tree_select(self._orders_tree, "swing_order")
 
         day_hdr = tk.Frame(self._tab_day, bg=PANEL)
         day_hdr.pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(10), 0))
@@ -1026,10 +1044,59 @@ class ETradeTraderApp(tk.Frame):
         ord_wrap.pack(fill=tk.BOTH, expand=True, padx=self._m.px(12), pady=(0, self._m.px(12)))
         self._day_orders_tree = self._make_tree(
             ord_wrap,
-            ("symbol", "action", "qty", "price", "est_usd", "status", "message"),
-            {"symbol": ("Symbol", 88), "action": ("Action", 64), "qty": ("Qty", 56),
-             "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 320)},
+            ("symbol", "action", "type", "qty", "price", "est_usd", "status", "message"),
+            {"symbol": ("Symbol", 88), "action": ("Action", 64), "type": ("Type", 108), "qty": ("Qty", 56),
+             "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 280)},
             compact_pad=True,
+        )
+        self._bind_trade_tree_select(self._day_positions_tree, "day_position")
+        self._bind_trade_tree_select(self._day_orders_tree, "day_order")
+
+        detail_outer = tk.Frame(self._trades_splitter, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        self._trades_splitter.add(detail_outer, minsize=self._m.px(160), height=self._m.px(260))
+        detail_head = tk.Frame(detail_outer, bg="#0d1424")
+        detail_head.pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
+        self._trade_detail_title = tk.Label(
+            detail_head,
+            text="Agent analysis",
+            bg="#0d1424",
+            fg=TEXT,
+            font=self._m.font(11, "bold"),
+            anchor="w",
+        )
+        self._trade_detail_title.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(
+            detail_head,
+            text="Click a position or order above",
+            bg="#0d1424",
+            fg=MUTED,
+            font=self._m.font(9),
+            anchor="e",
+        ).pack(side=tk.RIGHT)
+        detail_body = tk.Frame(detail_outer, bg="#0d1424")
+        detail_body.pack(fill=tk.BOTH, expand=True, padx=self._m.px(8), pady=(0, self._m.px(8)))
+        detail_body.rowconfigure(0, weight=1)
+        detail_body.columnconfigure(0, weight=1)
+        self._trade_detail_text = tk.Text(
+            detail_body,
+            bg="#0d1424",
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief=tk.FLAT,
+            wrap=tk.WORD,
+            font=self._m.font(10),
+            padx=self._m.px(8),
+            pady=self._m.px(8),
+            height=10,
+            state=tk.DISABLED,
+        )
+        detail_scroll = ttk.Scrollbar(detail_body, orient=tk.VERTICAL, command=self._trade_detail_text.yview)
+        self._trade_detail_text.configure(yscrollcommand=detail_scroll.set)
+        self._trade_detail_text.grid(row=0, column=0, sticky="nsew")
+        detail_scroll.grid(row=0, column=1, sticky="ns")
+        self._trade_detail_text.insert(
+            tk.END,
+            "Select any portfolio row, swing order, or day-trade position to read the full agent analysis.",
         )
 
         log_frame = tk.Frame(self._tab_log, bg="#0d1424", highlightbackground=BORDER, highlightthickness=1)
@@ -1804,6 +1871,83 @@ class ETradeTraderApp(tk.Frame):
     def _tree_clear(self, tree: ttk.Treeview) -> None:
         tree_clear(tree)
 
+    @staticmethod
+    def _format_order_type(order: TradeOrder) -> str:
+        price_type = (getattr(order, "price_type", None) or "MARKET").upper()
+        if price_type == "LIMIT" and getattr(order, "limit_price", None) is not None:
+            return f"LIMIT ${order.limit_price:.2f}"
+        return price_type
+
+    def _bind_trade_tree_select(self, tree: ttk.Treeview, context: str) -> None:
+        tree.bind("<<TreeviewSelect>>", lambda event, ctx=context: self._on_trade_tree_select(event, ctx))
+        tree.bind("<Double-1>", lambda event, ctx=context: self._on_trade_tree_select(event, ctx))
+
+    def _on_trade_tree_select(self, event: tk.Event, context: str) -> None:
+        tree = event.widget
+        if not isinstance(tree, ttk.Treeview):
+            return
+        selection = tree.selection()
+        if not selection:
+            return
+        values = tree.item(selection[0], "values")
+        if not values:
+            return
+        symbol = str(values[0]).strip().upper()
+        if not symbol:
+            return
+        self._trade_analysis_context = context
+        self._show_trade_analysis(symbol, context)
+
+    def _show_trade_analysis(self, symbol: str, context: str) -> None:
+        from position_analysis import build_position_analysis
+
+        holding: dict[str, Any] | None = None
+        current: dict[str, Any] | None = None
+        order: TradeOrder | None = None
+        day_pos: dict[str, Any] | None = None
+
+        if self._plan:
+            target_map = {h["symbol"].upper(): h for h in self._plan.target_holdings}
+            pos_map = {p["symbol"].upper(): p for p in self._plan.current_positions}
+            holding = target_map.get(symbol)
+            current = pos_map.get(symbol)
+            if context == "swing_order":
+                order = next((o for o in self._plan.orders if o.symbol.upper() == symbol), None)
+
+        if context in {"day_position", "day_order"}:
+            for pos in self._read_day_state().get("positions", []) or []:
+                if str(pos.get("symbol", "")).upper() == symbol:
+                    day_pos = pos
+                    break
+            if context == "day_order":
+                plan_data = load_strategy_plan(DAY_PLAN_FILE)
+                if plan_data:
+                    try:
+                        day_plan = plan_from_dict(plan_data)
+                        order = next((o for o in day_plan.orders if o.symbol.upper() == symbol), None)
+                    except Exception:
+                        order = None
+
+        text = build_position_analysis(
+            symbol,
+            holding=holding,
+            current_position=current,
+            order=order,
+            day_position=day_pos,
+        )
+        labels = {
+            "portfolio": "Portfolio position",
+            "swing_order": "Swing trade order",
+            "day_position": "Day trade position",
+            "day_order": "Day trade order",
+        }
+        self._trade_detail_title.configure(text=f"{symbol} — {labels.get(context, 'Analysis')}")
+        self._trade_detail_text.configure(state=tk.NORMAL)
+        self._trade_detail_text.delete("1.0", tk.END)
+        self._trade_detail_text.insert("1.0", text)
+        self._trade_detail_text.configure(state=tk.DISABLED)
+        self._trade_detail_text.see("1.0")
+
     def _tree_insert(
         self,
         tree: ttk.Treeview,
@@ -2414,6 +2558,7 @@ class ETradeTraderApp(tk.Frame):
                         (
                             order.symbol,
                             order.action,
+                            self._format_order_type(order),
                             order.quantity,
                             f"${order.estimated_price:.2f}",
                             f"${est:,.0f}",
@@ -3107,6 +3252,7 @@ class ETradeTraderApp(tk.Frame):
                 (
                     order.symbol,
                     order.action,
+                    self._format_order_type(order),
                     order.quantity,
                     f"${order.estimated_price:.2f}",
                     f"${est:,.0f}",

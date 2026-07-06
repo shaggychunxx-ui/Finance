@@ -17,9 +17,16 @@ from tkinter import messagebox, ttk
 import tkinter as tk
 
 from agent_report_formatter import format_report_summary
-from agent_report_status import agent_age_info, agent_mtime, agent_status, fresh_report_counts
+from agent_report_status import (
+    agent_accuracy_label,
+    agent_age_info,
+    agent_mtime,
+    agent_status,
+    fresh_report_counts,
+)
 from app_paths import ICON_FILE, OUTPUT, ROOT, ensure_app_path
 from finance_runners import load_finance_runners
+from gui_treekit import bind_tree_sort, reapply_tree_sort
 from gui_theme import (
     ACCENT,
     ACCENT2,
@@ -29,10 +36,10 @@ from gui_theme import (
     MUTED,
     PANEL,
     TEXT,
+    TREE_HEADING_BG,
     UP,
     WARN,
     ScreenMetrics,
-    configure_treeview_style,
 )
 
 ensure_app_path()
@@ -152,7 +159,28 @@ class FinanceAgentsApp(tk.Frame):
             font=self._m.font(11),
             padding=(self._m.px(12), self._m.px(8)),
         )
-        configure_treeview_style(style, self._m, prefix="Finance")
+        tree_row = self._m.px(44 if self._embedded else 38)
+        tree_font = self._m.font(12 if self._embedded else 11)
+        style.configure(
+            "Finance.Treeview",
+            background="#0d1424",
+            fieldbackground="#0d1424",
+            foreground=TEXT,
+            rowheight=tree_row,
+            font=tree_font,
+        )
+        style.configure(
+            "Finance.Treeview.Heading",
+            background=TREE_HEADING_BG,
+            foreground=TEXT,
+            font=self._m.font(11 if self._embedded else 11, "bold"),
+            padding=(self._m.px(8), self._m.px(7)),
+        )
+        style.map(
+            "Finance.Treeview",
+            background=[("selected", ACCENT)],
+            foreground=[("selected", "#ffffff")],
+        )
         style.configure(
             "Finance.Horizontal.TProgressbar",
             troughcolor=BORDER,
@@ -242,7 +270,7 @@ class FinanceAgentsApp(tk.Frame):
                 text="",
                 bg=PANEL,
                 fg=MUTED,
-                font=self._m.font(10),
+                font=self._m.font(11),
             )
             self._embedded_summary.pack(side=tk.LEFT)
             tools = tk.Frame(header, bg=PANEL)
@@ -273,13 +301,21 @@ class FinanceAgentsApp(tk.Frame):
 
         body = tk.Frame(self, bg=shell_bg)
         body.pack(fill=tk.BOTH, expand=True, padx=pad, pady=(0, self._m.px(4 if self._embedded else 8)))
-        body.columnconfigure(1, weight=1)
-        body.rowconfigure(0, weight=1)
+        splitter = tk.PanedWindow(
+            body,
+            orient=tk.HORIZONTAL,
+            bg=shell_bg,
+            sashwidth=self._m.px(6),
+            sashrelief=tk.FLAT,
+            opaqueresize=True,
+            showhandle=False,
+        )
+        splitter.pack(fill=tk.BOTH, expand=True)
+        self._splitter = splitter
 
-        sidebar = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        sidebar.grid(row=0, column=0, sticky="nsew", padx=(0, self._m.px(6 if self._embedded else 10)))
-        sidebar.configure(width=self._m.px(290 if self._embedded else 260))
-        sidebar.pack_propagate(False)
+        sidebar = tk.Frame(splitter, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        sidebar_width = self._m.px(580 if self._embedded else 340)
+        splitter.add(sidebar, minsize=self._m.px(440 if self._embedded else 260), width=sidebar_width)
 
         if not self._embedded:
             sb_head = tk.Frame(sidebar, bg=PANEL)
@@ -317,19 +353,24 @@ class FinanceAgentsApp(tk.Frame):
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=self._m.px(8), pady=(0, self._m.px(8)))
         self._tree = ttk.Treeview(
             tree_frame,
-            columns=("status",),
+            columns=("status", "accuracy"),
             show="tree headings",
             style="Finance.Treeview",
             selectmode="browse",
         )
-        self._tree.heading("#0", text="Agent", anchor="w")
-        self._tree.heading("status", text="Updated", anchor="center")
-        self._tree.column("#0", width=self._m.px(210 if self._embedded else 200), stretch=True)
-        self._tree.column("status", width=self._m.px(72), stretch=False, anchor="center")
+        self._tree.column("#0", width=self._m.px(300 if self._embedded else 220), stretch=True, minwidth=self._m.px(180))
+        self._tree.column("status", width=self._m.px(80), stretch=False, anchor="center")
+        self._tree.column("accuracy", width=self._m.px(150), stretch=False, anchor="center")
         scroll = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self._tree.yview)
         self._tree.configure(yscrollcommand=scroll.set)
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        bind_tree_sort(
+            self._tree,
+            ("#0", "status", "accuracy"),
+            {"#0": ("Agent", 300), "status": ("Age", 80), "accuracy": ("Accuracy", 150)},
+            hierarchical=True,
+        )
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self._tree.bind("<Double-1>", lambda _e: self._on_tree_select())
         self._populate_agent_tree()
@@ -343,13 +384,11 @@ class FinanceAgentsApp(tk.Frame):
             )
 
         main_bg = PANEL if self._embedded else BG
-        main = tk.Frame(body, bg=main_bg)
-        main.grid(row=0, column=1, sticky="nsew")
-        main.rowconfigure(0, weight=1)
-        main.columnconfigure(0, weight=1)
+        main = tk.Frame(splitter, bg=main_bg)
+        splitter.add(main, minsize=self._m.px(420 if self._embedded else 360))
 
         self._report_panel = tk.Frame(main, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        self._report_panel.grid(row=0, column=0, sticky="nsew")
+        self._report_panel.pack(fill=tk.BOTH, expand=True)
         self._build_report_panel()
 
         if self._embedded:
@@ -378,81 +417,105 @@ class FinanceAgentsApp(tk.Frame):
             )
 
     def _build_report_panel(self) -> None:
-        pad = self._m.px(8 if self._embedded else 14)
+        pad = self._m.px(10 if self._embedded else 14)
         wrap = tk.Frame(self._report_panel, bg=PANEL)
         wrap.pack(fill=tk.BOTH, expand=True, padx=pad, pady=pad)
         wrap.columnconfigure(0, weight=1)
 
-        title_row = tk.Frame(wrap, bg=PANEL)
-        title_row.grid(row=0, column=0, sticky="ew", pady=(0, self._m.px(4)))
-        title_size = 14 if self._embedded else 16
+        header = tk.Frame(wrap, bg="#152238", highlightbackground=BORDER, highlightthickness=1)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, self._m.px(8)))
+        header.columnconfigure(0, weight=1)
+
+        title_size = 17 if self._embedded else 16
         self._title_label = tk.Label(
-            title_row, text="Select an agent", bg=PANEL, fg=TEXT, font=self._m.font(title_size, "bold")
+            header,
+            text="Select an agent",
+            bg="#152238",
+            fg=TEXT,
+            font=self._m.font(title_size, "bold"),
+            anchor="w",
         )
-        self._title_label.pack(side=tk.LEFT)
+        self._title_label.grid(row=0, column=0, sticky="ew", padx=self._m.px(12), pady=(self._m.px(10), self._m.px(4)))
+
+        meta_row = tk.Frame(header, bg="#152238")
+        meta_row.grid(row=1, column=0, sticky="ew", padx=self._m.px(12), pady=(0, self._m.px(8)))
+        chip_font = self._m.font(10 if self._embedded else 9)
+        chip_pad = (self._m.px(8), self._m.px(4))
+
         self._status_badge = tk.Label(
-            title_row, text="", bg=BORDER, fg=MUTED, font=self._m.font(8), padx=6, pady=2
+            meta_row, text="", bg=BORDER, fg=MUTED, font=chip_font, padx=chip_pad[0], pady=chip_pad[1]
         )
-        self._status_badge.pack(side=tk.RIGHT)
+        self._status_badge.pack(side=tk.LEFT, padx=(0, self._m.px(6)))
         self._updated_label = tk.Label(
-            title_row, text="", bg=PANEL, fg=MUTED, font=self._m.font(9)
+            meta_row, text="", bg=BORDER, fg=TEXT, font=chip_font, padx=chip_pad[0], pady=chip_pad[1]
         )
-        self._updated_label.pack(side=tk.RIGHT, padx=(0, self._m.px(8)))
+        self._updated_label.pack(side=tk.LEFT, padx=(0, self._m.px(6)))
+        self._accuracy_chip = tk.Label(
+            meta_row, text="", bg=BORDER, fg=ACCENT2, font=chip_font, padx=chip_pad[0], pady=chip_pad[1]
+        )
+        self._accuracy_chip.pack(side=tk.LEFT)
 
         self._desc_label = tk.Label(
-            wrap,
-            text="Choose an agent from the sidebar to view its latest analysis.",
-            bg=PANEL,
+            header,
+            text="Choose an agent from the list to view its latest analysis.",
+            bg="#152238",
             fg=MUTED,
-            font=self._m.font(10 if self._embedded else 10),
-            wraplength=self._m.px(900 if self._embedded else 680),
+            font=self._m.font(11 if self._embedded else 10),
+            wraplength=self._m.px(720),
             justify=tk.LEFT,
+            anchor="w",
         )
-        self._desc_label.grid(row=1, column=0, sticky="ew", pady=(0, self._m.px(6)))
+        self._desc_label.grid(row=2, column=0, sticky="ew", padx=self._m.px(12), pady=(0, self._m.px(10)))
 
         actions = tk.Frame(wrap, bg=PANEL)
-        actions.grid(row=2, column=0, sticky="ew", pady=(0, self._m.px(6)))
+        actions.grid(row=1, column=0, sticky="ew", pady=(0, self._m.px(8)))
+        btn_pad = (0, self._m.px(4)) if self._embedded else (0, 6)
         self._btn_open_json = self._make_button(
-            actions, "Open JSON", self._open_selected_json, variant="secondary", padx=(0, 6)
+            actions, "Open JSON", self._open_selected_json, variant="secondary", padx=btn_pad
         )
         if not self._embedded:
-            self._make_button(actions, "Import JSON…", self._import_json, variant="secondary", padx=(0, 6))
-        self._make_button(actions, "Output Folder", self._open_output_folder, variant="ghost", padx=(0, 6))
+            self._make_button(actions, "Import JSON…", self._import_json, variant="secondary", padx=btn_pad)
+        self._make_button(actions, "Output Folder", self._open_output_folder, variant="ghost", padx=btn_pad)
         if not self._embedded:
-            self._make_button(actions, "Run Agent", self._run_selected, variant="accent", padx=(0, 6))
-            self._make_button(actions, "Run All", self._run_all_agents, variant="primary", padx=(0, 6))
+            self._make_button(actions, "Run Agent", self._run_selected, variant="accent", padx=btn_pad)
+            self._make_button(actions, "Run All", self._run_all_agents, variant="primary", padx=btn_pad)
             self._make_button(
-                actions, "Full Pipeline", self._run_predictor_pipeline, variant="secondary", padx=(0, 6)
+                actions, "Full Pipeline", self._run_predictor_pipeline, variant="secondary", padx=btn_pad
             )
             self._make_button(actions, "Dashboard", self._open_related_dashboard, variant="ghost")
 
         output_frame = tk.Frame(wrap, bg="#0d1424", highlightbackground=BORDER, highlightthickness=1)
-        output_frame.grid(row=3, column=0, sticky="nsew")
+        output_frame.grid(row=2, column=0, sticky="nsew")
         output_frame.rowconfigure(0, weight=1)
         output_frame.columnconfigure(0, weight=1)
-        wrap.rowconfigure(3, weight=1)
+        wrap.rowconfigure(2, weight=1)
 
-        report_wrap = tk.WORD if self._embedded else tk.NONE
+        report_wrap = tk.WORD
+        mono_size = 13 if self._embedded else 11
         self._output = tk.Text(
             output_frame,
             bg="#0d1424",
             fg=TEXT,
             insertbackground=TEXT,
             relief=tk.FLAT,
-            font=self._m.mono(12 if self._embedded else 11),
+            font=self._m.mono(mono_size),
             wrap=report_wrap,
-            spacing1=4,
-            spacing2=2,
-            spacing3=4,
-            padx=self._m.px(12),
-            pady=self._m.px(12),
-            tabs=(self._m.px(180), self._m.px(320)),
+            spacing1=self._m.px(5),
+            spacing2=self._m.px(3),
+            spacing3=self._m.px(5),
+            padx=self._m.px(14),
+            pady=self._m.px(14),
+            tabs=(self._m.px(200), self._m.px(360)),
         )
-        self._output.tag_configure("title", foreground=TEXT, font=self._m.font(13, "bold"))
-        self._output.tag_configure("section", foreground=ACCENT2, font=self._m.font(11, "bold"))
-        self._output.tag_configure("muted", foreground=MUTED)
-        self._output.tag_configure("positive", foreground=UP)
-        self._output.tag_configure("negative", foreground=DOWN)
+        title_font = self._m.font(14 if self._embedded else 13, "bold")
+        section_font = self._m.font(12 if self._embedded else 11, "bold")
+        body_font = self._m.font(11 if self._embedded else 10)
+        self._output.tag_configure("title", foreground=TEXT, font=title_font)
+        self._output.tag_configure("section", foreground=ACCENT2, font=section_font, spacing1=8)
+        self._output.tag_configure("body", foreground=TEXT, font=body_font)
+        self._output.tag_configure("muted", foreground=MUTED, font=body_font)
+        self._output.tag_configure("positive", foreground=UP, font=body_font)
+        self._output.tag_configure("negative", foreground=DOWN, font=body_font)
 
         out_yscroll = ttk.Scrollbar(output_frame, orient=tk.VERTICAL, command=self._output.yview)
         out_xscroll = ttk.Scrollbar(output_frame, orient=tk.HORIZONTAL, command=self._output.xview)
@@ -466,7 +529,12 @@ class FinanceAgentsApp(tk.Frame):
 
     def _on_report_wrap_resize(self, event: tk.Event) -> None:
         if event.width > 40:
-            self._desc_label.configure(wraplength=max(self._m.px(240), event.width - self._m.px(8)))
+            wrap_w = max(self._m.px(280), event.width - self._m.px(24))
+            self._desc_label.configure(wraplength=wrap_w)
+            try:
+                self._output.configure(width=max(20, int(event.width / 8)))
+            except tk.TclError:
+                pass
 
     def _show_search_placeholder(self) -> None:
         if not self._search_var.get():
@@ -497,11 +565,12 @@ class FinanceAgentsApp(tk.Frame):
             categories[cat] = node
             for agent in agents:
                 bucket, age_label, age_tag = agent_age_info(agent)
+                acc_label = agent_accuracy_label(agent)
                 item = self._tree.insert(
                     node,
                     tk.END,
                     text=f"  {agent['label']}",
-                    values=(age_label,),
+                    values=(age_label, acc_label),
                     tags=("agent", agent["id"], age_tag),
                 )
                 self._agent_rows[agent["id"]] = item
@@ -511,6 +580,7 @@ class FinanceAgentsApp(tk.Frame):
         self._tree.tag_configure("stale", foreground=WARN)
         self._tree.tag_configure("old", foreground=DOWN)
         self._tree.tag_configure("none", foreground=MUTED)
+        reapply_tree_sort(self._tree, ("#0", "status", "accuracy"), hierarchical=True)
 
     def _update_embedded_summary(self) -> None:
         if not self._embedded or not hasattr(self, "_embedded_summary"):
@@ -518,7 +588,7 @@ class FinanceAgentsApp(tk.Frame):
         fresh, total = self.fresh_report_counts()
         with_data = sum(1 for agent in AGENT_CATALOG if agent_mtime(agent) > 0)
         self._embedded_summary.configure(
-            text=f"{with_data} reports on disk · {fresh} fresh · select an agent to review",
+            text=f"{with_data} reports · {fresh}/{total} fresh · drag divider to resize · select an agent",
         )
 
     def _filter_agents(self) -> None:
@@ -558,13 +628,16 @@ class FinanceAgentsApp(tk.Frame):
     def _select_default_agent(self) -> None:
         if not AGENT_CATALOG:
             return
-        preferred = ("market-predictor", "finance", "markets")
+        def _rank(agent: dict[str, str]) -> tuple[float, float]:
+            from agent_report_status import agent_accuracy_pct
+
+            acc = agent_accuracy_pct(agent) or 0.0
+            return acc, agent_mtime(agent)
+
         chosen = None
-        for agent_id in preferred:
-            agent = next((a for a in AGENT_CATALOG if a["id"] == agent_id), None)
-            if agent and agent_status(agent) == "Fresh":
-                chosen = agent["id"]
-                break
+        fresh_agents = [a for a in AGENT_CATALOG if agent_status(a) == "Fresh"]
+        if fresh_agents:
+            chosen = max(fresh_agents, key=_rank)["id"]
         if chosen is None:
             ranked = sorted(AGENT_CATALOG, key=agent_mtime, reverse=True)
             if ranked and agent_mtime(ranked[0]) > 0:
@@ -585,31 +658,60 @@ class FinanceAgentsApp(tk.Frame):
             return
         self._title_label.configure(text=agent["label"])
         self._desc_label.configure(text=agent["desc"])
+        self._desc_label.grid()
         bucket, age_label, _ = agent_age_info(agent)
         status = agent_status(agent)
         self._status_badge.configure(
-            text=f"  {status}  ",
+            text=f" {status} ",
             bg=STATUS_COLORS.get(status, MUTED),
             fg="#0a0e17" if status in ("Fresh", "Stale") else TEXT,
         )
+        acc_label = agent_accuracy_label(agent)
         if bucket == "none":
-            self._updated_label.configure(text="No report yet")
+            self._updated_label.configure(text=" No report yet ", bg=BORDER, fg=MUTED)
+            self._accuracy_chip.configure(text="", bg="#152238")
         else:
-            self._updated_label.configure(text=f"Updated {age_label}")
+            self._updated_label.configure(text=f" Updated {age_label} ", bg=BORDER, fg=TEXT)
+            if acc_label not in ("—", ""):
+                acc_color = ACCENT2
+                if acc_label.endswith("%"):
+                    try:
+                        pct = float(acc_label.rstrip("%"))
+                        acc_color = UP if pct >= 65 else WARN if pct >= 50 else DOWN
+                    except ValueError:
+                        pass
+                self._accuracy_chip.configure(text=f" Accuracy {acc_label} ", bg=BORDER, fg=acc_color)
+            else:
+                self._accuracy_chip.configure(text="", bg="#152238")
         self._load_agent_output(agent)
 
-    def _render_report_text(self, text: str) -> None:
-        self._output.delete("1.0", tk.END)
-        self._output.insert(tk.END, text)
-        self._output.tag_remove("title", "1.0", tk.END)
-        self._output.tag_remove("section", "1.0", tk.END)
-        self._output.tag_remove("muted", "1.0", tk.END)
-        self._output.tag_remove("positive", "1.0", tk.END)
-        self._output.tag_remove("negative", "1.0", tk.END)
+    def _trim_report_header(self, text: str) -> str:
+        """Drop duplicate title block — agent name already shown in the panel header."""
+        lines = text.splitlines()
+        if len(lines) < 3:
+            return text
+        if lines[1].strip().startswith("="):
+            start = 2
+            if start < len(lines) and lines[start].strip() == "":
+                start += 1
+            if start < len(lines) and lines[start].startswith("Tracked accuracy:"):
+                start += 1
+                if start < len(lines) and lines[start].strip() == "":
+                    start += 1
+            return "\n".join(lines[start:]).lstrip("\n")
+        return text
 
-        first_line_end = self._output.index("1.0 lineend")
-        if first_line_end != "1.0":
-            self._output.tag_add("title", "1.0", first_line_end)
+    def _render_report_text(self, text: str) -> None:
+        display = self._trim_report_header(text) if self._embedded else text
+        self._output.delete("1.0", tk.END)
+        self._output.insert(tk.END, display)
+        for tag in ("title", "section", "body", "muted", "positive", "negative"):
+            self._output.tag_remove(tag, "1.0", tk.END)
+
+        if not self._embedded:
+            first_line_end = self._output.index("1.0 lineend")
+            if first_line_end != "1.0":
+                self._output.tag_add("title", "1.0", first_line_end)
 
         section_names = (
             "Key metrics",
@@ -617,6 +719,7 @@ class FinanceAgentsApp(tk.Frame):
             "Recommendations",
             "Recent events",
             "Top movers",
+            "Tracked accuracy",
         )
         for section in section_names:
             start = "1.0"
@@ -631,7 +734,15 @@ class FinanceAgentsApp(tk.Frame):
         line_count = int(self._output.index("end-1c").split(".")[0])
         for line_no in range(1, line_count + 1):
             line = self._output.get(f"{line_no}.0", f"{line_no}.0 lineend")
-            if line.startswith("  •"):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("="):
+                continue
+            if not any(line.startswith(prefix) for prefix in ("  ", "•", "-", "Key ", "Market ", "Tracked ")):
+                if len(stripped) > 40 and not stripped.endswith(":"):
+                    self._output.tag_add("body", f"{line_no}.0", f"{line_no}.0 lineend")
+            if line.startswith("  •") or line.startswith("  -"):
                 self._output.tag_add("muted", f"{line_no}.0", f"{line_no}.0 lineend")
             if "+" in line and "%" in line and "BUY" not in line.upper():
                 if any(token in line for token in ("+0.", "+1.", "+2.", "+3.", "+4.", "+5.")):
@@ -738,7 +849,7 @@ class FinanceAgentsApp(tk.Frame):
         item = self._agent_rows.get(agent_id)
         if item:
             _, age_label, age_tag = agent_age_info(agent)
-            self._tree.item(item, values=(age_label,))
+            self._tree.item(item, values=(age_label, agent_accuracy_label(agent)))
             self._tree.item(item, tags=("agent", agent_id, age_tag))
         if self._selected_id == agent_id:
             self._select_agent(agent_id)
@@ -922,42 +1033,46 @@ class FinanceAgentsApp(tk.Frame):
             messagebox.showwarning("Missing", "Market Predictor launcher not found.")
 
     def _sync_agents(self) -> None:
-        self._set_status("Syncing agents from GitHub…", WARN)
+        if not messagebox.askyesno(
+            "Sync GitHub",
+            "Pull the latest platform code and agents from GitHub?\n\n"
+            "This will:\n"
+            "• Update changed repo files (agents, scripts, requirements)\n"
+            "• Install/update Python dependencies\n"
+            "• Run any newly added agents immediately\n"
+            "• Re-run the full pipeline if existing agents were updated\n\n"
+            "Your etrade_config.json, tokens, and output/ folder are not overwritten.",
+        ):
+            return
+        self._set_status("Syncing from GitHub…", WARN)
+        if not self._embedded:
+            self._progress.pack(side=tk.RIGHT)
+            self._progress.start(12)
         threading.Thread(target=self._sync_thread, daemon=True).start()
 
     def _sync_thread(self) -> None:
+        from github_sync import format_sync_summary, sync_github_repository
+
+        def progress(message: str) -> None:
+            self._schedule_ui(self._set_status, message, WARN)
+
         try:
-            fetch = subprocess.run(
-                ["git", "fetch", "origin", "main"],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if fetch.returncode != 0:
-                raise RuntimeError(fetch.stderr or fetch.stdout or "git fetch failed")
-            checkout = subprocess.run(
-                ["git", "checkout", "origin/main", "--", "agents/"],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if checkout.returncode != 0:
-                raise RuntimeError(checkout.stderr or checkout.stdout or "git checkout failed")
-            cache = OUTPUT / "agent_catalog_cache.json"
-            if cache.exists():
-                cache.unlink()
-            self._schedule_ui(self.refresh_ui)
-            self._schedule_ui(self._set_status, "Agent sync complete", UP)
-            self._schedule_ui(
-                messagebox.showinfo,
-                "Sync Complete",
-                "Agents updated from https://github.com/shaggychunxx-ui/Finance/tree/main/agents",
-            )
+            result = sync_github_repository(on_progress=progress)
+            self._schedule_ui(self.refresh_ui, select_latest=bool(result.new_packages))
+            if result.ok and not result.errors:
+                self._schedule_ui(self._set_status, "GitHub sync complete", UP)
+                level = messagebox.showinfo
+            else:
+                self._schedule_ui(self._set_status, "GitHub sync finished with warnings", WARN)
+                level = messagebox.showwarning
+            self._schedule_ui(level, "Sync Complete", format_sync_summary(result))
         except Exception as exc:
             self._schedule_ui(messagebox.showerror, "Sync Error", str(exc))
             self._schedule_ui(self._set_status, f"Sync failed: {exc}", DOWN)
+        finally:
+            if not self._embedded:
+                self._schedule_ui(self._progress.stop)
+                self._schedule_ui(self._progress.pack_forget)
 
     def _start_mobile_server(self) -> None:
         bat = ROOT / "Start Mobile Server.bat"
@@ -991,7 +1106,7 @@ class FinanceAgentsApp(tk.Frame):
 
     def refresh_ui(self, *, select_latest: bool = False) -> None:
         global AGENT_CATALOG
-        AGENT_CATALOG = get_agent_catalog(refresh=False)
+        AGENT_CATALOG = get_agent_catalog(refresh=True)
         for item in self._tree.get_children():
             self._tree.delete(item)
         self._agent_rows.clear()

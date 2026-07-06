@@ -24,6 +24,11 @@ DEFAULT_MIN_TRADE_USD = 50.0
 DEFAULT_GROWTH_MODE = True
 DEFAULT_PRIORITIZE_BUYS = True
 DEFAULT_OPTIMIZE_PROFIT_HORIZONS = True
+DEFAULT_AGENT_CONTROLLED = True
+DEFAULT_SMALL_ACCOUNT_THRESHOLD_USD = 500.0
+DEFAULT_SMALL_ACCOUNT_MAX_HOLDINGS = 6
+DEFAULT_SMALL_ACCOUNT_MIN_HOLDINGS = 3
+DEFAULT_PREFER_AFFORDABLE_TICKERS = True
 
 
 @dataclass
@@ -37,12 +42,14 @@ class TradeOrder:
     current_value_usd: float
     estimated_price: float
     rationale: str = ""
+    price_type: str = "MARKET"
+    limit_price: float | None = None
     preview_id: int | None = None
     status: str = "proposed"
     message: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "symbol": self.symbol,
             "action": self.action,
             "quantity": self.quantity,
@@ -51,11 +58,15 @@ class TradeOrder:
             "target_value_usd": round(self.target_value_usd, 2),
             "current_value_usd": round(self.current_value_usd, 2),
             "estimated_price": round(self.estimated_price, 4),
+            "price_type": self.price_type,
             "rationale": self.rationale,
             "preview_id": self.preview_id,
             "status": self.status,
             "message": self.message,
         }
+        if self.limit_price is not None:
+            payload["limit_price"] = round(self.limit_price, 2)
+        return payload
 
 
 @dataclass
@@ -125,6 +136,11 @@ def load_strategy_settings(config_path: Path | None = None) -> dict[str, Any]:
         "growth_mode": DEFAULT_GROWTH_MODE,
         "prioritize_buys": DEFAULT_PRIORITIZE_BUYS,
         "optimize_profit_horizons": DEFAULT_OPTIMIZE_PROFIT_HORIZONS,
+        "agent_controlled": DEFAULT_AGENT_CONTROLLED,
+        "prefer_affordable_tickers": DEFAULT_PREFER_AFFORDABLE_TICKERS,
+        "small_account_threshold_usd": DEFAULT_SMALL_ACCOUNT_THRESHOLD_USD,
+        "small_account_max_holdings": DEFAULT_SMALL_ACCOUNT_MAX_HOLDINGS,
+        "small_account_min_holdings": DEFAULT_SMALL_ACCOUNT_MIN_HOLDINGS,
         "min_buy_return_pct": 0.05,
         "min_sell_return_pct": -0.10,
         "max_deploy_pct": 0.94,
@@ -135,9 +151,31 @@ def load_strategy_settings(config_path: Path | None = None) -> dict[str, Any]:
         raw = json.loads(path.read_text(encoding="utf-8"))
         user = raw.get("strategy", {})
         settings.update({k: user[k] for k in settings if k in user})
+        if user.get("agent_controlled"):
+            settings["optimize_profit_horizons"] = False
     except (json.JSONDecodeError, OSError):
         pass
     return settings
+
+
+def resolve_trade_thresholds(
+    settings: dict[str, Any],
+    *,
+    investable: float,
+    price: float = 0.0,
+) -> tuple[float, float]:
+    """Return (min_drift_pct, min_trade_usd) for the current account and order."""
+    min_drift = float(settings.get("min_drift_pct", DEFAULT_MIN_DRIFT_PCT))
+    min_trade = float(settings.get("min_trade_usd", DEFAULT_MIN_TRADE_USD))
+    if not settings.get("agent_controlled", DEFAULT_AGENT_CONTROLLED):
+        return min_drift, min_trade
+
+    min_drift = min(min_drift, 0.25)
+    if price > 0:
+        min_trade = min(min_trade, max(5.0, price))
+    else:
+        min_trade = min(min_trade, max(5.0, investable * 0.08))
+    return min_drift, min_trade
 
 
 def _prioritize_growth_orders(
@@ -221,10 +259,6 @@ def build_strategy_plan(
     min_drift_pct: float = DEFAULT_MIN_DRIFT_PCT,
     min_trade_usd: float = DEFAULT_MIN_TRADE_USD,
 ) -> StrategyPlan:
-    if portfolio is None:
-        portfolio = generate_portfolio(OUTPUT, notional_usd=None)
-        save_portfolio(portfolio, PORTFOLIO_FILE)
-
     balance = client.get_balance(account_id_key)
     positions = client.get_portfolio(account_id_key)
     pos_map = _position_map(positions)
@@ -235,6 +269,16 @@ def build_strategy_plan(
         total_value += balance.get("cash_available_for_investment") or balance.get("net_cash") or 0
     if total_value <= 0:
         raise ValueError("Could not determine account value from E*TRADE balance/portfolio.")
+
+    if portfolio is None:
+        portfolio = generate_portfolio(OUTPUT, notional_usd=total_value)
+        save_portfolio(portfolio, PORTFOLIO_FILE)
+
+    settings = load_strategy_settings()
+    if settings.get("agent_controlled", DEFAULT_AGENT_CONTROLLED):
+        cash_buffer_pct = float(settings.get("cash_buffer_pct", cash_buffer_pct))
+        min_drift_pct, _ = resolve_trade_thresholds(settings, investable=total_value)
+        min_trade_usd = float(settings.get("min_trade_usd", min_trade_usd))
 
     investable = total_value * (1 - cash_buffer_pct / 100)
     targets = portfolio.get("holdings", [])
@@ -260,17 +304,20 @@ def build_strategy_plan(
         current_value = float(current.get("market_value", 0))
         current_qty = int(current.get("quantity", 0))
         current_weight = (current_value / total_value * 100) if total_value else 0
+        price = prices.get(sym) or holding.get("price") or 0
+        order_min_drift, order_min_trade = resolve_trade_thresholds(
+            settings, investable=investable, price=price
+        )
         drift = abs(target_value - current_value) / investable * 100 if investable else 0
 
-        if drift < min_drift_pct:
+        if drift < order_min_drift:
             continue
 
-        price = prices.get(sym) or holding.get("price") or 0
         if price <= 0:
             continue
 
         delta = target_value - current_value
-        if abs(delta) < min_trade_usd:
+        if abs(delta) < order_min_trade:
             continue
 
         if delta > 0:
@@ -283,66 +330,98 @@ def build_strategy_plan(
         if qty <= 0:
             continue
 
-        orders.append(
-            TradeOrder(
-                symbol=sym,
-                action=action,
-                quantity=qty,
-                target_weight_pct=weight,
-                current_weight_pct=current_weight,
-                target_value_usd=target_value,
-                current_value_usd=current_value,
-                estimated_price=price,
-                rationale=holding.get("rationale", "Agent portfolio target"),
-            )
+        order = TradeOrder(
+            symbol=sym,
+            action=action,
+            quantity=qty,
+            target_weight_pct=weight,
+            current_weight_pct=current_weight,
+            target_value_usd=target_value,
+            current_value_usd=current_value,
+            estimated_price=price,
+            rationale=holding.get("rationale", "Agent portfolio target"),
         )
+        try:
+            from order_type_selector import apply_to_trade_order, resolve_order_type
+
+            horizon = "24h" if action == "SELL" and "day trade" in order.rationale.lower() else "1wk"
+            decision = resolve_order_type(
+                sym,
+                action,
+                price=price,
+                rationale=order.rationale,
+                horizon=horizon,
+                confidence=float(holding.get("confidence", 0.55)),
+                holding=holding,
+            )
+            apply_to_trade_order(order, decision)
+        except Exception:
+            pass
+        orders.append(order)
 
     for sym, pos in pos_map.items():
         if sym in handled:
             continue
         current_value = float(pos.get("market_value", 0))
-        if current_value < min_trade_usd:
-            continue
         price = prices.get(sym) or float(pos.get("price", 0))
+        _, trim_min_trade = resolve_trade_thresholds(settings, investable=investable, price=price)
+        if current_value < trim_min_trade:
+            continue
         qty = int(pos.get("quantity", 0))
         if qty <= 0 or price <= 0:
             continue
-        orders.append(
-            TradeOrder(
-                symbol=sym,
-                action="SELL",
-                quantity=qty,
-                target_weight_pct=0.0,
-                current_weight_pct=(current_value / total_value * 100) if total_value else 0,
-                target_value_usd=0.0,
-                current_value_usd=current_value,
-                estimated_price=price,
-                rationale="Trim position not in agent portfolio",
+        trim_order = TradeOrder(
+            symbol=sym,
+            action="SELL",
+            quantity=qty,
+            target_weight_pct=0.0,
+            current_weight_pct=(current_value / total_value * 100) if total_value else 0,
+            target_value_usd=0.0,
+            current_value_usd=current_value,
+            estimated_price=price,
+            rationale="Trim position not in agent portfolio",
+        )
+        try:
+            from order_type_selector import apply_to_trade_order, resolve_order_type
+
+            decision = resolve_order_type(
+                sym,
+                "SELL",
+                price=price,
+                rationale=trim_order.rationale,
+                horizon="1wk",
             )
-        )
+            apply_to_trade_order(trim_order, decision)
+        except Exception:
+            trim_order.price_type = "MARKET"
+        orders.append(trim_order)
 
-    settings = load_strategy_settings()
-    try:
-        from profit_optimizer import (
-            build_profit_profiles,
-            filter_orders_for_profit,
-            prioritize_orders_for_profit,
-        )
-
-        profiles = build_profit_profiles(OUTPUT, holdings=targets, settings=settings)
-        orders = filter_orders_for_profit(orders, profiles, settings)
-        orders = prioritize_orders_for_profit(
-            orders,
-            profiles,
-            portfolio=portfolio,
-            total_value=total_value,
-            settings=settings,
-        )
-    except Exception:
+    agent_controlled = settings.get("agent_controlled", DEFAULT_AGENT_CONTROLLED)
+    if agent_controlled:
         orders = _prioritize_growth_orders(orders, portfolio=portfolio, total_value=total_value)
+    else:
+        try:
+            from profit_optimizer import (
+                build_profit_profiles,
+                filter_orders_for_profit,
+                prioritize_orders_for_profit,
+            )
+
+            profiles = build_profit_profiles(OUTPUT, holdings=targets, settings=settings)
+            orders = filter_orders_for_profit(orders, profiles, settings)
+            orders = prioritize_orders_for_profit(
+                orders,
+                profiles,
+                portfolio=portfolio,
+                total_value=total_value,
+                settings=settings,
+            )
+        except Exception:
+            orders = _prioritize_growth_orders(orders, portfolio=portfolio, total_value=total_value)
 
     plan_meta = dict(portfolio.get("meta", {}))
-    plan_meta["objective"] = "maximize_multi_horizon_profit"
+    plan_meta["objective"] = "agent_controlled_selection" if agent_controlled else "maximize_multi_horizon_profit"
+    plan_meta["agent_controlled"] = agent_controlled
     plan_meta["growth_mode"] = settings.get("growth_mode", True)
     plan_meta["optimize_profit_horizons"] = settings.get("optimize_profit_horizons", True)
     try:
@@ -364,7 +443,7 @@ def build_strategy_plan(
     except Exception:
         pass
 
-    return StrategyPlan(
+    plan = StrategyPlan(
         generated_at=datetime.now(timezone.utc).isoformat(),
         account_id_key=account_id_key,
         account_name=account_name,
@@ -378,6 +457,13 @@ def build_strategy_plan(
         orders=orders,
         meta=plan_meta,
     )
+    try:
+        from trade_guards import apply_trade_guards_to_plan
+
+        apply_trade_guards_to_plan(plan, balance)
+    except Exception:
+        pass
+    return plan
 
 
 def save_strategy_plan(plan: StrategyPlan, path: Path = PLAN_FILE) -> Path:
@@ -404,6 +490,8 @@ def plan_from_dict(data: dict[str, Any]) -> StrategyPlan:
             current_value_usd=float(o.get("current_value_usd", 0)),
             estimated_price=float(o.get("estimated_price", 0)),
             rationale=o.get("rationale", ""),
+            price_type=str(o.get("price_type", "MARKET")).upper(),
+            limit_price=float(o["limit_price"]) if o.get("limit_price") is not None else None,
             preview_id=o.get("preview_id"),
             status=o.get("status", "proposed"),
             message=o.get("message", ""),
@@ -426,23 +514,57 @@ def plan_from_dict(data: dict[str, Any]) -> StrategyPlan:
     )
 
 
+def _order_body(client: ETradeClient, order: TradeOrder) -> dict[str, Any]:
+    price_type = (order.price_type or "MARKET").upper()
+    return client.build_equity_order(
+        order.symbol,
+        order.quantity,
+        order.action,
+        price_type=price_type,
+        limit_price=order.limit_price if price_type == "LIMIT" else None,
+    )
+
+
 def preview_orders(client: ETradeClient, plan: StrategyPlan) -> StrategyPlan:
+    try:
+        from trade_guards import apply_trade_guards_to_plan
+
+        balance = client.get_balance(plan.account_id_key)
+        day_state = None
+        if (plan.meta or {}).get("mode") == "day_trading":
+            try:
+                from day_trader import load_day_state
+
+                day_state = load_day_state()
+            except Exception:
+                pass
+        apply_trade_guards_to_plan(plan, balance, day_state=day_state)
+    except Exception:
+        pass
+
     for order in plan.orders:
+        if order.status == "blocked":
+            continue
         if order.quantity <= 0:
             order.status = "skipped"
             order.message = "Zero quantity"
             continue
         try:
-            result = client.preview_and_place_equity_order(
-                plan.account_id_key,
-                order.symbol,
-                order.quantity,
-                order.action,
-                dry_run=True,
-            )
-            order.preview_id = result.get("preview_id")
+            body = _order_body(client, order)
+            preview = client.preview_equity_order(plan.account_id_key, body)
+            preview_response = preview.get("PreviewOrderResponse", preview)
+            preview_ids = preview_response.get("PreviewIds", [])
+            preview_id = None
+            if isinstance(preview_ids, list) and preview_ids:
+                preview_id = preview_ids[0].get("previewId")
+            elif isinstance(preview_ids, dict):
+                preview_id = preview_ids.get("previewId")
+            order.preview_id = preview_id
             order.status = "previewed"
-            order.message = "Preview OK"
+            type_note = order.price_type
+            if order.price_type == "LIMIT" and order.limit_price is not None:
+                type_note = f"LIMIT @ ${order.limit_price:.2f}"
+            order.message = f"Preview OK ({type_note})"
         except Exception as exc:
             order.status = "error"
             order.message = str(exc)
@@ -455,35 +577,67 @@ def execute_orders(
     *,
     dry_run: bool = False,
 ) -> StrategyPlan:
+    try:
+        from trade_guards import apply_trade_guards_to_plan
+
+        balance = client.get_balance(plan.account_id_key)
+        day_state = None
+        if (plan.meta or {}).get("mode") == "day_trading":
+            try:
+                from day_trader import load_day_state
+
+                day_state = load_day_state()
+            except Exception:
+                pass
+        apply_trade_guards_to_plan(plan, balance, day_state=day_state)
+    except Exception:
+        pass
+
     for order in plan.orders:
-        if order.status == "error" or order.quantity <= 0:
+        if order.status in {"error", "blocked"} or order.quantity <= 0:
             continue
         try:
+            body = _order_body(client, order)
             if order.preview_id is None:
-                preview = client.preview_and_place_equity_order(
-                    plan.account_id_key,
-                    order.symbol,
-                    order.quantity,
-                    order.action,
-                    dry_run=True,
-                )
-                order.preview_id = preview.get("preview_id")
+                preview = client.preview_equity_order(plan.account_id_key, body)
+                preview_response = preview.get("PreviewOrderResponse", preview)
+                preview_ids = preview_response.get("PreviewIds", [])
+                preview_id = None
+                if isinstance(preview_ids, list) and preview_ids:
+                    preview_id = preview_ids[0].get("previewId")
+                elif isinstance(preview_ids, dict):
+                    preview_id = preview_ids.get("previewId")
+                order.preview_id = preview_id
             if dry_run:
                 order.status = "dry_run"
-                order.message = "Dry run — order not sent"
+                type_note = order.price_type
+                if order.price_type == "LIMIT" and order.limit_price is not None:
+                    type_note = f"LIMIT @ ${order.limit_price:.2f}"
+                order.message = f"Dry run — {type_note} order not sent"
                 continue
             if order.preview_id is None:
                 order.status = "error"
                 order.message = "Missing preview ID"
                 continue
-            body = client.build_equity_order(order.symbol, order.quantity, order.action)
             placed = client.place_equity_order(plan.account_id_key, body, int(order.preview_id))
             order.status = "placed"
-            order.message = "Order submitted"
+            type_note = order.price_type
+            if order.price_type == "LIMIT" and order.limit_price is not None:
+                type_note = f"LIMIT @ ${order.limit_price:.2f}"
+            order.message = f"{type_note} order submitted"
             _ = placed
         except Exception as exc:
             order.status = "error"
             order.message = str(exc)
+
+    try:
+        from trade_guards import prune_old_pdt_records, record_placed_orders_for_pdt
+
+        if not dry_run:
+            record_placed_orders_for_pdt(plan.orders)
+            prune_old_pdt_records()
+    except Exception:
+        pass
     return plan
 
 
@@ -540,6 +694,7 @@ def run_agent_pipeline(
     from agents.market_predictor import run_market_predictor_analysis
 
     run_market_predictor_analysis(output=OUTPUT / "market_predictions.json")
+    cycle_id: str | None = None
     try:
         from analysis_history import archive_agent_output, archive_pipeline_cycle
 
@@ -547,6 +702,14 @@ def run_agent_pipeline(
         cycle_id = archive_pipeline_cycle()
         if on_progress:
             on_progress(f"Analysis history saved (cycle {cycle_id}).")
+    except Exception:
+        pass
+    try:
+        from prediction_accuracy import run_accuracy_cycle
+
+        stats = run_accuracy_cycle(cycle_id=cycle_id)
+        if on_progress and stats.get("scored"):
+            on_progress(f"Scored {stats['scored']} matured prediction(s) for accuracy tracking.")
     except Exception:
         pass
     return ok

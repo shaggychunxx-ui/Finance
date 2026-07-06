@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import secrets
+import ssl
 import sys
 import threading
 import time
@@ -13,11 +14,12 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from agent_report_formatter import format_report_summary
 from agent_report_status import agent_age_info, agent_status, fresh_report_counts
 from app_paths import OUTPUT, ROOT, ensure_app_path
+from mobile_tls import collect_lan_ips, ensure_tls_material, load_ssl_context
 from strategy_engine import PLAN_FILE, load_strategy_plan
 
 ensure_app_path()
@@ -106,6 +108,8 @@ class MobileMonitorConfig:
         self.enabled: bool = bool(block.get("enabled", True))
         self.host: str = str(block.get("host", "0.0.0.0"))
         self.port: int = int(block.get("port", DEFAULT_PORT))
+        self.https_port: int = int(block.get("https_port", DEFAULT_PORT + 1))
+        self.pwa_https: bool = bool(block.get("pwa_https", True))
         self.token: str = str(block.get("token") or "").strip()
         self.allow_lan_without_auth: bool = bool(block.get("allow_lan_without_auth", False))
 
@@ -263,6 +267,8 @@ def collect_agents() -> list[dict[str, Any]]:
 
     rows: list[dict[str, Any]] = []
     for agent in full_agent_catalog(check_remote=False):
+        from agent_report_status import agent_accuracy_label, agent_accuracy_pct
+
         _, age_label, age_tag = agent_age_info(agent)
         rows.append(
             {
@@ -272,6 +278,8 @@ def collect_agents() -> list[dict[str, Any]]:
                 "status": agent_status(agent),
                 "updated": age_label,
                 "age_tag": age_tag,
+                "accuracy": agent_accuracy_label(agent),
+                "accuracy_pct": agent_accuracy_pct(agent),
             }
         )
     rows.sort(key=lambda row: row["updated"] != "—", reverse=True)
@@ -369,11 +377,88 @@ class MobileMonitorHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _request_origin(self) -> str:
+        host = self.headers.get("Host", "").strip()
+        if not host:
+            host = f"localhost:{self.server.server_port}"
+        proto = "https" if getattr(self.server, "use_tls", False) else "http"
+        return f"{proto}://{host}"
+
+    def _build_manifest(self) -> dict[str, Any]:
+        origin = self._request_origin()
+        query = parse_qs(urlparse(self.path).query)
+        token = (query.get("token") or [""])[0] or self.monitor_config.token
+        start_params: dict[str, str] = {"source": "pwa"}
+        if token:
+            start_params["token"] = token
+        start_url = f"{origin}/?{urlencode(start_params)}"
+        app_id = f"{origin}/?source=pwa"
+        return {
+            "id": app_id,
+            "name": "E*TRADE Trader",
+            "short_name": "E*TRADE",
+            "description": "Monitor agents, trades, and automation from your phone.",
+            "start_url": start_url,
+            "scope": "/",
+            "display": "standalone",
+            "display_override": ["standalone", "fullscreen"],
+            "orientation": "portrait",
+            "background_color": "#0a0e17",
+            "theme_color": "#6c5ce7",
+            "icons": [
+                {
+                    "src": f"{origin}/mobile_icons/icon-192.png",
+                    "sizes": "192x192",
+                    "type": "image/png",
+                    "purpose": "any",
+                },
+                {
+                    "src": f"{origin}/mobile_icons/icon-512.png",
+                    "sizes": "512x512",
+                    "type": "image/png",
+                    "purpose": "any",
+                },
+                {
+                    "src": f"{origin}/mobile_icons/icon-192.png",
+                    "sizes": "192x192",
+                    "type": "image/png",
+                    "purpose": "maskable",
+                },
+                {
+                    "src": f"{origin}/mobile_icons/icon-512.png",
+                    "sizes": "512x512",
+                    "type": "image/png",
+                    "purpose": "maskable",
+                },
+            ],
+        }
+
+    def _send_manifest(self) -> None:
+        body = json.dumps(self._build_manifest(), indent=2).encode("utf-8")
+        self._send_bytes(body, content_type="application/manifest+json")
+
+    def _dashboard_token_for_request(self) -> str:
+        query = parse_qs(urlparse(self.path).query)
+        url_token = (query.get("token") or [""])[0]
+        expected = self.monitor_config.token
+        if url_token and expected and secrets.compare_digest(url_token, expected):
+            return expected
+        if expected and self._is_private_ip(self._client_ip()):
+            return expected
+        return ""
+
     def _send_html(self, path: Path) -> None:
         if not path.exists():
             self.send_error(404, "Dashboard not found")
             return
-        self._send_bytes(path.read_bytes(), content_type="text/html; charset=utf-8")
+        body = path.read_bytes()
+        token = self._dashboard_token_for_request()
+        if token:
+            inject = (
+                f"<script>window.__MOBILE_TOKEN__={json.dumps(token)};</script>"
+            ).encode("utf-8")
+            body = body.replace(b"</head>", inject + b"</head>", 1)
+        self._send_bytes(body, content_type="text/html; charset=utf-8")
 
     def _send_file(self, path: Path, *, content_type: str, cache_control: str = "no-store") -> None:
         if not path.exists():
@@ -433,7 +518,7 @@ class MobileMonitorHandler(BaseHTTPRequestHandler):
         if path in ("/", "/mobile", "/mobile_dashboard.html"):
             return self._send_html(DASHBOARD_HTML)
         if path == "/mobile_manifest.json":
-            return self._send_file(MANIFEST_JSON, content_type="application/manifest+json")
+            return self._send_manifest()
         if path == "/mobile_sw.js":
             return self._send_file(SERVICE_WORKER, content_type="application/javascript")
         if path.startswith("/mobile_icons/"):
@@ -460,12 +545,28 @@ class MobileMonitorHandler(BaseHTTPRequestHandler):
         self.send_error(404)
 
 
-def run_server(*, host: str, port: int, config: MobileMonitorConfig) -> ThreadingHTTPServer:
+def run_server(
+    *,
+    host: str,
+    port: int,
+    config: MobileMonitorConfig,
+    use_tls: bool = False,
+    ssl_context: ssl.SSLContext | None = None,
+) -> ThreadingHTTPServer:
     httpd = ThreadingHTTPServer((host, port), MobileMonitorHandler)
     httpd.monitor_config = config  # type: ignore[attr-defined]
+    httpd.use_tls = use_tls  # type: ignore[attr-defined]
+    if use_tls and ssl_context is not None:
+        httpd.socket = ssl_context.wrap_socket(httpd.socket, server_side=True)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     return httpd
+
+
+def build_phone_app_url(*, ip: str, port: int, token: str, secure: bool = True) -> str:
+    scheme = "https" if secure else "http"
+    params = urlencode({"source": "pwa", "token": token})
+    return f"{scheme}://{ip}:{port}/?{params}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -491,27 +592,40 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     httpd = run_server(host=config.host, port=config.port, config=config)
-    lan_ips: list[str] = []
-    try:
-        import socket
+    httpsd: ThreadingHTTPServer | None = None
+    if config.pwa_https and config.https_port != config.port:
+        cert_dir = OUTPUT / "mobile_tls"
+        cert_pem, key_pem = ensure_tls_material(cert_dir)
+        ssl_context = load_ssl_context(cert_pem, key_pem)
+        httpsd = run_server(
+            host=config.host,
+            port=config.https_port,
+            config=config,
+            use_tls=True,
+            ssl_context=ssl_context,
+        )
 
-        hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            ip = info[4][0]
-            if ip not in lan_ips and not ip.startswith("127."):
-                lan_ips.append(ip)
-    except OSError:
-        pass
+    lan_ips = [ip for ip in collect_lan_ips() if not ip.startswith("127.")]
 
     print("E*TRADE Trader — mobile monitor running")
     print(f"  Dashboard: http://127.0.0.1:{config.port}/")
-    for ip in lan_ips[:4]:
-        print(f"  On your Wi-Fi: http://{ip}:{config.port}/")
+    if httpsd:
+        print(f"  Phone app (HTTPS): https://127.0.0.1:{config.https_port}/")
+        for ip in lan_ips[:4]:
+            if token:
+                print(f"  Install on phone: {build_phone_app_url(ip=ip, port=config.https_port, token=token)}")
+            else:
+                print(f"  On your Wi-Fi (HTTPS): https://{ip}:{config.https_port}/")
+        print("  First visit: accept the certificate warning, then tap Install app.")
+    else:
+        for ip in lan_ips[:4]:
+            print(f"  On your Wi-Fi: http://{ip}:{config.port}/")
     if token:
         print(f"  API token: {token}")
         print("  Phone bookmark: add ?token=... to the URL (saved in the app)")
     print("")
-    print("Different network? Run Start Mobile Remote Access.bat for a Cloudflare tunnel URL.")
+    print("Install as app: run Fix Phone Home Screen.bat (same Wi-Fi).")
+    print("Away from home? Run Start Mobile Remote Access.bat for a Cloudflare tunnel URL.")
     print("Press Ctrl+C to stop.")
 
     try:
@@ -520,6 +634,8 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nStopping mobile monitor...")
         httpd.shutdown()
+        if httpsd is not None:
+            httpsd.shutdown()
     return 0
 
 

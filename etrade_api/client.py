@@ -238,8 +238,16 @@ class ETradeClient:
         action: str,
         *,
         dry_run: bool = True,
+        price_type: str = "MARKET",
+        limit_price: float | None = None,
     ) -> dict[str, Any]:
-        order_body = self.build_equity_order(symbol, quantity, action)
+        order_body = self.build_equity_order(
+            symbol,
+            quantity,
+            action,
+            price_type=price_type,
+            limit_price=limit_price,
+        )
         preview = self.preview_equity_order(account_id_key, order_body)
         preview_response = preview.get("PreviewOrderResponse", preview)
         preview_ids = preview_response.get("PreviewIds", [])

@@ -41,9 +41,35 @@ def _direction(score: float) -> str:
     return "flat"
 
 
+def _horizon_adjusted_score(symbol: str, row: dict[str, Any], horizon: str) -> float:
+    from agent_fusion import fusion_weight
+
+    base = float(row.get("score", 0))
+    posture = row.get("_regime_posture", "neutral")
+    adjustment = 0.0
+    for source in row.get("sources", set()):
+        w_h = fusion_weight(source, horizon=horizon, symbol=symbol, regime_posture=posture)
+        w_24 = fusion_weight(source, horizon="24h", symbol=symbol, regime_posture=posture)
+        adjustment += (w_h - w_24) * 0.2
+    return base * (1.0 + adjustment)
+
+
 def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
+    from agent_fusion import agent_cluster, apply_cluster_caps, current_regime, fusion_weight
+
+    regime = current_regime()
+    posture = str(regime.get("posture", "neutral"))
+
     scores: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"score": 0.0, "confidence": 0.0, "sources": set(), "notes": [], "price": None}
+        lambda: {
+            "score": 0.0,
+            "confidence": 0.0,
+            "sources": set(),
+            "notes": [],
+            "price": None,
+            "by_cluster": defaultdict(float),
+            "_regime_posture": posture,
+        }
     )
 
     def bump(
@@ -54,17 +80,30 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         note: str = "",
         confidence: float | None = None,
         price: float | None = None,
+        sector_hint: str = "",
     ) -> None:
         sym = _normalize_symbol(symbol)
         if not sym:
             return
+        weight = fusion_weight(
+            source,
+            horizon="24h",
+            symbol=sym,
+            sector_hint=sector_hint,
+            regime_posture=posture,
+        )
+        if weight <= 0:
+            return
+        weighted = delta * weight
         row = scores[sym]
-        row["score"] += delta
+        cluster = agent_cluster(source)
+        row["by_cluster"][cluster] += weighted
+        row["score"] += weighted
         row["sources"].add(source)
         if note and note not in row["notes"]:
             row["notes"].append(note)
         if confidence is not None:
-            row["confidence"] = max(row["confidence"], confidence)
+            row["confidence"] = max(row["confidence"], confidence * weight)
         if price is not None:
             row["price"] = price
 
@@ -96,12 +135,19 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         for sig in data.get("market_signals", []):
             bias = str(sig.get("bias", "NEUTRAL")).upper()
             delta = BIAS_SCORES.get(bias, 0.0) * 0.35
-            sector = sig.get("sector", "")
+            sector = str(sig.get("sector", ""))
             reason = sig.get("reason", "")
             note = f"{sector}: {reason}" if sector else reason
             confidence = 0.55 if bias == "BULLISH" else 0.45 if bias == "BEARISH" else 0.35
             for ticker in sig.get("tickers", []):
-                bump(ticker, delta, source=source, note=note, confidence=confidence)
+                bump(
+                    ticker,
+                    delta,
+                    source=source,
+                    note=note,
+                    confidence=confidence,
+                    sector_hint=sector,
+                )
 
         if source == "finance":
             for opp in data.get("trading_opportunities", []):
@@ -142,6 +188,7 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                     source=source,
                     note=retailer.get("category", "Retail leader"),
                     confidence=0.5,
+                    sector_hint="retail",
                 )
 
         metrics = data.get("metrics", {})
@@ -168,14 +215,23 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
     except Exception:
         pass
 
+    apply_cluster_caps(scores)
     return scores
 
 
-def _build_horizon_rows(ranked: list[tuple[str, dict[str, Any]]], horizon: str) -> list[dict[str, Any]]:
+def _build_horizon_rows(
+    ranked: list[tuple[str, dict[str, Any]]],
+    horizon: str,
+) -> list[dict[str, Any]]:
     scale = HORIZON_RETURN_SCALE[horizon]
     rows: list[dict[str, Any]] = []
-    for rank, (symbol, row) in enumerate(ranked[:TOP_N], start=1):
-        score = float(row["score"])
+    horizon_ranked = sorted(
+        ranked,
+        key=lambda item: _horizon_adjusted_score(item[0], item[1], horizon),
+        reverse=True,
+    )
+    for rank, (symbol, row) in enumerate(horizon_ranked[:TOP_N], start=1):
+        score = _horizon_adjusted_score(symbol, row, horizon)
         direction = _direction(score)
         base_return = min(12.0, max(0.4, abs(score) * 4.5)) * scale
         if direction == "down":
@@ -222,6 +278,19 @@ def run_market_predictor_analysis(*, output: Path | None = None) -> dict[str, An
     }
 
     sources_used = [src["file"] for src in active_agent_sources() if (output_dir / src["file"]).exists()]
+    fusion_meta: dict[str, Any] = {}
+    try:
+        from agent_fusion import current_regime, export_walk_forward_weights
+
+        fusion_meta = export_walk_forward_weights()
+    except Exception:
+        try:
+            from agent_fusion import current_regime
+
+            fusion_meta = {"regime": current_regime()}
+        except Exception:
+            fusion_meta = {}
+
     result = {
         "meta": {
             "agent": "Market Predictor",
@@ -229,11 +298,12 @@ def run_market_predictor_analysis(*, output: Path | None = None) -> dict[str, An
             "source_files": sources_used,
             "tickers_scored": len(scores),
             "horizons": list(predictions.keys()),
+            "fusion": fusion_meta,
         },
         "predictions": predictions,
         "recommendations": [
             f"Fused {len(sources_used)} agent report(s) into ranked mover predictions.",
-            "Horizons: daily (24h), weekly (1wk), monthly (1mo), yearly (1yr) for profit optimization.",
+            "Accuracy-weighted fusion with per-horizon, regime, domain, and cluster caps applied.",
         ],
     }
 

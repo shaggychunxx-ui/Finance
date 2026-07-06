@@ -352,8 +352,21 @@ def _submit_plan_orders(
 
     mode = "LIVE PRODUCTION" if not client.config.sandbox else "LIVE SANDBOX"
     dry_run = bool(settings.get("dry_run", False))
-    _log(f"=== {mode} TRADING TASK: {len(plan.orders)} orders ===")
+    proposed = len(plan.orders)
+    _log(f"=== {mode} TRADING TASK: {proposed} orders ===")
     preview_orders(client, plan)
+    blocked = sum(1 for o in plan.orders if o.status == "blocked")
+    if blocked:
+        guards = (plan.meta or {}).get("trade_guards", {})
+        bp = guards.get("available_usd")
+        pdt = guards.get("day_trades_5d")
+        extra = []
+        if bp is not None:
+            extra.append(f"${bp:,.2f} buying power available")
+        if pdt is not None and guards.get("pdt_applies"):
+            extra.append(f"{pdt}/{guards.get('max_day_trades_5d', 3)} day trades in 5d")
+        suffix = f" ({'; '.join(extra)})" if extra else ""
+        _log(f"Trade guards blocked {blocked}/{proposed} order(s) before E*TRADE preview{suffix}.")
     previewed = sum(1 for o in plan.orders if o.status == "previewed")
     if previewed == 0:
         _log("No orders passed E*TRADE preview.")
@@ -467,8 +480,21 @@ def _run_day_trading(
 
     mode = "LIVE PRODUCTION" if not client.config.sandbox else "LIVE SANDBOX"
     dry_run = bool(settings.get("dry_run", False))
-    _log(f"=== DAY TRADE {mode}: {len(plan.orders)} orders ===")
+    proposed = len(plan.orders)
+    _log(f"=== DAY TRADE {mode}: {proposed} orders ===")
     preview_orders(client, plan)
+    blocked = sum(1 for o in plan.orders if o.status == "blocked")
+    if blocked:
+        guards = (plan.meta or {}).get("trade_guards", {})
+        bp = guards.get("available_usd")
+        pdt = guards.get("day_trades_5d")
+        extra = []
+        if bp is not None:
+            extra.append(f"${bp:,.2f} buying power available")
+        if pdt is not None and guards.get("pdt_applies"):
+            extra.append(f"{pdt}/{guards.get('max_day_trades_5d', 3)} day trades in 5d")
+        suffix = f" ({'; '.join(extra)})" if extra else ""
+        _log(f"Day trade guards blocked {blocked}/{proposed} order(s) before E*TRADE preview{suffix}.")
     previewed = sum(1 for o in plan.orders if o.status == "previewed")
     if previewed == 0:
         _log("Day trading: no orders passed E*TRADE preview.")

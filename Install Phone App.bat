@@ -14,7 +14,7 @@ if not exist ".venv\Scripts\python.exe" (
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0fix_phone_homescreen.ps1"
 if errorlevel 1 (
     echo.
-    echo Fix failed. See messages above.
+    echo Install failed. See messages above.
     pause
     exit /b 1
 )

@@ -1,4 +1,4 @@
-const CACHE = "etrade-mobile-v4";
+const CACHE = "etrade-mobile-v7";
 const SHELL = ["/", "/mobile_manifest.json", "/mobile_icons/icon-192.png", "/mobile_icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

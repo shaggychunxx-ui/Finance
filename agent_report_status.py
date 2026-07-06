@@ -49,3 +49,29 @@ def agent_status(agent: dict[str, str], *, output_dir: Path = OUTPUT) -> str:
 def fresh_report_counts(catalog: list[dict[str, Any]], *, output_dir: Path = OUTPUT) -> tuple[int, int]:
     fresh = sum(1 for agent in catalog if agent_status(agent, output_dir=output_dir) == "Fresh")
     return fresh, len(catalog)
+
+
+def agent_accuracy_label(agent: dict[str, str]) -> str:
+    try:
+        from prediction_accuracy import agent_accuracy_label as _label
+
+        return _label(agent["id"])
+    except Exception:
+        return "—"
+
+
+def agent_accuracy_pct(agent: dict[str, str]) -> float | None:
+    try:
+        from prediction_accuracy import get_agent_accuracy
+
+        entry = get_agent_accuracy(agent["id"])
+        if not entry:
+            return None
+        pct = (
+            entry.get("combined_accuracy_pct")
+            or entry.get("weighted_accuracy_pct")
+            or entry.get("accuracy_pct")
+        )
+        return float(pct) if pct is not None else None
+    except Exception:
+        return None

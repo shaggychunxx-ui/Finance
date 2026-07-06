@@ -25,6 +25,18 @@ AGENT_OUTPUTS = [
     "market_predictions.json",
 ]
 
+AGENT_SOURCE_IDS = {
+    "markets",
+    "finance",
+    "financial_data",
+    "datascience",
+    "sales-analytics",
+    "sales_analytics",
+    "geopolitics",
+    "market-predictor",
+}
+NON_AGENT_SOURCES = frozenset({"regime", "etrade", "history", "profit-optimizer"})
+
 
 @dataclass
 class TickerScore:
@@ -65,6 +77,7 @@ def _add_score(
     projected_return_pct: float | None = None,
     confidence: float | None = None,
     role: str = "equity",
+    horizon: str | None = None,
 ) -> None:
     sym = _normalize_symbol(symbol)
     if not sym or sym.startswith("^") and sym not in {"^GSPC"}:
@@ -72,6 +85,12 @@ def _add_score(
             return
     if len(sym) > 6 and not sym.endswith("-USD"):
         return
+    try:
+        from prediction_accuracy import agent_accuracy_weight
+
+        delta *= agent_accuracy_weight(source, symbol=sym, horizon=horizon or "24h")
+    except Exception:
+        pass
     entry = scores.setdefault(sym, TickerScore(symbol=sym))
     entry.score += delta
     entry.sources.add(source)
@@ -108,6 +127,7 @@ def _ingest_predictions(data: dict[str, Any], scores: dict[str, TickerScore]) ->
                 price=row.get("price_at_prediction"),
                 projected_return_pct=ret if direction == "up" else None,
                 confidence=confidence,
+                horizon=horizon,
             )
 
 
@@ -123,7 +143,7 @@ def _ingest_signals(data: dict[str, Any], scores: dict[str, TickerScore], source
             for t in sig.get("tickers", [])
         ) else "equity"
         for ticker in sig.get("tickers", []):
-            _add_score(scores, ticker, delta, source, note, role=role)
+            _add_score(scores, ticker, delta, source, note, role=role, horizon="24h")
 
 
 def _ingest_finance_opportunities(data: dict[str, Any], scores: dict[str, TickerScore]) -> None:
@@ -154,25 +174,53 @@ def _ingest_datascience(data: dict[str, Any], scores: dict[str, TickerScore]) ->
         )
 
 
-def _apply_etrade_prices(output_dir: Path, scores: dict[str, TickerScore]) -> None:
+def _apply_etrade_prices(
+    output_dir: Path,
+    scores: dict[str, TickerScore],
+    *,
+    small: dict[str, Any] | None = None,
+) -> None:
     """Prefer E*TRADE subscribed quotes for portfolio sizing when available."""
     enhanced = _load_json(output_dir / "etrade_enhanced_quotes.json")
     if not enhanced:
         return
+    max_px = float(small["max_share_price"]) if small else None
     for sym, quote in (enhanced.get("quotes") or {}).items():
         if not isinstance(quote, dict):
             continue
         last = quote.get("last_trade")
         if last is None:
             continue
+        px = float(last)
         entry = scores.setdefault(sym, TickerScore(symbol=sym))
-        entry.price = float(last)
+        entry.price = px
         entry.sources.add("etrade")
         change = quote.get("change_pct")
         if change is not None:
             note = f"E*TRADE {float(change):+.2f}%"
             if note not in entry.notes:
                 entry.notes.append(note)
+        if max_px and 0 < px <= max_px:
+            entry.score += 0.45
+            affordable_note = f"Live affordable quote ${px:.2f}/sh"
+            if affordable_note not in entry.notes:
+                entry.notes.insert(0, affordable_note)
+
+
+def _backfill_etrade_prices(output_dir: Path, tickers: list[TickerScore]) -> None:
+    enhanced = _load_json(output_dir / "etrade_enhanced_quotes.json")
+    if not enhanced:
+        return
+    quotes = enhanced.get("quotes") or {}
+    for ticker in tickers:
+        if _ticker_price(ticker) > 0:
+            continue
+        quote = quotes.get(ticker.symbol)
+        if not isinstance(quote, dict):
+            continue
+        last = quote.get("last_trade")
+        if last is not None:
+            ticker.price = float(last)
 
 
 def _ingest_sales_retailers(data: dict[str, Any], scores: dict[str, TickerScore]) -> None:
@@ -229,6 +277,181 @@ def _apply_regime_sleeve(scores: dict[str, TickerScore], regime: dict[str, Any])
         _add_score(scores, "SPY", 0.4, "regime", "Core beta — neutral regime", role="sector_etf")
 
 
+def _is_agent_pick(ticker: TickerScore, *, small: dict[str, Any] | None = None) -> bool:
+    """True when at least one real agent (not regime/system layers) picked this symbol."""
+    agent_sources = {s for s in ticker.sources if s not in NON_AGENT_SOURCES}
+    if agent_sources & AGENT_SOURCE_IDS or bool(
+        agent_sources - NON_AGENT_SOURCES - AGENT_SOURCE_IDS
+    ):
+        return True
+    if small and "etrade" in ticker.sources:
+        px = _ticker_price(ticker)
+        if px > 0 and px <= float(small["max_share_price"]) and ticker.score >= 0.35:
+            return True
+    return False
+
+
+def _ticker_price(ticker: TickerScore) -> float:
+    try:
+        return float(ticker.price or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _small_account_profile(
+    notional: float,
+    settings: dict[str, Any],
+    *,
+    default_holdings: int,
+) -> dict[str, Any] | None:
+    if not settings.get("prefer_affordable_tickers", True):
+        return None
+    threshold = float(settings.get("small_account_threshold_usd", 500))
+    if notional <= 0 or notional >= threshold:
+        return None
+
+    buffer = float(settings.get("cash_buffer_pct", 5)) / 100
+    investable = notional * (1 - buffer)
+    min_trade = float(settings.get("min_trade_usd", 5))
+    max_holdings = int(settings.get("small_account_max_holdings", 6))
+    min_holdings = int(settings.get("small_account_min_holdings", 3))
+    by_slots = max(min_holdings, int(investable / min_trade))
+    target_holdings = max(min_holdings, min(max_holdings, default_holdings, by_slots))
+    slot_usd = investable / target_holdings if target_holdings else investable
+    max_share_price = max(min_trade, slot_usd * 0.98)
+    return {
+        "investable_usd": round(investable, 2),
+        "target_holdings": target_holdings,
+        "max_share_price": round(max_share_price, 2),
+        "min_trade_usd": min_trade,
+    }
+
+
+def _ingest_affordable_movers(
+    data: dict[str, Any],
+    scores: dict[str, TickerScore],
+    *,
+    max_share_price: float,
+    notional: float,
+    source: str = "finance",
+) -> None:
+    """Boost lower-priced movers agents already surfaced — sized for the account."""
+    for section in ("top_gainers", "most_active"):
+        for row in data.get(section, []) or []:
+            sym = row.get("google_symbol") or row.get("symbol") or row.get("yahoo_symbol") or ""
+            price = row.get("price")
+            if price is None:
+                continue
+            try:
+                px = float(price)
+            except (TypeError, ValueError):
+                continue
+            if px <= 0 or px > max_share_price:
+                continue
+            day_chg = row.get("day_chg_pct")
+            boost = 0.55
+            if day_chg is not None:
+                boost += min(0.45, abs(float(day_chg)) * 0.02)
+            note = f"Affordable mover ${px:.2f}/sh ({section.replace('_', ' ')})"
+            if day_chg is not None:
+                note += f" {float(day_chg):+.1f}% today"
+            _add_score(
+                scores,
+                sym,
+                boost,
+                source,
+                note,
+                price=px,
+                projected_return_pct=float(day_chg) if day_chg is not None else None,
+                role="equity",
+            )
+
+
+def _ingest_affordable_predictions(
+    data: dict[str, Any],
+    scores: dict[str, TickerScore],
+    *,
+    max_share_price: float,
+) -> None:
+    preds = data.get("predictions", {})
+    for horizon in ("24h", "1wk"):
+        for row in preds.get(horizon, []) or []:
+            if str(row.get("predicted_direction", "")).lower() != "up":
+                continue
+            price = row.get("price_at_prediction")
+            if price is None:
+                continue
+            try:
+                px = float(price)
+            except (TypeError, ValueError):
+                continue
+            if px <= 0 or px > max_share_price:
+                continue
+            conf = float(row.get("confidence", 0.5))
+            ret = float(row.get("predicted_return_pct", 0))
+            boost = 0.35 + conf * 0.35 + min(0.25, ret * 0.04)
+            note = f"Affordable {horizon} pick ${px:.2f}/sh"
+            _add_score(
+                scores,
+                row.get("symbol", ""),
+                boost,
+                "market-predictor",
+                note,
+                price=px,
+                projected_return_pct=ret,
+                confidence=conf,
+            )
+
+
+def _apply_affordable_score_boost(
+    scores: dict[str, TickerScore],
+    *,
+    small: dict[str, Any],
+    notional: float,
+) -> None:
+    max_px = float(small["max_share_price"])
+    for ticker in scores.values():
+        px = _ticker_price(ticker)
+        if px <= 0 or px > max_px:
+            continue
+        ticker.score += 0.2
+        note = f"Fits ${notional:,.0f} account (${px:.2f}/share ≤ ${max_px:.2f})"
+        if note not in ticker.notes:
+            ticker.notes.insert(0, note)
+
+
+def _select_holdings(
+    positive: list[TickerScore],
+    *,
+    holdings: int,
+    small: dict[str, Any] | None,
+) -> list[TickerScore]:
+    target = int(small["target_holdings"]) if small else holdings
+    if not small:
+        return positive[:target]
+
+    max_px = float(small["max_share_price"])
+    affordable = [t for t in positive if 0 < _ticker_price(t) <= max_px]
+    unknown = [t for t in positive if _ticker_price(t) <= 0]
+    expensive = [t for t in positive if _ticker_price(t) > max_px]
+
+    selected = affordable[:target]
+    if len(selected) < target:
+        for ticker in unknown:
+            if len(selected) >= target:
+                break
+            if ticker not in selected:
+                selected.append(ticker)
+    min_needed = max(3, target // 2)
+    if len(selected) < min_needed and expensive:
+        expensive.sort(key=lambda t: (_ticker_price(t), -t.score))
+        for ticker in expensive:
+            if len(selected) >= target:
+                break
+            selected.append(ticker)
+    return selected[:target]
+
+
 def _cap_weights(weights: list[float], max_pct: float, min_pct: float) -> list[float]:
     if not weights:
         return weights
@@ -267,10 +490,40 @@ def generate_portfolio(
         elif filename == "sales_analytics.json":
             _ingest_sales_retailers(data, scores)
 
-    _apply_etrade_prices(output_dir, scores)
+    strategy_settings: dict[str, Any] = {}
+    try:
+        from strategy_engine import load_strategy_settings
+
+        strategy_settings = load_strategy_settings()
+    except Exception:
+        pass
+    agent_controlled = bool(strategy_settings.get("agent_controlled", True))
+    small_account = (
+        _small_account_profile(float(notional_usd or 0), strategy_settings, default_holdings=holdings)
+        if notional_usd
+        else None
+    )
+
+    _apply_etrade_prices(output_dir, scores, small=small_account)
+    if small_account:
+        finance = _load_json(output_dir / "finance.json")
+        if finance:
+            _ingest_affordable_movers(
+                finance,
+                scores,
+                max_share_price=float(small_account["max_share_price"]),
+                notional=float(notional_usd or 0),
+            )
+        if predictions:
+            _ingest_affordable_predictions(
+                predictions,
+                scores,
+                max_share_price=float(small_account["max_share_price"]),
+            )
 
     regime = _detect_regime(output_dir)
-    _apply_regime_sleeve(scores, regime)
+    if not agent_controlled:
+        _apply_regime_sleeve(scores, regime)
 
     context: dict[str, Any] = {}
     try:
@@ -283,31 +536,39 @@ def generate_portfolio(
         pass
 
     profit_profiles: dict[str, Any] = {}
-    try:
-        from profit_optimizer import build_profit_profiles
+    if not agent_controlled:
+        try:
+            from profit_optimizer import build_profit_profiles
 
-        profit_profiles = build_profit_profiles(output_dir)
-        for ticker in scores.values():
-            profile = profit_profiles.get(ticker.symbol)
-            if not profile:
-                continue
-            boost = max(0.0, profile.composite_score) * 0.12
-            ticker.score += boost
-            ticker.sources.add("profit-optimizer")
-            if profile.composite_return_pct > 0:
-                ticker.projected_return_pct = profile.composite_return_pct
-            ticker.notes.append(
-                f"Profit d/w/m/y: {profile.horizon_returns.get('daily', 0):+.1f}%/"
-                f"{profile.horizon_returns.get('weekly', 0):+.1f}%/"
-                f"{profile.horizon_returns.get('monthly', 0):+.1f}%/"
-                f"{profile.horizon_returns.get('yearly', 0):+.1f}%"
-            )
-    except Exception:
-        pass
+            profit_profiles = build_profit_profiles(output_dir)
+            for ticker in scores.values():
+                profile = profit_profiles.get(ticker.symbol)
+                if not profile:
+                    continue
+                boost = max(0.0, profile.composite_score) * 0.12
+                ticker.score += boost
+                ticker.sources.add("profit-optimizer")
+                if profile.composite_return_pct > 0:
+                    ticker.projected_return_pct = profile.composite_return_pct
+                ticker.notes.append(
+                    f"Profit d/w/m/y: {profile.horizon_returns.get('daily', 0):+.1f}%/"
+                    f"{profile.horizon_returns.get('weekly', 0):+.1f}%/"
+                    f"{profile.horizon_returns.get('monthly', 0):+.1f}%/"
+                    f"{profile.horizon_returns.get('yearly', 0):+.1f}%"
+                )
+        except Exception:
+            pass
+
+    if small_account:
+        _apply_affordable_score_boost(scores, small=small_account, notional=float(notional_usd or 0))
 
     ranked = sorted(scores.values(), key=lambda t: t.score, reverse=True)
-    positive = [t for t in ranked if t.score > 0]
-    selected = positive[:holdings]
+    if agent_controlled:
+        positive = [t for t in ranked if t.score > 0 and _is_agent_pick(t, small=small_account)]
+    else:
+        positive = [t for t in ranked if t.score > 0]
+    selected = _select_holdings(positive, holdings=holdings, small=small_account)
+    _backfill_etrade_prices(output_dir, selected)
 
     if len(selected) < max(6, holdings // 2):
         raise ValueError(
@@ -336,28 +597,65 @@ def generate_portfolio(
             row["confidence"] = round(ticker.confidence, 3)
         if notional_usd:
             row["allocation_usd"] = round(notional_usd * weight / 100, 2)
+        try:
+            from order_type_selector import resolve_order_type
+
+            px = float(ticker.price or row.get("price") or 0)
+            decision = resolve_order_type(
+                ticker.symbol,
+                "BUY",
+                price=px,
+                output_dir=output_dir,
+                rationale=row.get("rationale", ""),
+                horizon="1wk",
+                confidence=float(ticker.confidence or 0.55),
+            )
+            row["order_type"] = decision.price_type
+            if decision.limit_price is not None:
+                row["limit_price"] = decision.limit_price
+            row["order_type_reason"] = decision.reason
+            if decision.sources:
+                row["order_type_sources"] = decision.sources
+        except Exception:
+            row["order_type"] = "LIMIT"
         holdings_out.append(row)
 
-    try:
-        from profit_optimizer import apply_profit_weights_to_holdings
+    if not agent_controlled:
+        try:
+            from profit_optimizer import apply_profit_weights_to_holdings
 
-        apply_profit_weights_to_holdings(holdings_out, profit_profiles)
-        total_w = sum(float(h["weight_pct"]) for h in holdings_out) or 1.0
-        for h in holdings_out:
-            h["weight_pct"] = round(float(h["weight_pct"]) / total_w * 100, 2)
-    except Exception:
-        pass
+            apply_profit_weights_to_holdings(holdings_out, profit_profiles)
+            total_w = sum(float(h["weight_pct"]) for h in holdings_out) or 1.0
+            for h in holdings_out:
+                h["weight_pct"] = round(float(h["weight_pct"]) / total_w * 100, 2)
+        except Exception:
+            pass
 
     equity_pct = round(sum(h["weight_pct"] for h in holdings_out if h["role"] == "equity"), 2)
     defensive_pct = round(sum(h["weight_pct"] for h in holdings_out if h["role"] == "defensive"), 2)
     etf_pct = round(sum(h["weight_pct"] for h in holdings_out if h["role"] == "sector_etf"), 2)
 
     growth = (context or {}).get("account_growth", {}) if isinstance(context, dict) else {}
-    recommendations = [
-        "Objective: maximize daily, weekly, monthly, and yearly profit",
-        f"Regime: {regime['label']} ({regime['posture']}) — risk-on {regime['risk_on_score']:.2f}",
-        f"{len(holdings_out)} holdings, max position {MAX_WEIGHT_PCT:.0f}%",
-    ]
+    if agent_controlled:
+        recommendations = [
+            "Objective: agent-controlled stock selection",
+            f"{len(holdings_out)} agent-picked holdings, max position {MAX_WEIGHT_PCT:.0f}%",
+            f"Regime context: {regime['label']} ({regime['posture']}) — informational only",
+        ]
+        if small_account:
+            recommendations.insert(
+                1,
+                (
+                    f"Small-account mode: ≤${small_account['max_share_price']:.2f}/share "
+                    f"({small_account['target_holdings']} names, ${notional_usd:,.0f} account)"
+                ),
+            )
+    else:
+        recommendations = [
+            "Objective: maximize daily, weekly, monthly, and yearly profit",
+            f"Regime: {regime['label']} ({regime['posture']}) — risk-on {regime['risk_on_score']:.2f}",
+            f"{len(holdings_out)} holdings, max position {MAX_WEIGHT_PCT:.0f}%",
+        ]
     if growth.get("growth_pct") is not None:
         recommendations.append(f"Account growth since baseline: {growth['growth_pct']:+.2f}%")
     if regime["posture"] == "risk-off":
@@ -373,7 +671,9 @@ def generate_portfolio(
             "holdings_count": len(holdings_out),
             "notional_usd": notional_usd,
             "horizon_focus": "daily, weekly, monthly, yearly profit",
-            "objective": "maximize_multi_horizon_profit",
+            "objective": "agent_controlled_selection" if agent_controlled else "maximize_multi_horizon_profit",
+            "agent_controlled": agent_controlled,
+            "small_account": small_account,
             "account_growth": growth,
         },
         "regime": regime,

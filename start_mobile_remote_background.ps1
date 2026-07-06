@@ -128,10 +128,14 @@ try {
 }
 
 $port = 8766
+$httpsPort = 8767
+$pwaHttps = $true
 $token = ""
 if (Test-Path $configPath) {
     $config = Get-Content $configPath -Raw | ConvertFrom-Json
     if ($config.mobile_monitor.port) { $port = [int]$config.mobile_monitor.port }
+    if ($config.mobile_monitor.https_port) { $httpsPort = [int]$config.mobile_monitor.https_port }
+    if ($null -ne $config.mobile_monitor.pwa_https) { $pwaHttps = [bool]$config.mobile_monitor.pwa_https }
     if ($config.mobile_monitor.token) { $token = [string]$config.mobile_monitor.token }
 }
 
@@ -147,7 +151,9 @@ $lanIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -like "192.168.*" -or $_.IPAddress -like "10.*" } |
     Select-Object -First 1 -ExpandProperty IPAddress)
 if ($lanIp -and $token) {
-    Set-Content -Path $homeUrlFile -Value "http://${lanIp}:$port/?token=$token" -Encoding ASCII
+    $appPort = if ($pwaHttps) { $httpsPort } else { $port }
+    $scheme = if ($pwaHttps) { "https" } else { "http" }
+    Set-Content -Path $homeUrlFile -Value "${scheme}://${lanIp}:${appPort}/?source=pwa&token=$token" -Encoding ASCII
 }
 
 $lastUrl = ""

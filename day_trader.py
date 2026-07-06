@@ -11,11 +11,13 @@ from zoneinfo import ZoneInfo
 
 from etrade_api.client import ETradeClient
 from strategy_engine import (
+    DEFAULT_AGENT_CONTROLLED,
     DEFAULT_CASH_BUFFER_PCT,
     StrategyPlan,
     TradeOrder,
     _quote_price,
     load_strategy_settings,
+    resolve_trade_thresholds,
     save_strategy_plan,
 )
 
@@ -183,6 +185,32 @@ def _daily_candidates(output_dir: Path | None = None) -> list[dict[str, Any]]:
     return candidates
 
 
+def _agent_portfolio_candidates() -> list[dict[str, Any]]:
+    """Day-trade entries from the agent-built portfolio (not system overlays)."""
+    portfolio = _load_json(OUTPUT / "portfolio.json")
+    holdings = portfolio.get("holdings", []) if isinstance(portfolio, dict) else []
+    candidates: list[dict[str, Any]] = []
+    for row in holdings:
+        sym = str(row.get("symbol", "")).upper()
+        if not sym:
+            continue
+        candidates.append(
+            {
+                "symbol": sym,
+                "predicted_return_pct": float(row.get("projected_return_pct") or row.get("score") or 0),
+                "confidence": float(row.get("confidence") or 0.75),
+                "composite_score": float(row.get("score") or 0),
+                "rationale": row.get("rationale", "Agent portfolio pick"),
+                "order_type": row.get("order_type"),
+                "limit_price": row.get("limit_price"),
+                "order_type_reason": row.get("order_type_reason"),
+                "order_type_sources": row.get("order_type_sources"),
+                "rank": len(candidates) + 1,
+            }
+        )
+    return candidates
+
+
 def _position_objects(state: dict[str, Any]) -> list[DayPosition]:
     out: list[DayPosition] = []
     for raw in state.get("positions", []):
@@ -224,6 +252,7 @@ def build_day_trade_plan(
     settings = settings or load_day_trade_settings()
     state = state if state is not None else load_day_state()
     strategy = load_strategy_settings()
+    agent_controlled = bool(strategy.get("agent_controlled", DEFAULT_AGENT_CONTROLLED))
 
     balance = client.get_balance(account_id_key)
     positions = client.get_portfolio(account_id_key)
@@ -237,7 +266,9 @@ def build_day_trade_plan(
     if total_value <= 0:
         total_value = sum(float(p.get("market_value", 0)) for p in positions) + float(buying_power or 0)
 
-    candidates = _daily_candidates()
+    candidates = _agent_portfolio_candidates() if agent_controlled else _daily_candidates()
+    if agent_controlled and not candidates:
+        candidates = _daily_candidates()
     day_positions = _position_objects(state)
     held_symbols = {p.symbol for p in day_positions}
     pos_qty = {str(p.get("symbol", "")).upper(): int(p.get("quantity", 0)) for p in positions}
@@ -279,19 +310,31 @@ def build_day_trade_plan(
         qty = min(pos.quantity, pos_qty.get(pos.symbol, pos.quantity))
         if qty <= 0:
             continue
-        orders.append(
-            TradeOrder(
-                symbol=pos.symbol,
-                action="SELL",
-                quantity=qty,
-                target_weight_pct=0.0,
-                current_weight_pct=0.0,
-                target_value_usd=0.0,
-                current_value_usd=qty * price,
-                estimated_price=price,
-                rationale=f"Day trade exit: {sell_reason}",
-            )
+        exit_order = TradeOrder(
+            symbol=pos.symbol,
+            action="SELL",
+            quantity=qty,
+            target_weight_pct=0.0,
+            current_weight_pct=0.0,
+            target_value_usd=0.0,
+            current_value_usd=qty * price,
+            estimated_price=price,
+            rationale=f"Day trade exit: {sell_reason}",
         )
+        try:
+            from order_type_selector import apply_to_trade_order, resolve_order_type
+
+            decision = resolve_order_type(
+                pos.symbol,
+                "SELL",
+                price=price,
+                rationale=exit_order.rationale,
+                horizon="24h",
+            )
+            apply_to_trade_order(exit_order, decision)
+        except Exception:
+            exit_order.price_type = "MARKET"
+        orders.append(exit_order)
 
     if is_day_trading_session() and not should_flatten:
         max_positions = int(settings.get("max_positions", DEFAULT_DAY_TRADING["max_positions"]))
@@ -300,8 +343,10 @@ def build_day_trade_plan(
         day_budget = min(buying_power, total_value * capital_pct)
         max_trade = float(settings.get("max_trade_usd", DEFAULT_DAY_TRADING["max_trade_usd"]))
         min_trade = float(settings.get("min_trade_usd", DEFAULT_DAY_TRADING["min_trade_usd"]))
+        _, budget_min_trade = resolve_trade_thresholds(strategy, investable=day_budget)
+        entry_min_trade = min(min_trade, budget_min_trade) if agent_controlled else min_trade
 
-        if open_slots > 0 and day_budget >= min_trade:
+        if open_slots > 0 and day_budget >= entry_min_trade:
             per_slot = min(max_trade, day_budget / open_slots)
             for cand in candidates:
                 if open_slots <= 0:
@@ -309,31 +354,58 @@ def build_day_trade_plan(
                 sym = cand["symbol"]
                 if not sym or sym in held_symbols:
                     continue
-                if cand["predicted_return_pct"] < min_return or cand["confidence"] < min_conf:
+                if not agent_controlled and (
+                    cand["predicted_return_pct"] < min_return or cand["confidence"] < min_conf
+                ):
                     continue
                 price = _quote_price(client, sym)
                 if price <= 0:
                     continue
-                trade_usd = max(min_trade, min(per_slot, day_budget))
-                qty = int(trade_usd // price)
-                if qty <= 0 or qty * price < min_trade:
-                    continue
-                orders.append(
-                    TradeOrder(
-                        symbol=sym,
-                        action="BUY",
-                        quantity=qty,
-                        target_weight_pct=0.0,
-                        current_weight_pct=0.0,
-                        target_value_usd=qty * price,
-                        current_value_usd=0.0,
-                        estimated_price=price,
-                        rationale=(
-                            f"Day trade entry: 24h +{cand['predicted_return_pct']:.2f}% "
-                            f"(conf {cand['confidence']:.2f}) — {cand['rationale']}"
-                        ),
-                    )
+                _, order_min_trade = resolve_trade_thresholds(
+                    strategy, investable=day_budget, price=price
                 )
+                effective_min_trade = min(min_trade, order_min_trade) if agent_controlled else min_trade
+                trade_usd = max(effective_min_trade, min(per_slot, day_budget))
+                qty = int(trade_usd // price)
+                if qty <= 0 or qty * price < effective_min_trade:
+                    continue
+                entry_order = TradeOrder(
+                    symbol=sym,
+                    action="BUY",
+                    quantity=qty,
+                    target_weight_pct=0.0,
+                    current_weight_pct=0.0,
+                    target_value_usd=qty * price,
+                    current_value_usd=0.0,
+                    estimated_price=price,
+                    rationale=(
+                        f"Day trade entry: 24h +{cand['predicted_return_pct']:.2f}% "
+                        f"(conf {cand['confidence']:.2f}) — {cand['rationale']}"
+                    ),
+                )
+                try:
+                    from order_type_selector import apply_to_trade_order, resolve_order_type
+
+                    holding = {
+                        "order_type": cand.get("order_type"),
+                        "limit_price": cand.get("limit_price"),
+                        "confidence": cand.get("confidence"),
+                        "order_type_reason": cand.get("order_type_reason"),
+                        "order_type_sources": cand.get("order_type_sources"),
+                    }
+                    decision = resolve_order_type(
+                        sym,
+                        "BUY",
+                        price=price,
+                        rationale=entry_order.rationale,
+                        horizon="24h",
+                        confidence=float(cand.get("confidence", 0.55)),
+                        holding=holding,
+                    )
+                    apply_to_trade_order(entry_order, decision)
+                except Exception:
+                    entry_order.price_type = "MARKET"
+                orders.append(entry_order)
                 held_symbols.add(sym)
                 day_budget -= qty * price
                 open_slots -= 1
@@ -363,6 +435,12 @@ def build_day_trade_plan(
         orders=orders,
         meta=meta,
     )
+    try:
+        from trade_guards import apply_trade_guards_to_plan
+
+        apply_trade_guards_to_plan(plan, balance, day_state=state)
+    except Exception:
+        pass
     save_strategy_plan(plan, DAY_PLAN_FILE)
     return plan
 
