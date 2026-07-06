@@ -168,6 +168,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "migration",
+        "agent": "Migration & Demographics Expert",
+        "primary_output": "migration.json",
+        "sidecars": ["migration_corridors.json"],
+        "sources": ["World Bank Open Data API (SM.POP.NETM, SP.POP.TOTL)"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [
