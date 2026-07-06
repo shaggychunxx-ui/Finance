@@ -214,7 +214,7 @@ class MigrationExpert(BaseExpert):
     ) -> CountryMigration:
         per_1000 = (
             round(net_migration / population * 1000, 3)
-            if population is not None and population != 0 else None
+            if population is not None and population > 0 else None
         )
         return CountryMigration(
             iso3=iso3,
