@@ -121,6 +121,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "migration",
+        "agent": "Migration Data Analyst",
+        "primary_output": "migration.json",
+        "sidecars": ["migration_data_hub_resources.json"],
+        "sources": ["World Bank Open Data API", "MPI Migration Data Hub"],
+        "owner": "platform",
+    },
+    {
         "command": "theoretical-probability",
         "agent": "Theoretical Probability Expert",
         "primary_output": "theoretical_probability.json",
@@ -253,6 +261,16 @@ DATA_SOURCES: list[dict[str, Any]] = [
         "pii": False,
         "sla_hours": 1,
         "config_key": "marinetraffic_api_key",
+    },
+    {
+        "id": "worldbank_api",
+        "name": "World Bank Open Data API",
+        "type": "migration",
+        "url": "https://api.worldbank.org/v2/country",
+        "format": "json",
+        "refresh_policy": "annual",
+        "pii": False,
+        "sla_hours": 8760,
     },
 ]
 

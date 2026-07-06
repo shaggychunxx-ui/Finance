@@ -22,6 +22,7 @@ from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
+from agents.migration import run_migration_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
@@ -734,6 +735,49 @@ def _print_transportation(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_migration(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("demographic_assessment", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_cataloged', 0)} Migration Data Hub resources"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Pressure: {metrics.get('pressure_label')} "
+        f"({metrics.get('migration_pressure_score')})"
+    )
+    print(
+        f"  Remittance dependency score: {metrics.get('remittance_dependency_score')} | "
+        f"Avg remittances: {metrics.get('avg_remittance_pct_gdp')}% of GDP"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Top remittance recipients:")
+    for c in data.get("countries", [])[:6]:
+        print(
+            f"    #{c.get('rank')} {c.get('name')}: "
+            f"${c.get('remittances_usd', 0) / 1e9:.1f}B/yr "
+            f"({c.get('remittances_pct_gdp')}% of GDP)"
+        )
+    print()
+    if assessment:
+        print("  Demographic assessment:")
+        for key in ("remittance_leader", "remittance_dependency", "net_migration", "macro_sensitivity"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_patents(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     summary = data.get("summary", {})
@@ -967,6 +1011,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "logistics": _print_logistics,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
+    "migration": _print_migration,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
     "records-management": _print_records_management,
@@ -990,6 +1035,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
+    "migration": run_migration_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
     "records-management": run_records_management_analysis,
@@ -1037,6 +1083,10 @@ def main() -> int:
                 catalog = args.output.parent / "dot_resources.json"
                 if catalog.exists():
                     print(f"  DOT resource catalog: {catalog}")
+            if args.agent == "migration":
+                catalog = args.output.parent / "migration_data_hub_resources.json"
+                if catalog.exists():
+                    print(f"  Migration Data Hub resource catalog: {catalog}")
             if args.agent == "grid":
                 catalog = args.output.parent / "grid_markets.json"
                 if catalog.exists():

@@ -25,6 +25,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Migration Data Analyst** | `run.bat migration` | [MPI Migration Data Hub](https://www.migrationpolicy.org/programs/migration-data-hub), World Bank Open Data API |
 
 ## Quick start
 
@@ -48,6 +49,7 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat migration
 ```
 
 Or with options:
@@ -352,7 +354,7 @@ Outputs:
 Expert data stewardship and management for the Finance intelligence platform:
 
 - **Data catalog** — 8 external sources with refresh policies and SLA metadata
-- **Agent registry** — 17 agents with lineage (source → agent → output)
+- **Agent registry** — 19 agents with lineage (source → agent → output)
 - **Health checks** — live endpoint monitoring (Yahoo Finance, OpenAlex, BBC RSS, NWS)
 - **Artifact validation** — schema, completeness, and freshness of `output/*.json`
 - **Stewardship issues** — severity-ranked gaps with remediation steps
@@ -397,6 +399,18 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Migration Data Analyst
+
+Demographic/economic analysis of the 10 largest US-linked migration and remittance
+corridors, using the [Migration Policy Institute's Migration Data Hub](https://www.migrationpolicy.org/programs/migration-data-hub)
+as the reference portal and the World Bank Open Data API for live figures:
+
+- **6 Migration Data Hub resource categories** cataloged (net migration, remittances, migrant stock, forced displacement)
+- Net migration and international migrant stock by country (World Bank / UN DESA)
+- Personal remittances received, in USD and as % of GDP, ranked by corridor
+- Migration pressure and remittance dependency scores with a demographic assessment
+- Sector signals (cross-border payments, remittance-linked EM currencies, US labor supply)
 
 ## Requirements
 
