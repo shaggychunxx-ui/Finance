@@ -66,7 +66,7 @@ MODERATE_LIQUIDITY_USD = 25_000_000
 TOXIC_FLOW_THRESHOLD = 0.15
 UNINFORMED_FLOW_THRESHOLD = -0.15
 
-INVENTORY_BIAS_THRESHOLD_PCT = 3.0  # 5-day cumulative return that signals a lean
+INVENTORY_BIAS_THRESHOLD_PCT = 3.0  # 3% 5-day cumulative return that signals a lean
 
 INVENTORY_PLAYBOOK: list[dict[str, Any]] = [
     {
