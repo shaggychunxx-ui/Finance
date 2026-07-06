@@ -168,6 +168,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "market-makers",
+        "agent": "Market Maker & Specialist Microstructure Expert",
+        "primary_output": "market_makers.json",
+        "sidecars": ["market_maker_structural_matrix.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

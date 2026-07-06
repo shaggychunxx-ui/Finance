@@ -21,6 +21,7 @@ from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
+from agents.market_makers import run_market_maker_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
@@ -854,6 +855,42 @@ def _print_order_execution(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_market_makers(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("structural_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  VIX: {meta.get('vix_level')}  |  Toxicity: {metrics.get('toxicity_score')}  |  "
+        f"Phantom liquidity: {metrics.get('phantom_liquidity_score')}  |  "
+        f"Fragility: {metrics.get('fragility_score')}"
+    )
+    print()
+    print("  Symbol microstructure:")
+    for s in data.get("symbol_microstructure", [])[:8]:
+        print(
+            f"    • {s.get('symbol')} [{s.get('liquidity_tier')}]: {s.get('inventory_bias')} — "
+            f"effective/quoted spread {s.get('phantom_liquidity_ratio')}x, "
+            f"{s.get('flow_classification')}"
+        )
+    print()
+    if assessment:
+        print("  Structural assessment:")
+        for key in ("volatility_regime", "fragility_signal", "structural_conclusion"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -966,6 +1003,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "grid": _print_grid,
     "logistics": _print_logistics,
     "markets": _print_markets,
+    "market-makers": _print_market_makers,
     "meteorology": _print_meteorology,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
@@ -989,6 +1027,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
+    "market-makers": run_market_maker_analysis,
     "meteorology": run_meteorology_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
