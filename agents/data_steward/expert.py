@@ -105,6 +105,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "displacement-tracking",
+        "agent": "Displacement Tracking Expert (IOM DTM)",
+        "primary_output": "displacement_tracking.json",
+        "sidecars": ["dtm_crisis_registry.json"],
+        "sources": ["IOM DTM (dtm.iom.int)", "ReliefWeb API"],
+        "owner": "platform",
+    },
+    {
         "command": "logistics",
         "agent": "Logistics Expert",
         "primary_output": "logistics.json",

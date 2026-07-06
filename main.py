@@ -14,6 +14,7 @@ from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.data_steward import run_data_steward_analysis
+from agents.displacement_tracking import run_displacement_tracking_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
@@ -242,6 +243,31 @@ def _print_geopolitics(data: dict[str, Any]) -> None:
             print(
                 f"  • {t.get('name')}: risk {t.get('risk_score')} "
                 f"({t.get('article_count')} articles)"
+            )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_displacement_tracking(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('reports_analyzed', 0)} reports")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Risk: {metrics.get('risk_label')} ({metrics.get('global_displacement_score')})")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for c in data.get("crises", []):
+        if c.get("report_count", 0) > 0:
+            print(
+                f"  • {c.get('name')}: risk {c.get('risk_score')} "
+                f"({c.get('report_count')} reports)"
             )
     print()
     _print_signals(data.get("market_signals", []))
@@ -957,6 +983,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "datascience": _print_datascience,
+    "displacement-tracking": _print_displacement_tracking,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
     "events": _print_events,
@@ -980,6 +1007,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "datascience": run_datascience_analysis,
+    "displacement-tracking": run_displacement_tracking_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
     "events": run_events_analysis,
@@ -1037,6 +1065,10 @@ def main() -> int:
                 catalog = args.output.parent / "dot_resources.json"
                 if catalog.exists():
                     print(f"  DOT resource catalog: {catalog}")
+            if args.agent == "displacement-tracking":
+                catalog = args.output.parent / "dtm_crisis_registry.json"
+                if catalog.exists():
+                    print(f"  DTM crisis registry: {catalog}")
             if args.agent == "grid":
                 catalog = args.output.parent / "grid_markets.json"
                 if catalog.exists():

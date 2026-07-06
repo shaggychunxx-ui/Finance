@@ -16,6 +16,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
+| **Displacement Tracking Expert** | `run.bat displacement-tracking` | [IOM DTM](https://dtm.iom.int/) reports via ReliefWeb API |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
@@ -39,6 +40,7 @@ run.bat finance
 run.bat financial-data
 run.bat markets
 run.bat geopolitics
+run.bat displacement-tracking
 run.bat logistics
 run.bat theoretical-probability
 run.bat empirical-probability
@@ -214,6 +216,28 @@ Outputs:
 - Global risk and escalation indices from live news classification
 - Theater-level risk scores with top headlines
 - Sector signals (defense, gold, oil, treasuries, semiconductors, EM)
+
+## Displacement Tracking Expert
+
+Analyzes forced displacement and human mobility signals inspired by the IOM
+[Displacement Tracking Matrix (DTM)](https://dtm.iom.int/), cross-referencing
+IOM DTM reports indexed by the [ReliefWeb API](https://api.reliefweb.int/)
+against a curated registry of major displacement crises (Sudan, Gaza/Palestine,
+DR Congo, Ukraine, Sahel, Afghanistan, Myanmar, Horn of Africa, Venezuela, Haiti):
+
+- Global displacement pressure score and crisis-level risk ranking
+- Origin-country commodity disruption signals (grain, cobalt/copper, gold, coffee)
+- Remittance-corridor stress, humanitarian logistics demand, and
+  catastrophe-reinsurance exposure signals
+
+```bat
+run.bat displacement-tracking -o output/displacement_tracking.json
+```
+
+Writes:
+
+- `output/displacement_tracking.json` — full analysis with market signals and recommendations
+- `output/dtm_crisis_registry.json` — displacement crisis registry catalog
 
 ## Logistics Expert
 
