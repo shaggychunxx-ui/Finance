@@ -123,6 +123,7 @@ class MigrationAssessment:
     remittance_signal: str
     gulf_labor_signal: str
     aging_workforce_signal: str
+    aging_labor_scarcity: bool = False
 
 
 @dataclass
@@ -213,7 +214,7 @@ class MigrationExpert(BaseExpert):
     ) -> CountryMigration:
         per_1000 = (
             round(net_migration / population * 1000, 3)
-            if population else None
+            if population is not None and population != 0 else None
         )
         return CountryMigration(
             iso3=iso3,
@@ -307,6 +308,7 @@ class MigrationExpert(BaseExpert):
             remittance_signal=remittance_signal,
             gulf_labor_signal=gulf_signal,
             aging_workforce_signal=aging_signal,
+            aging_labor_scarcity=bool(weak_aging_inflow),
         )
 
     @staticmethod
@@ -376,7 +378,7 @@ class MigrationExpert(BaseExpert):
                 "reason": assessment.gulf_labor_signal,
             })
 
-        if "aging" in assessment.aging_workforce_signal.lower() or "automation" in assessment.aging_workforce_signal.lower():
+        if assessment.aging_labor_scarcity:
             signals.append({
                 "sector": "Automation & Labor Productivity",
                 "tickers": ["ROBO", "ISRG", "ROK"],
@@ -468,6 +470,7 @@ class MigrationExpert(BaseExpert):
                 "remittance_signal": a.remittance_signal,
                 "gulf_labor_signal": a.gulf_labor_signal,
                 "aging_workforce_signal": a.aging_workforce_signal,
+                "aging_labor_scarcity": a.aging_labor_scarcity,
             },
             "countries": [
                 {
