@@ -29,6 +29,7 @@ from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
+from agents.wisdom import run_wisdom_analysis
 
 
 def _print_signals(signals: list[dict[str, Any]]) -> None:
@@ -953,6 +954,54 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_wisdom(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("wisdom_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {metrics.get('regime_label')} "
+        f"(judgment {metrics.get('decision_quality_score')}, "
+        f"reflection {metrics.get('reflective_practice_score')})"
+    )
+    print(
+        f"  Regulation: {metrics.get('emotional_regulation_score')} | "
+        f"Compassion: {metrics.get('compassionate_action_score')} | "
+        f"Uncertainty: {metrics.get('uncertainty_readiness_score')}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Philosophical pillars:")
+    for p in data.get("philosophical_pillars", []):
+        print(f"    • {p.get('name')}: {p.get('implementation')}")
+    print()
+    print("  Distancing interventions:")
+    for d in data.get("distancing_interventions", [])[:3]:
+        print(f"    • {d.get('name')}: {d.get('mechanism')}")
+    print()
+    if assessment:
+        print("  Wisdom assessment:")
+        for key in (
+            "sophia_signal",
+            "phronesis_signal",
+            "reflective_signal",
+            "distancing_signal",
+            "judgment_conclusion",
+        ):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
@@ -974,6 +1023,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "sales-analytics": _print_sales_analytics,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
+    "wisdom": _print_wisdom,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
@@ -997,6 +1047,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "sales-analytics": run_sales_analytics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
+    "wisdom": run_wisdom_analysis,
 }
 
 
@@ -1099,6 +1150,10 @@ def main() -> int:
                 retention = args.output.parent / "retention_schedule.json"
                 if retention.exists():
                     print(f"  Retention schedule: {retention}")
+            if args.agent == "wisdom":
+                catalog = args.output.parent / "wisdom_frameworks.json"
+                if catalog.exists():
+                    print(f"  Wisdom frameworks catalog: {catalog}")
             print()
 
     return 0

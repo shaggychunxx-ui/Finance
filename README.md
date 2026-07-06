@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
+| **Wisdom & Behavioral Judgment Expert** | `run.bat wisdom` | Aristotle, Berlin Wisdom Paradigm, 3D-WS, Solomon's Paradox |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
@@ -45,6 +46,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat sales-analytics
+run.bat wisdom
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
@@ -346,6 +348,26 @@ Outputs:
 - `output/sales_analytics.json` — full BI analysis with market signals
 - `output/sales_dashboard_data.json` — dashboard feed (auto-loaded by `sales_dashboard.html`)
 - `output/sales_dashboard_panels.json` — dashboard panel catalog
+
+## Wisdom & Behavioral Judgment Expert
+
+Structured wisdom framework for decision quality, reflection, emotional regulation, and compassionate action:
+
+- **Sophia + Phronesis** — theoretical truth-seeking plus context-sensitive practical judgment
+- **Berlin Wisdom Paradigm** — factual knowledge, procedural knowledge, context, relativism, uncertainty management
+- **3D Wisdom Scale** — cognitive, reflective, and affective dimensions integrated into one operating model
+- **Cultivation loop** — experience, reaction, evaluation, and revision as a metacognitive practice
+- **Solomon's Paradox interventions** — illeism, bird's-eye distancing, and wise-advisor reframing
+- **Dialectical tensions** — truth/compassion, conviction/humility, boundaries/empathy, speed/reflection
+
+```bat
+run.bat wisdom -o output/wisdom_judgment.json
+```
+
+Outputs:
+
+- `output/wisdom_judgment.json` — full wisdom and behavioral judgment report
+- `output/wisdom_frameworks.json` — framework catalog for agents to study and implement
 
 ## Data Steward Expert
 

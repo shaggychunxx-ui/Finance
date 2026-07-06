@@ -168,6 +168,19 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "wisdom",
+        "agent": "Wisdom & Behavioral Judgment Expert",
+        "primary_output": "wisdom_judgment.json",
+        "sidecars": ["wisdom_frameworks.json"],
+        "sources": [
+            "Aristotle's Nicomachean Ethics",
+            "Berlin Wisdom Paradigm",
+            "Three-Dimensional Wisdom Scale",
+            "Solomon's Paradox research",
+        ],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

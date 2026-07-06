@@ -74,6 +74,7 @@ RECORD_SERIES: list[dict[str, Any]] = [
     {"pattern": "combined_conditional.json", "series": "agent_primary_report", "agent": "combined-conditional"},
     {"pattern": "research_statistics.json", "series": "agent_primary_report", "agent": "research-statistics"},
     {"pattern": "sales_analytics.json", "series": "agent_primary_report", "agent": "sales-analytics"},
+    {"pattern": "wisdom_judgment.json", "series": "agent_primary_report", "agent": "wisdom"},
     {"pattern": "data_steward.json", "series": "stewardship_metadata", "agent": "data-steward"},
     {"pattern": "records_management.json", "series": "stewardship_metadata", "agent": "records-management"},
     {"pattern": "_views.json", "series": "reference_catalog", "agent": None},
@@ -87,6 +88,7 @@ RECORD_SERIES: list[dict[str, Any]] = [
     {"pattern": "_methods.json", "series": "reference_catalog", "agent": None},
     {"pattern": "_lineage.json", "series": "stewardship_metadata", "agent": None},
     {"pattern": "world_events_tracker.json", "series": "dashboard_feed", "agent": "events"},
+    {"pattern": "wisdom_frameworks.json", "series": "reference_catalog", "agent": "wisdom"},
 ]
 
 

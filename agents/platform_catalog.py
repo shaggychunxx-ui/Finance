@@ -52,6 +52,7 @@ CATEGORY_BY_ID: dict[str, str] = {
     "events": "Intelligence",
     "geopolitics": "Intelligence",
     "patents": "Intelligence",
+    "wisdom": "Intelligence",
     "data-steward": "Data Platform",
     "records-management": "Data Platform",
 }
