@@ -216,6 +216,22 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Internal portfolio ledger", "Adversarial Debate & Consensus Router state"],
         "owner": "platform",
     },
+    {
+        "command": "data-steward",
+        "agent": "Data Steward Expert Agent",
+        "primary_output": "data_steward.json",
+        "sidecars": ["data_catalog.json", "data_lineage.json"],
+        "sources": ["All Finance agent output artifacts", "configured data sources"],
+        "owner": "platform",
+    },
+    {
+        "command": "records-management",
+        "agent": "Records Management / Archivist Expert Agent",
+        "primary_output": "records_management.json",
+        "sidecars": ["archive_catalog.json", "retention_schedule.json"],
+        "sources": ["output/ artifacts", "archive snapshots", "record series registry"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [
