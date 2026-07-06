@@ -68,6 +68,7 @@ SPECULATIVE_WORDS = {
     "meme", "moonshot", "squeeze", "target", "forecast", "expects",
     "expected", "potential", "plans", "reportedly", "sources say",
 }
+_SPECULATIVE_PREFIXES = tuple(sorted(SPECULATIVE_WORDS))
 FACTUAL_WORDS = {
     "reported", "filed", "announced", "quarter", "earnings", "revenue",
     "sec", "10-q", "10-k", "dividend", "results", "confirmed", "closed",
@@ -158,7 +159,7 @@ class SentimentAltDataExpert(BaseExpert):
             return 0.0, 0.0
         pos_hits = sum(1 for t in tokens if t in POSITIVE_WORDS)
         neg_hits = sum(1 for t in tokens if t in NEGATIVE_WORDS)
-        spec_hits = sum(1 for t in tokens if any(t.startswith(s) for s in SPECULATIVE_WORDS))
+        spec_hits = sum(1 for t in tokens if t.startswith(_SPECULATIVE_PREFIXES))
         fact_hits = sum(1 for t in tokens if t in FACTUAL_WORDS)
 
         total_charged = pos_hits + neg_hits

@@ -57,6 +57,9 @@ SR_CLUSTER_PCT = 1.5  # pivots within this % of each other cluster into one band
 RSI_OVERBOUGHT, RSI_OVERSOLD = 70.0, 30.0
 STOP_ATR_MULTIPLE = 1.5
 TARGET_RR_MULTIPLE = 2.0  # profit target expressed as risk-to-reward multiple
+SUPPORT_DISTANCE_ATR_MULTIPLE = 1.5  # how many ATRs above support still counts as "near support"
+SUPPORT_DISTANCE_MIN_PCT = 2.0  # floor distance (%) used when ATR% is very small
+SUPPORT_STOP_SCALING_FACTOR = 0.5  # tightens the stop to half the ATR multiple when already near support
 
 
 @dataclass
@@ -265,14 +268,15 @@ class TechnicalPatternExpert(BaseExpert):
 
         near_support = (
             nearest_support is not None
-            and (last_close - nearest_support) / last_close * 100 <= max(atr_pct * 1.5, 2.0)
+            and (last_close - nearest_support) / last_close * 100
+            <= max(atr_pct * SUPPORT_DISTANCE_ATR_MULTIPLE, SUPPORT_DISTANCE_MIN_PCT)
         )
         trend_aligned = "Bullish stack" in ema_alignment
         rsi_not_extended = rsi < RSI_OVERBOUGHT
 
         if near_support and trend_aligned and rsi_not_extended:
             entry_zone = round(last_close, 2)
-            stop_loss = round(nearest_support - atr * STOP_ATR_MULTIPLE * 0.5, 2)
+            stop_loss = round(nearest_support - atr * STOP_ATR_MULTIPLE * SUPPORT_STOP_SCALING_FACTOR, 2)
             risk = entry_zone - stop_loss
             profit_target = round(entry_zone + risk * TARGET_RR_MULTIPLE, 2)
             risk_reward = TARGET_RR_MULTIPLE

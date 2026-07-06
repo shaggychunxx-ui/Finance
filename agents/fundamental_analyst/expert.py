@@ -191,7 +191,7 @@ class FundamentalAnalystExpert(BaseExpert):
             return None, None
 
         tax_rate = 0.21  # default US statutory corporate tax rate fallback
-        if pretax and tax is not None and pretax != 0:
+        if pretax is not None and pretax != 0 and tax is not None:
             tax_rate = max(0.0, min(0.5, tax / pretax))
 
         nopat = (operating_income if operating_income is not None else net_income)

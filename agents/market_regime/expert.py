@@ -163,7 +163,7 @@ class MarketRegimeExpert(BaseExpert):
         index_closes = self._fetch_closes(INDEX_SYMBOL, range_="1y")
 
         vix_term_structure = "Unavailable"
-        if vix is not None and vix3m:
+        if vix is not None and vix3m is not None:
             vix_term_structure = "Backwardation (near-term fear elevated)" if vix > vix3m else "Contango (normal term structure)"
 
         realized_vol_pct = None
