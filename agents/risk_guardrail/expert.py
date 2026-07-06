@@ -230,11 +230,9 @@ class RiskGuardrailExpert(BaseExpert):
                 )
             )
 
-        portfolio_var_pct = round(
-            math.sqrt(sum(d.var_1d_99_pct**2 for d in decisions)), 3
-        )  # zero-correlation approximation: sums variances (VaR^2), not a
-        # correlation-adjusted figure. Understates true portfolio VaR when
-        # positions share a SECTOR_CLUSTERS cluster (positive correlation).
+        # Zero-correlation approximation: sums variances (VaR^2), not correlation-adjusted.
+        # Understates true portfolio VaR when positions share a SECTOR_CLUSTERS cluster.
+        portfolio_var_pct = round(math.sqrt(sum(d.var_1d_99_pct**2 for d in decisions)), 3)
 
         expert_summary = (
             f"Audited {len(decisions)} consensus proposals against Kelly sizing, VaR, margin, "
