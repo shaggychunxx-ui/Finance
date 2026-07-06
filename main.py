@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.adversarial_debate import run_adversarial_debate_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -17,16 +18,21 @@ from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
+from agents.fundamental_analyst import run_fundamental_analyst_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
+from agents.market_regime import run_market_regime_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
+from agents.risk_guardrail import run_risk_guardrail_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
+from agents.sentiment_alt_data import run_sentiment_alt_data_analysis
+from agents.technical_pattern import run_technical_pattern_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 
@@ -953,7 +959,149 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_fundamental_analyst(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  {metrics.get('grounding_verdict')}")
+    print()
+    print("  Fundamental snapshots:")
+    for s in data.get("snapshots", []):
+        print(
+            f"    • {s.get('symbol')} [{s.get('sector')}]: ROIC {s.get('roic_pct')}% "
+            f"(sector {s.get('sector_roic_avg_pct')}%), D/E {s.get('debt_to_equity')} "
+            f"→ {s.get('risk_state')}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_sentiment_alt_data(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print("  Sentiment snapshots:")
+    for s in data.get("snapshots", []):
+        flag = " ⚠ BREAKOUT" if s.get("breakout_alert") else ""
+        print(
+            f"    • {s.get('symbol')}: polarity {s.get('polarity_score'):+.2f}, "
+            f"subjectivity {s.get('subjectivity_level')}, "
+            f"accel {s.get('volume_acceleration')}x{flag}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_technical_pattern(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print("  Technical coordinates:")
+    for s in data.get("snapshots", []):
+        print(
+            f"    • {s.get('symbol')} [{s.get('entry_grade')}]: RSI {s.get('rsi')}, "
+            f"entry {s.get('entry_zone')}, stop {s.get('stop_loss')}, target {s.get('profit_target')}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_market_regime(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  VIX: {meta.get('vix_level')} ({meta.get('vix_term_structure')})")
+    print(
+        f"  Regime: {metrics.get('regime_label')} | "
+        f"vol {metrics.get('realized_vol_pct')}% (pct {metrics.get('realized_vol_percentile')}) | "
+        f"trend {metrics.get('trend_strength')} {metrics.get('trend_direction')}"
+    )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_adversarial_debate(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print("  Verdicts:")
+    for v in data.get("verdicts", []):
+        print(
+            f"    • {v.get('symbol')}: {v.get('decision')} "
+            f"(bull {v.get('bull_score')} vs bear {v.get('bear_score')})"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_risk_guardrail(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Equity: ${meta.get('account_equity'):,.0f} | Margin used: {meta.get('margin_utilization_pct')}% | "
+        f"Allocated: {metrics.get('total_allocated_pct')}% | Portfolio VaR: {metrics.get('portfolio_var_1d_99_pct')}%"
+    )
+    print()
+    print("  Position decisions:")
+    for d in data.get("decisions", []):
+        veto = " [VETOED]" if d.get("veto_applied") else ""
+        print(
+            f"    • {d.get('symbol')}: {d.get('final_position_pct')}% "
+            f"(VaR {d.get('var_1d_99_pct')}%){veto}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "adversarial-debate": _print_adversarial_debate,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "datascience": _print_datascience,
@@ -962,21 +1110,27 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
+    "fundamental-analyst": _print_fundamental_analyst,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
+    "market-regime": _print_market_regime,
     "markets": _print_markets,
     "meteorology": _print_meteorology,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
+    "risk-guardrail": _print_risk_guardrail,
     "sales-analytics": _print_sales_analytics,
+    "sentiment-alt-data": _print_sentiment_alt_data,
+    "technical-pattern": _print_technical_pattern,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "adversarial-debate": run_adversarial_debate_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "datascience": run_datascience_analysis,
@@ -985,16 +1139,21 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
+    "fundamental-analyst": run_fundamental_analyst_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
+    "market-regime": run_market_regime_analysis,
     "markets": run_markets_analysis,
     "meteorology": run_meteorology_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
+    "risk-guardrail": run_risk_guardrail_analysis,
     "sales-analytics": run_sales_analytics_analysis,
+    "sentiment-alt-data": run_sentiment_alt_data_analysis,
+    "technical-pattern": run_technical_pattern_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
