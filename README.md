@@ -353,7 +353,7 @@ Outputs:
 
 Expert data stewardship and management for the Finance intelligence platform:
 
-- **Data catalog** — 8 external sources with refresh policies and SLA metadata
+- **Data catalog** — 9 external sources with refresh policies and SLA metadata
 - **Agent registry** — 19 agents with lineage (source → agent → output)
 - **Health checks** — live endpoint monitoring (Yahoo Finance, OpenAlex, BBC RSS, NWS)
 - **Artifact validation** — schema, completeness, and freshness of `output/*.json`
