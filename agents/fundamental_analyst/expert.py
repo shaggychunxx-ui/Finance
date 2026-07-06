@@ -251,7 +251,7 @@ class FundamentalAnalystExpert(BaseExpert):
             )
             risk = "Junk Risk"
 
-        if de is not None and sector_avg["debt_to_equity"] and de >= sector_avg["debt_to_equity"] * OVERVALUED_DE_MULTIPLE:
+        if de is not None and sector_avg["debt_to_equity"] is not None and sector_avg["debt_to_equity"] != 0 and de >= sector_avg["debt_to_equity"] * OVERVALUED_DE_MULTIPLE:
             reasons.append(
                 f"D/E {de} is {round(de / sector_avg['debt_to_equity'], 1)}x the sector norm "
                 f"({sector_avg['debt_to_equity']})"

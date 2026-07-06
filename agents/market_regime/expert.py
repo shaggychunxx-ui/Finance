@@ -164,7 +164,12 @@ class MarketRegimeExpert(BaseExpert):
 
         vix_term_structure = "Unavailable"
         if vix is not None and vix3m is not None:
-            vix_term_structure = "Backwardation (near-term fear elevated)" if vix > vix3m else "Contango (normal term structure)"
+            if vix > vix3m:
+                vix_term_structure = "Backwardation (near-term fear elevated)"
+            elif vix < vix3m:
+                vix_term_structure = "Contango (normal term structure)"
+            else:
+                vix_term_structure = "Flat term structure"
 
         realized_vol_pct = None
         realized_vol_percentile = None
