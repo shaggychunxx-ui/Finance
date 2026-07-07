@@ -25,6 +25,13 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Fundamental Analyst Agent** | `run.bat fundamental-analyst` | SEC EDGAR `companyfacts` XBRL API + Yahoo Finance |
+| **Order Execution & Market Microstructure Expert** | `run.bat order-execution` | [Yahoo Finance](https://finance.yahoo.com/) Chart API (3mo daily OHLCV) |
+| **Sentiment & Alternative Data Agent** | `run.bat sentiment-alt-data` | Yahoo Finance per-symbol headline RSS |
+| **Technical Analysis & Pattern Recognition Agent** | `run.bat technical-pattern` | [Yahoo Finance](https://finance.yahoo.com/) Chart API (daily OHLCV) |
+| **Market Regime Detection Agent** | `run.bat market-regime` | Yahoo Finance Chart API (^VIX, ^VIX3M, ^GSPC) |
+| **Adversarial Debate & Consensus Router** | `run.bat adversarial-debate` | Fundamental/Sentiment/Technical/Regime agent state |
+| **Risk Management & Guardrail Agent** | `run.bat risk-guardrail` | Internal portfolio ledger, Adversarial Debate state |
 
 ## Quick start
 
@@ -48,6 +55,13 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat fundamental-analyst
+run.bat order-execution
+run.bat sentiment-alt-data
+run.bat technical-pattern
+run.bat market-regime
+run.bat adversarial-debate
+run.bat risk-guardrail
 ```
 
 Or with options:
@@ -352,7 +366,7 @@ Outputs:
 Expert data stewardship and management for the Finance intelligence platform:
 
 - **Data catalog** — 8 external sources with refresh policies and SLA metadata
-- **Agent registry** — 17 agents with lineage (source → agent → output)
+- **Agent registry** — 26 agents with lineage (source → agent → output)
 - **Health checks** — live endpoint monitoring (Yahoo Finance, OpenAlex, BBC RSS, NWS)
 - **Artifact validation** — schema, completeness, and freshness of `output/*.json`
 - **Stewardship issues** — severity-ranked gaps with remediation steps
@@ -397,6 +411,133 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Fundamental Analyst Agent
+
+"The Grounding Force" — anchors every symbol to real corporate filings rather than price action or hype:
+
+- **SEC EDGAR `companyfacts` XBRL** — free, keyless US-GAAP data straight from 10-K/10-Q filings
+- **Free-cash-flow yield** — derived from EDGAR shares-outstanding and Yahoo Finance last price
+- **Balance-sheet health** — debt/equity, current ratio, and earnings-quality checks
+- **Sector valuation baselines** — relative valuation vs sector peers
+- Sector signals grounded in filed financials rather than momentum
+
+```bat
+run.bat fundamental-analyst -o output/fundamental_analyst.json
+```
+
+Outputs:
+
+- `output/fundamental_analyst.json` — full fundamental analysis with market signals
+- `output/sector_valuation_baselines.json` — sector valuation baseline catalog
+
+## Order Execution & Market Microstructure Expert
+
+Manages execution risk vs. price risk using order-book/order-queue dynamics and estimated transaction costs:
+
+- **Order type playbook** — market, limit, stop, and algo order tradeoffs
+- **Slippage + fee estimation** from Yahoo Finance daily OHLCV (3mo history)
+- **Volatility-scaled execution risk** scoring
+- Sector/asset signals for execution timing
+
+```bat
+run.bat order-execution -o output/order_execution.json
+```
+
+Outputs:
+
+- `output/order_execution.json` — full execution analysis with market signals
+- `output/order_type_playbook.json` — order type reference catalog
+
+## Sentiment & Alternative Data Agent
+
+"The Psychology Tracker" — quantifies mass human behavior and momentum before it shows up on a chart:
+
+- **Per-symbol headline RSS feeds** from Yahoo Finance (no API key required)
+- **Lightweight FinBERT-style lexicon classifier** — dependency-free sentiment scoring
+- **Polarity score** (-1.0 .. +1.0), **subjectivity level** (0.0 .. 1.0), and hype/momentum matrices
+- Sector signals derived from aggregate headline sentiment
+
+```bat
+run.bat sentiment-alt-data -o output/sentiment_alt_data.json
+```
+
+Outputs:
+
+- `output/sentiment_alt_data.json` — full sentiment analysis with market signals
+- `output/sentiment_lexicon.json` — sentiment lexicon catalog
+
+## Technical Analysis & Pattern Recognition Agent
+
+"The Execution Mapper" — defines precise coordinate boundaries for entries, stops, and targets:
+
+- **Traditional indicator layer** — EMA(9/21/50) alignment, Wilder RSI with divergence, ATR
+- **Geometric layer** — swing-high/swing-low pivot detection and pattern mapping
+- Daily OHLCV bars streamed from the Yahoo Finance chart API
+- Sector/asset signals tied to concrete price levels
+
+```bat
+run.bat technical-pattern -o output/technical_pattern.json
+```
+
+Outputs:
+
+- `output/technical_pattern.json` — full technical analysis with market signals
+- `output/technical_indicator_config.json` — indicator configuration catalog
+
+## Market Regime Detection Agent
+
+"The Context Filter" — classifies the macro-environment so trading tools aren't misapplied:
+
+- **VIX level/term-structure** proxies (^VIX, ^VIX3M) and broad index (^GSPC) data
+- **Rolling statistical clustering** — realized volatility vs its trailing distribution
+- **Trend persistence** — ADX-style directional strength + SMA slope
+- Classifies current state into one of four market regimes
+
+```bat
+run.bat market-regime -o output/market_regime.json
+```
+
+Outputs:
+
+- `output/market_regime.json` — full regime analysis with market signals
+- `output/regime_playbook.json` — regime playbook catalog
+
+## Adversarial Debate & Consensus Router
+
+"The Judge" — eradicates AI confirmation bias via a rigorous, data-backed courtroom debate:
+
+- **Supervisor-as-Tools orchestrator** — calls each upstream specialist agent in its own isolated invocation
+- Synthesizes state from Fundamental Analyst, Sentiment & Alternative Data, Technical Pattern, and Market Regime
+- Standardized numeric/dict consensus state — avoids shared-thread token confusion and hallucinations
+- Consensus scoring weights tuned per upstream agent
+
+```bat
+run.bat adversarial-debate -o output/adversarial_debate.json
+```
+
+Outputs:
+
+- `output/adversarial_debate.json` — full consensus report with market signals
+- `output/consensus_scoring_weights.json` — consensus scoring weight catalog
+
+## Risk Management & Guardrail Agent
+
+"The Ultimate Auditor" — protects capital from black-swan events, API failures, and over-leveraged trades:
+
+- **Absolute structural veto** over the Adversarial Debate & Consensus Router's proposals
+- Locked to an internal, deterministic portfolio ledger — cash, margin usage, unrealized PnL, exposure ceilings
+- Statistical protective math for position sizing and drawdown limits
+- Risk-adjusted market signals with veto rationale
+
+```bat
+run.bat risk-guardrail -o output/risk_guardrail.json
+```
+
+Outputs:
+
+- `output/risk_guardrail.json` — full risk audit with market signals
+- `output/risk_guardrail_limits.json` — risk guardrail limits catalog
 
 ## Requirements
 
