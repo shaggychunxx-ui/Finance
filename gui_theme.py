@@ -290,6 +290,71 @@ def save_palette_to_prefs(name: str, path: Path | None = None) -> str:
     return palette_id
 
 
+def load_ui_layout(app_key: str, path: Path | None = None) -> dict[str, Any]:
+    """Return saved window/pane layout for an app section."""
+    prefs_path = path or UI_PREFS_PATH
+    data = _load_json(prefs_path) or {}
+    layout = data.get("layout")
+    if not isinstance(layout, dict):
+        return {}
+    section = layout.get(app_key)
+    return dict(section) if isinstance(section, dict) else {}
+
+
+def save_ui_layout(app_key: str, patch: dict[str, Any], path: Path | None = None) -> None:
+    """Merge layout fields for an app section into ui_prefs.json."""
+    if not patch:
+        return
+    prefs_path = path or UI_PREFS_PATH
+    data = _load_json(prefs_path) or {}
+    layout = data.get("layout")
+    if not isinstance(layout, dict):
+        layout = {}
+        data["layout"] = layout
+    section = layout.get(app_key)
+    if not isinstance(section, dict):
+        section = {}
+    section.update(patch)
+    layout[app_key] = section
+    _write_json(prefs_path, data)
+
+
+def pane_sash_ratio(paned: tk.PanedWindow, index: int = 0) -> float | None:
+    """Return sash position as a 0–1 ratio along the paned window axis."""
+    try:
+        orient = str(paned.cget("orient"))
+        if orient == str(tk.HORIZONTAL):
+            total = max(int(paned.winfo_width()), 1)
+            x, _y = paned.sash_coord(index)
+            return max(0.05, min(0.95, x / total))
+        total = max(int(paned.winfo_height()), 1)
+        _x, y = paned.sash_coord(index)
+        return max(0.05, min(0.95, y / total))
+    except (tk.TclError, ZeroDivisionError, TypeError, ValueError):
+        return None
+
+
+def place_pane_ratio(
+    paned: tk.PanedWindow,
+    ratio: float,
+    *,
+    index: int = 0,
+    min_total: int = 320,
+) -> None:
+    """Place a paned sash using a saved ratio."""
+    try:
+        ratio = max(0.05, min(0.95, float(ratio)))
+        orient = str(paned.cget("orient"))
+        if orient == str(tk.HORIZONTAL):
+            total = max(int(paned.winfo_width()), int(paned.winfo_reqwidth()), min_total)
+            paned.sash_place(index, int(total * ratio), 0)
+        else:
+            total = max(int(paned.winfo_height()), int(paned.winfo_reqheight()), min_total)
+            paned.sash_place(index, 0, int(total * ratio))
+    except (tk.TclError, TypeError, ValueError):
+        pass
+
+
 def sync_module_globals(module: Any) -> None:
     """Copy current theme tokens into another module namespace."""
     for key in THEME_KEYS:

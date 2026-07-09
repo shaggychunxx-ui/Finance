@@ -45,6 +45,10 @@ from gui_theme import (
     configure_treeview_style,
     current_palette_name,
     load_palette_from_prefs,
+    load_ui_layout,
+    pane_sash_ratio,
+    place_pane_ratio,
+    save_ui_layout,
     palette_choices,
     palette_preview,
     refresh_trader_theme,
@@ -268,7 +272,13 @@ class ETradeTraderApp(tk.Frame):
         self._window.title("E*TRADE Trader — Finance Agents")
         self._window.configure(bg=BG)
         self._m = ScreenMetrics(self._window, window_profile="trader")
-        self._window.geometry(f"{self._m.win_w}x{self._m.win_h}")
+        self._layout_save_after_id: str | None = None
+        saved_layout = load_ui_layout("etrade_trader")
+        saved_geometry = str(saved_layout.get("geometry") or "").strip()
+        if saved_geometry and "x" in saved_geometry:
+            self._window.geometry(saved_geometry)
+        else:
+            self._window.geometry(f"{self._m.win_w}x{self._m.win_h}")
         self._window.minsize(self._m.px(980), self._m.px(640))
         self.pack(fill=tk.BOTH, expand=True)
 
@@ -978,6 +988,7 @@ class ETradeTraderApp(tk.Frame):
             selected = str(self._notebook.select())
         except tk.TclError:
             return
+        self._schedule_layout_save()
         if selected == str(self._tab_agents) and self._finance_agents is not None:
             self._finance_agents.refresh_agent_statuses()
         elif selected == str(self._tab_log):
@@ -1108,6 +1119,7 @@ class ETradeTraderApp(tk.Frame):
             showhandle=False,
         )
         self._trades_splitter.pack(fill=tk.BOTH, expand=True, padx=self._m.px(4), pady=self._m.px(4))
+        self._trades_splitter.bind("<ButtonRelease-1>", lambda _e: self._schedule_layout_save())
 
         trades_data = tk.Frame(self._trades_splitter, bg=PANEL)
         self._trades_splitter.add(trades_data, minsize=self._m.px(520))
@@ -1202,7 +1214,8 @@ class ETradeTraderApp(tk.Frame):
             tk.END,
             "Select a row in Holdings or Orders to see agent reasoning and a 10-day chart.",
         )
-        self.after(200, self._set_trades_split_ratio)
+        self._window.bind("<Configure>", self._on_window_configure, add="+")
+        self.after(200, self._restore_saved_layout)
 
         log_frame = tk.Frame(self._tab_log, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=self._m.px(8), pady=self._m.px(8))
@@ -2038,32 +2051,104 @@ class ETradeTraderApp(tk.Frame):
         )
         tk.Frame(row, bg=BORDER, height=1).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(self._m.px(10), 0), pady=6)
 
-    def _set_trades_split_ratio(self) -> None:
+    def _set_trades_split_ratio(self, ratio: float = 0.64) -> None:
         if not hasattr(self, "_trades_splitter") or self._trades_detail_hidden:
             return
+        place_pane_ratio(self._trades_splitter, ratio, min_total=self._m.px(900))
+
+    def _schedule_layout_save(self) -> None:
+        if self._shutting_down or self._layout_save_after_id:
+            return
         try:
-            total = max(self._trades_splitter.winfo_width(), self._m.px(900))
-            self._trades_splitter.sash_place(0, int(total * 0.64), 0)
+            self._layout_save_after_id = self.after(350, self._flush_layout_save)
         except tk.TclError:
             pass
+
+    def _on_window_configure(self, event: tk.Event) -> None:
+        if self._shutting_down or event.widget is not self._window:
+            return
+        self._schedule_layout_save()
+
+    def _flush_layout_save(self) -> None:
+        self._layout_save_after_id = None
+        if self._shutting_down:
+            return
+        patch: dict[str, Any] = {}
+        try:
+            patch["geometry"] = self._window.geometry()
+        except tk.TclError:
+            pass
+        if hasattr(self, "_trades_splitter"):
+            ratio = pane_sash_ratio(self._trades_splitter)
+            if ratio is not None:
+                patch["trades_split_ratio"] = round(ratio, 4)
+            patch["trades_detail_hidden"] = bool(self._trades_detail_hidden)
+        if hasattr(self, "_day_orders_split"):
+            day_ratio = pane_sash_ratio(self._day_orders_split)
+            if day_ratio is not None:
+                patch["day_orders_split_ratio"] = round(day_ratio, 4)
+        try:
+            patch["main_notebook_tab"] = int(self._notebook.index(self._notebook.select()))
+        except tk.TclError:
+            pass
+        try:
+            patch["trades_notebook_tab"] = int(self._trades_notebook.index(self._trades_notebook.select()))
+        except tk.TclError:
+            pass
+        save_ui_layout("etrade_trader", patch)
+
+    def _restore_saved_layout(self) -> None:
+        layout = load_ui_layout("etrade_trader")
+        if layout.get("trades_detail_hidden"):
+            if not self._trades_detail_hidden:
+                self._toggle_trades_detail_panel()
+        elif layout.get("trades_split_ratio") is not None:
+            self._set_trades_split_ratio(float(layout["trades_split_ratio"]))
+        else:
+            self._set_trades_split_ratio()
+        if layout.get("day_orders_split_ratio") is not None and hasattr(self, "_day_orders_split"):
+            place_pane_ratio(
+                self._day_orders_split,
+                float(layout["day_orders_split_ratio"]),
+                min_total=self._m.px(200),
+            )
+        main_tab = layout.get("main_notebook_tab")
+        if isinstance(main_tab, int):
+            tabs = self._notebook.tabs()
+            if 0 <= main_tab < len(tabs):
+                try:
+                    self._notebook.select(tabs[main_tab])
+                except tk.TclError:
+                    pass
+        trades_tab = layout.get("trades_notebook_tab")
+        if isinstance(trades_tab, int):
+            tabs = self._trades_notebook.tabs()
+            if 0 <= trades_tab < len(tabs):
+                try:
+                    self._trades_notebook.select(tabs[trades_tab])
+                except tk.TclError:
+                    pass
 
     def _toggle_trades_detail_panel(self) -> None:
         if not hasattr(self, "_trades_splitter"):
             return
         try:
-            total = max(self._trades_splitter.winfo_width(), self._m.px(700))
             if self._trades_detail_hidden:
-                self._trades_splitter.sash_place(0, int(total * 0.64), 0)
+                layout = load_ui_layout("etrade_trader")
+                ratio = float(layout.get("trades_split_ratio") or 0.64)
+                place_pane_ratio(self._trades_splitter, ratio, min_total=self._m.px(700))
                 self._trades_detail_hidden = False
                 if hasattr(self, "_trade_detail_toggle_btn"):
                     self._trade_detail_toggle_btn.configure(text="Hide")
             else:
+                total = max(self._trades_splitter.winfo_width(), self._m.px(700))
                 self._trades_splitter.sash_place(0, total - self._m.px(4), 0)
                 self._trades_detail_hidden = True
                 if hasattr(self, "_trade_detail_toggle_btn"):
                     self._trade_detail_toggle_btn.configure(text="Show")
         except tk.TclError:
             pass
+        self._schedule_layout_save()
 
     def _build_overview_tab(self) -> None:
         hdr = tk.Frame(self._tab_overview, bg=PANEL)
@@ -2167,8 +2252,10 @@ class ETradeTraderApp(tk.Frame):
         )
         self._day_summary_label.pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(4), 0))
 
-        day_split = tk.PanedWindow(self._tab_day_orders, orient=tk.VERTICAL, bg=PANEL, sashwidth=self._m.px(4))
-        day_split.pack(fill=tk.BOTH, expand=True, padx=self._m.px(6), pady=(self._m.px(4), self._m.px(6)))
+        self._day_orders_split = tk.PanedWindow(self._tab_day_orders, orient=tk.VERTICAL, bg=PANEL, sashwidth=self._m.px(4))
+        self._day_orders_split.pack(fill=tk.BOTH, expand=True, padx=self._m.px(6), pady=(self._m.px(4), self._m.px(6)))
+        self._day_orders_split.bind("<ButtonRelease-1>", lambda _e: self._schedule_layout_save())
+        day_split = self._day_orders_split
         pos_wrap = tk.Frame(day_split, bg=PANEL)
         day_split.add(pos_wrap, minsize=self._m.px(100))
         tk.Label(pos_wrap, text="Open today", bg=PANEL, fg=TEXT, font=self._m.font(9, "bold"), anchor="w").pack(
@@ -2654,6 +2741,7 @@ class ETradeTraderApp(tk.Frame):
             selected = str(self._trades_notebook.select())
         except tk.TclError:
             return
+        self._schedule_layout_save()
         if selected == str(self._tab_overview):
             self._update_balance_tab()
             if self._selected_account() and self._client:
@@ -2981,6 +3069,13 @@ class ETradeTraderApp(tk.Frame):
                 self._setup_canvas.unbind_all("<Button-5>")
             except tk.TclError:
                 pass
+        if self._layout_save_after_id:
+            try:
+                self.after_cancel(self._layout_save_after_id)
+            except tk.TclError:
+                pass
+            self._layout_save_after_id = None
+        self._flush_layout_save()
         try:
             self._window.destroy()
         except tk.TclError:

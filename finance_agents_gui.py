@@ -46,6 +46,10 @@ from gui_theme import (
     configure_finance_styles,
     current_palette_name,
     load_palette_from_prefs,
+    load_ui_layout,
+    pane_sash_ratio,
+    place_pane_ratio,
+    save_ui_layout,
     recolor_widget_tree,
     sync_module_globals,
 )
@@ -91,12 +95,18 @@ class FinanceAgentsApp(tk.Frame):
         super().__init__(parent, bg=BG if not embedded else PANEL)
 
         self._m = ScreenMetrics(self._window)
+        self._layout_save_after_id: str | None = None
+        self._layout_key = "finance_agents_embedded" if embedded else "finance_agents"
         if not embedded:
             self._window.title("Finance Agents")
             self._window.configure(bg=BG)
-            self._window.geometry(f"{self._m.win_w}x{self._m.win_h}")
+            saved_geometry = str(load_ui_layout(self._layout_key).get("geometry") or "").strip()
+            if saved_geometry and "x" in saved_geometry:
+                self._window.geometry(saved_geometry)
+            else:
+                self._window.geometry(f"{self._m.win_w}x{self._m.win_h}")
+                self._center_window()
             self._window.minsize(self._m.min_w, self._m.min_h)
-            self._center_window()
         self.pack(fill=tk.BOTH, expand=True)
 
         global AGENT_CATALOG
@@ -117,6 +127,8 @@ class FinanceAgentsApp(tk.Frame):
         if not embedded:
             self._set_icon()
             self._build_menu()
+            self._window.protocol("WM_DELETE_WINDOW", self._on_close)
+            self._window.bind("<Configure>", self._on_window_configure, add="+")
         self._build_styles()
         self._build_ui()
         self._start_ui_queue_poller()
@@ -130,6 +142,49 @@ class FinanceAgentsApp(tk.Frame):
         x = max(0, (self._m.screen_w - self._m.win_w) // 2)
         y = max(0, (self._m.screen_h - self._m.win_h) // 2)
         self._window.geometry(f"{self._m.win_w}x{self._m.win_h}+{x}+{y}")
+
+    def _schedule_layout_save(self) -> None:
+        if self._layout_save_after_id:
+            return
+        try:
+            self._layout_save_after_id = self._window.after(350, self._flush_layout_save)
+        except tk.TclError:
+            pass
+
+    def _on_window_configure(self, event: tk.Event) -> None:
+        if event.widget is not self._window:
+            return
+        self._schedule_layout_save()
+
+    def _flush_layout_save(self) -> None:
+        self._layout_save_after_id = None
+        patch: dict[str, Any] = {}
+        if not self._embedded:
+            try:
+                patch["geometry"] = self._window.geometry()
+            except tk.TclError:
+                pass
+        if hasattr(self, "_splitter"):
+            ratio = pane_sash_ratio(self._splitter)
+            if ratio is not None:
+                patch["sidebar_split_ratio"] = round(ratio, 4)
+        save_ui_layout(self._layout_key, patch)
+
+    def _restore_saved_layout(self) -> None:
+        layout = load_ui_layout(self._layout_key)
+        ratio = layout.get("sidebar_split_ratio")
+        if ratio is not None and hasattr(self, "_splitter"):
+            place_pane_ratio(self._splitter, float(ratio), min_total=self._m.px(260))
+
+    def _on_close(self) -> None:
+        if self._layout_save_after_id:
+            try:
+                self._window.after_cancel(self._layout_save_after_id)
+            except tk.TclError:
+                pass
+            self._layout_save_after_id = None
+        self._flush_layout_save()
+        self._window.destroy()
 
     def _set_icon(self) -> None:
         if ICON_FILE.exists():
@@ -286,6 +341,8 @@ class FinanceAgentsApp(tk.Frame):
         )
         splitter.pack(fill=tk.BOTH, expand=True)
         self._splitter = splitter
+        splitter.bind("<ButtonRelease-1>", lambda _e: self._schedule_layout_save())
+        self.after(200, self._restore_saved_layout)
 
         sidebar = tk.Frame(splitter, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         sidebar_width = self._m.px(580 if self._embedded else 340)
