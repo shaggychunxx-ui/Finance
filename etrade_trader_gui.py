@@ -27,6 +27,12 @@ from gui_theme import (
     ACCENT2,
     BG,
     BORDER,
+    BTN_ACCENT_HOVER,
+    BTN_DANGER_HOVER,
+    BTN_PRIMARY_FG,
+    BTN_PRIMARY_HOVER,
+    CARD_BG,
+    CARD_ACTIVE,
     DOWN,
     MUTED,
     PANEL,
@@ -34,7 +40,16 @@ from gui_theme import (
     UP,
     WARN,
     ScreenMetrics,
+    build_color_remap,
+    configure_trader_notebooks,
     configure_treeview_style,
+    current_palette_name,
+    load_palette_from_prefs,
+    palette_choices,
+    palette_preview,
+    refresh_trader_theme,
+    save_palette_to_prefs,
+    sync_module_globals,
 )
 from gui_treekit import make_data_tree, tree_clear, tree_insert
 
@@ -309,6 +324,9 @@ class ETradeTraderApp(tk.Frame):
         self._finance_agents: Any = None
 
         self._apply_window_icons()
+        self._palette_buttons: dict[str, tk.Frame] = {}
+        load_palette_from_prefs()
+        sync_module_globals(sys.modules[__name__])
 
         if CONFIG_PATH.exists():
             try:
@@ -660,24 +678,107 @@ class ETradeTraderApp(tk.Frame):
         except tk.TclError:
             pass
         configure_treeview_style(style, self._m, prefix="Trader")
-        style.configure("Trader.TNotebook", background=BG, borderwidth=0)
-        style.configure("Trader.TNotebook.Tab", background=PANEL, foreground=MUTED,
-                        padding=(self._m.px(18), self._m.px(10)), font=self._m.font(11, "bold"))
-        style.map("Trader.TNotebook.Tab", background=[("selected", BORDER)], foreground=[("selected", TEXT)])
-        style.configure("Trader.Horizontal.TProgressbar", troughcolor=BORDER, background=ACCENT2)
-        style.configure("Trader.TCombobox", font=self._m.font(9))
+        configure_trader_notebooks(style, self._m)
+    def _sync_theme_tokens(self) -> None:
+        sync_module_globals(sys.modules[__name__])
+
+    def _set_color_palette(self, palette_id: str) -> None:
+        previous = current_palette_name()
+        if palette_id == previous:
+            return
+        save_palette_to_prefs(palette_id)
+        self._sync_theme_tokens()
+        self._window.configure(bg=BG)
+        self.configure(bg=BG)
+        self._build_styles()
+        color_map = build_color_remap(previous, palette_id)
+        refresh_trader_theme(self._window, ttk.Style(self._window), self._m, color_map=color_map)
+        self._sync_palette_buttons()
+        if hasattr(self, "_balance_growth_chart"):
+            self._balance_growth_chart.apply_theme()
+        if self._finance_agents is not None and hasattr(self._finance_agents, "refresh_theme"):
+            self._finance_agents.refresh_theme(previous)
+        self._log_line(f"Color palette: {palette_preview(palette_id).get('label', palette_id)}")
+
+    def _sync_palette_buttons(self) -> None:
+        active = current_palette_name()
+        for palette_id, frame in self._palette_buttons.items():
+            preview = palette_preview(palette_id)
+            selected = palette_id == active
+            frame.configure(
+                bg=preview["CARD_ACTIVE"] if selected else preview["CARD_BG"],
+                highlightbackground=preview["ACCENT"] if selected else preview["BORDER"],
+                highlightthickness=2 if selected else 1,
+            )
+
+    def _build_appearance_section(self, parent: tk.Misc) -> None:
+        section = self._section(parent, "Appearance", "Pick a color palette — applies instantly across the app.")
+        section.pack(fill=tk.X, pady=(0, self._m.px(12)))
+        inner = section._inner
+        row = tk.Frame(inner, bg=CARD_BG)
+        row.pack(fill=tk.X)
+        self._palette_buttons.clear()
+        for palette_id, label in palette_choices():
+            preview = palette_preview(palette_id)
+            chip = tk.Frame(
+                row,
+                bg=preview["CARD_BG"],
+                highlightbackground=preview["BORDER"],
+                highlightthickness=1,
+                cursor="hand2",
+            )
+            chip.pack(side=tk.LEFT, padx=(0, self._m.px(10)), pady=self._m.px(2))
+            swatches = tk.Frame(chip, bg=preview["CARD_BG"])
+            swatches.pack(fill=tk.X, padx=self._m.px(8), pady=(self._m.px(8), self._m.px(4)))
+            for color_key in ("ACCENT", "ACCENT2", "UP", "BG"):
+                tk.Frame(swatches, bg=preview[color_key], width=self._m.px(18), height=self._m.px(10)).pack(
+                    side=tk.LEFT,
+                    padx=(0, self._m.px(3)),
+                )
+            name = tk.Label(
+                chip,
+                text=label,
+                bg=preview["CARD_BG"],
+                fg=preview["TEXT"],
+                font=self._m.font(9, "bold"),
+                cursor="hand2",
+            )
+            name.pack(padx=self._m.px(8), pady=(0, self._m.px(8)))
+            for widget in (chip, swatches, name):
+                widget.bind("<Button-1>", lambda _e, pid=palette_id: self._set_color_palette(pid))
+            self._palette_buttons[palette_id] = chip
+        self._sync_palette_buttons()
 
     def _show_dashboard_tab(self) -> None:
         if hasattr(self, "_tab_dashboard"):
             self._notebook.select(self._tab_dashboard)
 
-    def _show_trades_tab(self, *, swing: bool = True, portfolio: bool = False) -> None:
+    def _show_trades_tab(
+        self,
+        *,
+        swing: bool = True,
+        portfolio: bool = False,
+        balance: bool = False,
+        history: bool = False,
+        attribution: bool = False,
+    ) -> None:
         self._notebook.select(self._tab_trades)
         if hasattr(self, "_trades_notebook"):
-            if portfolio:
-                self._trades_notebook.select(self._tab_portfolio)
+            if history or attribution:
+                self._trades_notebook.select(self._tab_performance)
+                if hasattr(self, "_perf_notebook"):
+                    if attribution:
+                        self._perf_notebook.select(self._tab_attribution)
+                    else:
+                        self._perf_notebook.select(self._tab_history)
+            elif balance:
+                self._trades_notebook.select(self._tab_overview)
+            elif portfolio:
+                self._trades_notebook.select(self._tab_holdings)
             else:
-                self._trades_notebook.select(self._tab_orders if swing else self._tab_day)
+                self._trades_notebook.select(self._tab_orders)
+                if hasattr(self, "_orders_notebook"):
+                    self._orders_notebook.select(self._tab_swing_orders if swing else self._tab_day_orders)
 
     def _panel(self, parent: tk.Misc, *, title: str = "", pad: int | None = None) -> tk.Frame:
         outer = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
@@ -691,10 +792,10 @@ class ETradeTraderApp(tk.Frame):
     def _make_btn(self, parent: tk.Misc, text: str, cmd: Callable[[], None],
                   *, variant: str = "secondary", side=tk.LEFT, padx=0, compact: bool = False) -> tk.Button:
         palette = {
-            "primary": (ACCENT, "#fff", "#5a4bd6"),
-            "accent": (ACCENT2, "#0a0e17", "#00b5b0"),
-            "danger": (DOWN, "#fff", "#cc4040"),
-            "secondary": (BORDER, TEXT, ACCENT),
+            "primary": (ACCENT, BTN_PRIMARY_FG, BTN_PRIMARY_HOVER),
+            "accent": (ACCENT2, BG, BTN_ACCENT_HOVER),
+            "danger": (DOWN, BTN_PRIMARY_FG, BTN_DANGER_HOVER),
+            "secondary": (CARD_BG, TEXT, CARD_ACTIVE),
         }
         bg, fg, abg = palette.get(variant, palette["secondary"])
         btn = tk.Button(
@@ -704,21 +805,30 @@ class ETradeTraderApp(tk.Frame):
             bg=bg,
             fg=fg,
             activebackground=abg,
+            activeforeground=fg,
             relief=tk.FLAT,
             font=self._m.font(8 if compact else 10, "bold" if variant != "secondary" else ""),
-            padx=self._m.px(8 if compact else 12),
-            pady=self._m.px(3 if compact else 8),
+            padx=self._m.px(10 if compact else 14),
+            pady=self._m.px(4 if compact else 7),
             cursor="hand2",
             bd=0,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=BORDER,
         )
         btn.pack(side=side, padx=padx)
         return btn
 
     def _automation_chip(self, parent: tk.Misc, title: str, initial: str) -> tk.Label:
-        cell = tk.Frame(parent, bg="#0d1424", highlightbackground=BORDER, highlightthickness=1)
+        cell = tk.Frame(parent, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
         cell.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, self._m.px(6)))
-        tk.Label(cell, text=title, bg="#0d1424", fg=MUTED, font=self._m.font(9, "bold")).pack(anchor="w", padx=10, pady=(8, 0))
-        val = tk.Label(cell, text=initial, bg="#0d1424", fg=ACCENT2, font=self._m.font(12, "bold"), wraplength=self._m.px(180), justify=tk.LEFT)
+        tk.Label(cell, text=title, bg=CARD_BG, fg=MUTED, font=self._m.font(9, "bold")).pack(
+            anchor="w", padx=10, pady=(8, 0),
+        )
+        val = tk.Label(
+            cell, text=initial, bg=CARD_BG, fg=ACCENT2, font=self._m.font(12, "bold"),
+            wraplength=self._m.px(180), justify=tk.LEFT,
+        )
         val.pack(anchor="w", padx=10, pady=(2, 10))
         return val
 
@@ -755,10 +865,10 @@ class ETradeTraderApp(tk.Frame):
         cards = tk.Frame(body, bg=BG)
         cards.pack(fill=tk.X, padx=pad_x, pady=(0, self._m.px(10)))
         cards.columnconfigure((0, 1, 2, 3), weight=1)
-        self._card_value = self._stat_card(cards, "Account value", "—")
+        self._card_value = self._stat_card(cards, "Account value", "—", accent=ACCENT2)
         self._card_cash = self._stat_card(cards, "Buying power", "—")
-        self._card_reports = self._stat_card(cards, "Agent reports", "—")
-        self._card_orders = self._stat_card(cards, "Pending trades", "—")
+        self._card_reports = self._stat_card(cards, "Agent reports", "—", accent=ACCENT)
+        self._card_orders = self._stat_card(cards, "Pending trades", "—", accent=WARN)
         for col, card in enumerate((self._card_value, self._card_cash, self._card_reports, self._card_orders)):
             card.grid(row=0, column=col, sticky="ew", padx=(0, 6 if col < 3 else 0))
 
@@ -779,39 +889,39 @@ class ETradeTraderApp(tk.Frame):
         trade_panel.pack(fill=tk.X, padx=pad_x, pady=(0, self._m.px(10)))
         tin = trade_panel._inner  # type: ignore[attr-defined]
 
-        swing_card = tk.Frame(tin, bg="#0d1424", highlightbackground=BORDER, highlightthickness=1)
+        swing_card = tk.Frame(tin, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
         swing_card.pack(fill=tk.X, pady=(self._m.px(8), self._m.px(6)))
-        swing_in = tk.Frame(swing_card, bg="#0d1424")
+        swing_in = tk.Frame(swing_card, bg=CARD_BG)
         swing_in.pack(fill=tk.X, padx=12, pady=10)
-        tk.Label(swing_in, text="Swing investing", bg="#0d1424", fg=TEXT, font=self._m.font(11, "bold")).pack(anchor="w")
+        tk.Label(swing_in, text="Swing investing", bg=CARD_BG, fg=TEXT, font=self._m.font(11, "bold")).pack(anchor="w")
         tk.Label(
             swing_in,
             text="Agents choose all stocks — swing trades follow the agent portfolio. Strategy updates every 30 minutes.",
-            bg="#0d1424", fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
+            bg=CARD_BG, fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
         ).pack(anchor="w", pady=(2, 0))
         tk.Checkbutton(
             swing_in, text="Automatically place swing trades", variable=self._auto_execute_var,
-            bg="#0d1424", fg=TEXT, selectcolor=PANEL, activebackground="#0d1424",
+            bg=CARD_BG, fg=TEXT, selectcolor=PANEL, activebackground=CARD_BG,
             activeforeground=TEXT, font=self._m.font(10), command=self._on_trade_setting_changed,
         ).pack(anchor="w", pady=(8, 0))
 
-        day_card = tk.Frame(tin, bg="#0d1424", highlightbackground=ACCENT, highlightthickness=1)
+        day_card = tk.Frame(tin, bg=CARD_BG, highlightbackground=ACCENT, highlightthickness=1)
         day_card.pack(fill=tk.X, pady=(0, self._m.px(6)))
-        day_in = tk.Frame(day_card, bg="#0d1424")
+        day_in = tk.Frame(day_card, bg=CARD_BG)
         day_in.pack(fill=tk.X, padx=12, pady=10)
-        tk.Label(day_in, text="Day trading", bg="#0d1424", fg=ACCENT2, font=self._m.font(11, "bold")).pack(anchor="w")
+        tk.Label(day_in, text="Day trading", bg=CARD_BG, fg=ACCENT2, font=self._m.font(11, "bold")).pack(anchor="w")
         tk.Label(
             day_in,
             text="Shorter trades on agent portfolio picks. Runs automatically every 5 minutes "
                  "(in this app and when closed via the background worker). Closes positions same day.",
-            bg="#0d1424", fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
+            bg=CARD_BG, fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
         ).pack(anchor="w", pady=(2, 0))
         tk.Checkbutton(
             day_in, text="Enable day trading", variable=self._day_trading_var,
-            bg="#0d1424", fg=ACCENT2, selectcolor=PANEL, activebackground="#0d1424",
+            bg=CARD_BG, fg=ACCENT2, selectcolor=PANEL, activebackground=CARD_BG,
             activeforeground=ACCENT2, font=self._m.font(10, "bold"), command=self._on_trade_setting_changed,
         ).pack(anchor="w", pady=(8, 0))
-        self._day_status_label = tk.Label(day_in, text="Day positions: —", bg="#0d1424", fg=MUTED, font=self._m.font(9))
+        self._day_status_label = tk.Label(day_in, text="Day positions: —", bg=CARD_BG, fg=MUTED, font=self._m.font(9))
         self._day_status_label.pack(anchor="w", pady=(4, 0))
 
         tk.Checkbutton(
@@ -897,20 +1007,41 @@ class ETradeTraderApp(tk.Frame):
         header.pack(fill=tk.X, padx=pad, pady=(self._m.px(10), self._m.px(4)))
         title_row = tk.Frame(header, bg=BG)
         title_row.pack(fill=tk.X)
-        tk.Label(title_row, text="E*TRADE Trader", bg=BG, fg=TEXT, font=self._m.font(18, "bold")).pack(side=tk.LEFT)
-        self._env_badge = tk.Label(title_row, text="  Not configured  ", bg=BORDER, fg=MUTED, font=self._m.font(8))
-        self._env_badge.pack(side=tk.RIGHT)
+        title_block = tk.Frame(title_row, bg=BG)
+        title_block.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(title_block, text="E*TRADE Trader", bg=BG, fg=TEXT, font=self._m.font(18, "bold")).pack(anchor="w")
+        tk.Label(
+            title_block,
+            text="Agent research · automated swing & day trading",
+            bg=BG,
+            fg=MUTED,
+            font=self._m.font(9),
+        ).pack(anchor="w", pady=(self._m.px(2), 0))
+        self._env_badge = tk.Label(
+            title_row,
+            text="  Not configured  ",
+            bg=CARD_BG,
+            fg=MUTED,
+            font=self._m.font(8, "bold"),
+            padx=self._m.px(8),
+            pady=self._m.px(4),
+            highlightbackground=BORDER,
+            highlightthickness=1,
+        )
+        self._env_badge.pack(side=tk.RIGHT, anchor="n")
 
-        conn = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        conn = tk.Frame(self, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
         conn.pack(fill=tk.X, padx=pad, pady=(0, self._m.px(4)))
-        conn_inner = tk.Frame(conn, bg=PANEL)
-        conn_inner.pack(fill=tk.X, padx=self._m.px(8), pady=self._m.px(4))
+        conn_inner = tk.Frame(conn, bg=CARD_BG)
+        conn_inner.pack(fill=tk.X, padx=self._m.px(10), pady=self._m.px(6))
 
-        conn_row = tk.Frame(conn_inner, bg=PANEL)
+        conn_row = tk.Frame(conn_inner, bg=CARD_BG)
         conn_row.pack(fill=tk.X)
-        self._conn_status = tk.Label(conn_row, text="● Offline", bg=PANEL, fg=DOWN, font=self._m.font(8))
+        self._conn_status = tk.Label(conn_row, text="● Offline", bg=CARD_BG, fg=DOWN, font=self._m.font(9, "bold"))
         self._conn_status.pack(side=tk.LEFT, padx=(0, self._m.px(10)))
-        tk.Label(conn_row, text="Account", bg=PANEL, fg=MUTED, font=self._m.font(8)).pack(side=tk.LEFT, padx=(0, self._m.px(4)))
+        tk.Label(conn_row, text="Account", bg=CARD_BG, fg=MUTED, font=self._m.font(8, "bold")).pack(
+            side=tk.LEFT, padx=(0, self._m.px(4)),
+        )
         self._account_combo = ttk.Combobox(
             conn_row,
             textvariable=self._account_var,
@@ -923,7 +1054,7 @@ class ETradeTraderApp(tk.Frame):
         self._account_combo.current(0)
         self._account_var.set(ACCOUNT_PLACEHOLDER)
         self._account_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_account_changed())
-        conn_btns = tk.Frame(conn_row, bg=PANEL)
+        conn_btns = tk.Frame(conn_row, bg=CARD_BG)
         conn_btns.pack(side=tk.RIGHT)
         self._make_btn(conn_btns, "Connect", self._connect, variant="primary", padx=(0, 4), compact=True)
         self._make_btn(conn_btns, "Disconnect", self._disconnect, variant="secondary", padx=(0, 4), compact=True)
@@ -966,146 +1097,120 @@ class ETradeTraderApp(tk.Frame):
         self._build_agents_tab()
         self._build_setup_tab()
 
+        self._trades_detail_hidden = False
         self._trades_splitter = tk.PanedWindow(
             self._tab_trades,
-            orient=tk.VERTICAL,
+            orient=tk.HORIZONTAL,
             bg=PANEL,
-            sashwidth=self._m.px(6),
+            sashwidth=self._m.px(5),
             sashrelief=tk.FLAT,
             opaqueresize=True,
             showhandle=False,
         )
         self._trades_splitter.pack(fill=tk.BOTH, expand=True, padx=self._m.px(4), pady=self._m.px(4))
 
-        trades_upper = tk.Frame(self._trades_splitter, bg=PANEL)
-        self._trades_splitter.add(trades_upper, minsize=self._m.px(220))
+        trades_data = tk.Frame(self._trades_splitter, bg=PANEL)
+        self._trades_splitter.add(trades_data, minsize=self._m.px(520))
 
-        self._trades_notebook = ttk.Notebook(trades_upper, style="Trader.TNotebook")
-        self._trades_notebook.pack(fill=tk.BOTH, expand=True)
-        self._tab_portfolio = tk.Frame(self._trades_notebook, bg=PANEL)
+        self._trades_notebook = ttk.Notebook(trades_data, style="Trader.Trades.TNotebook")
+        self._trades_notebook.pack(fill=tk.BOTH, expand=True, padx=self._m.px(2), pady=self._m.px(2))
+
+        self._tab_overview = tk.Frame(self._trades_notebook, bg=PANEL)
+        self._tab_holdings = tk.Frame(self._trades_notebook, bg=PANEL)
         self._tab_orders = tk.Frame(self._trades_notebook, bg=PANEL)
-        self._tab_day = tk.Frame(self._trades_notebook, bg=PANEL)
-        self._trades_notebook.add(self._tab_portfolio, text="  Portfolio  ")
-        self._trades_notebook.add(self._tab_orders, text="  Swing (longer-term)  ")
-        self._trades_notebook.add(self._tab_day, text="  Day trading  ")
+        self._tab_performance = tk.Frame(self._trades_notebook, bg=PANEL)
+        self._trades_notebook.add(self._tab_overview, text="  Overview  ")
+        self._trades_notebook.add(self._tab_holdings, text="  Holdings  ")
+        self._trades_notebook.add(self._tab_orders, text="  Orders  ")
+        self._trades_notebook.add(self._tab_performance, text="  Performance  ")
+        self._trades_notebook.bind("<<NotebookTabChanged>>", self._on_trades_tab_changed)
 
-        tk.Label(
-            self._tab_portfolio,
-            text="How your holdings compare to the agent-built target portfolio — click a row for full analysis",
-            bg=PANEL, fg=MUTED, font=self._m.font(9), anchor="w",
-        ).pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(10), 0))
-        self._holdings_tree = self._make_tree(
-            self._tab_portfolio,
-            ("symbol", "current_pct", "target_pct", "current_usd", "target_usd", "drift", "rationale"),
-            {"symbol": ("Symbol", 88), "current_pct": ("Current %", 92), "target_pct": ("Target %", 92),
-             "current_usd": ("Current $", 108), "target_usd": ("Target $", 108), "drift": ("Drift", 80),
-             "rationale": ("Why chosen", 360)},
-        )
-        self._bind_trade_tree_select(self._holdings_tree, "portfolio")
+        self._build_overview_tab()
+        self._build_holdings_tab()
+        self._build_orders_tab()
+        self._build_performance_tab()
 
-        tk.Label(
-            self._tab_orders,
-            text="Swing trade orders — click a row for the agent analysis behind each trade",
-            bg=PANEL, fg=MUTED, font=self._m.font(9), anchor="w",
-        ).pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(10), 0))
-        self._orders_tree = self._make_tree(
-            self._tab_orders,
-            ("symbol", "action", "type", "qty", "price", "est_usd", "status", "message"),
-            {"symbol": ("Symbol", 88), "action": ("Action", 64), "type": ("Type", 108), "qty": ("Qty", 56),
-             "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 280)},
-        )
-        self._bind_trade_tree_select(self._orders_tree, "swing_order")
-
-        day_hdr = tk.Frame(self._tab_day, bg=PANEL)
-        day_hdr.pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(10), 0))
-        tk.Label(
-            day_hdr,
-            text="Same-day trades from 24-hour signals — entries and exits during market hours",
-            bg=PANEL, fg=MUTED, font=self._m.font(9),
-        ).pack(side=tk.LEFT)
-        self._make_btn(day_hdr, "Refresh", self._refresh_day_trading_panel, variant="secondary")
-        self._day_summary_label = tk.Label(
-            self._tab_day, text="Turn on day trading on the Home tab.",
-            bg=PANEL, fg=TEXT, font=self._m.font(10), anchor="w", wraplength=self._m.px(860), justify=tk.LEFT,
-        )
-        self._day_summary_label.pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(8), 0))
-        day_body = tk.Frame(self._tab_day, bg=PANEL)
-        day_body.pack(fill=tk.BOTH, expand=True)
-        pos_wrap = tk.LabelFrame(day_body, text=" Open today ", bg=PANEL, fg=MUTED, font=self._m.font(9))
-        pos_wrap.pack(fill=tk.BOTH, expand=True, padx=self._m.px(12), pady=(self._m.px(8), self._m.px(4)))
-        self._day_positions_tree = self._make_tree(
-            pos_wrap,
-            ("symbol", "qty", "entry", "target", "stop", "rationale"),
-            {"symbol": ("Symbol", 88), "qty": ("Qty", 56), "entry": ("Entry $", 92),
-             "target": ("Take profit", 92), "stop": ("Stop loss", 92), "rationale": ("Note", 340)},
-            compact_pad=True,
-        )
-        ord_wrap = tk.LabelFrame(day_body, text=" Ready to place ", bg=PANEL, fg=MUTED, font=self._m.font(9))
-        ord_wrap.pack(fill=tk.BOTH, expand=True, padx=self._m.px(12), pady=(0, self._m.px(12)))
-        self._day_orders_tree = self._make_tree(
-            ord_wrap,
-            ("symbol", "action", "type", "qty", "price", "est_usd", "status", "message"),
-            {"symbol": ("Symbol", 88), "action": ("Action", 64), "type": ("Type", 108), "qty": ("Qty", 56),
-             "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 280)},
-            compact_pad=True,
-        )
-        self._bind_trade_tree_select(self._day_positions_tree, "day_position")
-        self._bind_trade_tree_select(self._day_orders_tree, "day_order")
-
-        detail_outer = tk.Frame(self._trades_splitter, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        self._trades_splitter.add(detail_outer, minsize=self._m.px(160), height=self._m.px(260))
-        detail_head = tk.Frame(detail_outer, bg="#0d1424")
-        detail_head.pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
+        self._trades_detail_panel = tk.Frame(self._trades_splitter, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        self._trades_splitter.add(self._trades_detail_panel, minsize=self._m.px(260), width=self._m.px(340))
+        detail_head = tk.Frame(self._trades_detail_panel, bg=CARD_BG)
+        detail_head.pack(fill=tk.X, padx=self._m.px(8), pady=(self._m.px(6), self._m.px(2)))
         self._trade_detail_title = tk.Label(
             detail_head,
-            text="Agent analysis",
-            bg="#0d1424",
+            text="Analysis",
+            bg=CARD_BG,
             fg=TEXT,
-            font=self._m.font(11, "bold"),
+            font=self._m.font(10, "bold"),
             anchor="w",
         )
         self._trade_detail_title.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(
+        self._trade_detail_toggle_btn = self._make_btn(
             detail_head,
-            text="Click a position or order above",
-            bg="#0d1424",
-            fg=MUTED,
-            font=self._m.font(9),
-            anchor="e",
-        ).pack(side=tk.RIGHT)
-        detail_body = tk.Frame(detail_outer, bg="#0d1424")
-        detail_body.pack(fill=tk.BOTH, expand=True, padx=self._m.px(8), pady=(0, self._m.px(8)))
-        detail_body.rowconfigure(0, weight=1)
+            "Hide",
+            self._toggle_trades_detail_panel,
+            variant="secondary",
+            compact=True,
+        )
+        detail_body = tk.Frame(self._trades_detail_panel, bg=CARD_BG)
+        detail_body.pack(fill=tk.BOTH, expand=True, padx=self._m.px(6), pady=(0, self._m.px(6)))
+        detail_body.rowconfigure(1, weight=1)
         detail_body.columnconfigure(0, weight=1)
-        self._trade_detail_text = tk.Text(
+
+        from position_chart import CandleChartWidget
+
+        self._trade_chart_token = 0
+        self._trade_detail_chart = CandleChartWidget(
             detail_body,
-            bg="#0d1424",
+            width=self._m.px(300),
+            height=self._m.px(140),
+            bg=CARD_BG,
+            up_color=UP,
+            down_color=DOWN,
+            text_color=MUTED,
+            grid_color=BORDER,
+            font=self._m.font(8),
+        )
+        self._trade_detail_chart.grid(row=0, column=0, sticky="ew", pady=(0, self._m.px(4)))
+        self._trade_detail_chart.show_placeholder()
+
+        detail_text_frame = tk.Frame(detail_body, bg=CARD_BG)
+        detail_text_frame.grid(row=1, column=0, sticky="nsew")
+        detail_text_frame.rowconfigure(0, weight=1)
+        detail_text_frame.columnconfigure(0, weight=1)
+        self._trade_detail_text = tk.Text(
+            detail_text_frame,
+            bg=CARD_BG,
             fg=TEXT,
             insertbackground=TEXT,
             relief=tk.FLAT,
             wrap=tk.WORD,
-            font=self._m.font(10),
-            padx=self._m.px(8),
-            pady=self._m.px(8),
-            height=10,
+            font=self._m.font(9),
+            padx=self._m.px(6),
+            pady=self._m.px(6),
+            height=8,
             state=tk.DISABLED,
         )
-        detail_scroll = ttk.Scrollbar(detail_body, orient=tk.VERTICAL, command=self._trade_detail_text.yview)
+        detail_scroll = ttk.Scrollbar(
+            detail_text_frame,
+            orient=tk.VERTICAL,
+            command=self._trade_detail_text.yview,
+            style="Trader.Vertical.TScrollbar",
+        )
         self._trade_detail_text.configure(yscrollcommand=detail_scroll.set)
         self._trade_detail_text.grid(row=0, column=0, sticky="nsew")
         detail_scroll.grid(row=0, column=1, sticky="ns")
         self._trade_detail_text.insert(
             tk.END,
-            "Select any portfolio row, swing order, or day-trade position to read the full agent analysis.",
+            "Select a row in Holdings or Orders to see agent reasoning and a 10-day chart.",
         )
+        self.after(200, self._set_trades_split_ratio)
 
-        log_frame = tk.Frame(self._tab_log, bg="#0d1424", highlightbackground=BORDER, highlightthickness=1)
+        log_frame = tk.Frame(self._tab_log, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=self._m.px(8), pady=self._m.px(8))
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
         self._log = tk.Text(
             log_frame,
-            bg="#0d1424",
+            bg=CARD_BG,
             fg=TEXT,
             font=self._m.mono(12),
             relief=tk.FLAT,
@@ -1115,20 +1220,20 @@ class ETradeTraderApp(tk.Frame):
             padx=self._m.px(10),
             pady=self._m.px(10),
         )
-        log_yscroll = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self._log.yview)
-        log_xscroll = ttk.Scrollbar(log_frame, orient=tk.HORIZONTAL, command=self._log.xview)
+        log_yscroll = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self._log.yview, style="Trader.Vertical.TScrollbar")
+        log_xscroll = ttk.Scrollbar(log_frame, orient=tk.HORIZONTAL, command=self._log.xview, style="Trader.Horizontal.TScrollbar")
         self._log.configure(yscrollcommand=log_yscroll.set, xscrollcommand=log_xscroll.set)
         self._log.grid(row=0, column=0, sticky="nsew")
         log_yscroll.grid(row=0, column=1, sticky="ns")
         log_xscroll.grid(row=1, column=0, sticky="ew")
 
-        footer = tk.Frame(self, bg=BORDER)
+        footer = tk.Frame(self, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
         footer.pack(fill=tk.X, side=tk.BOTTOM)
-        foot = tk.Frame(footer, bg=BORDER)
-        foot.pack(fill=tk.X, padx=pad, pady=self._m.px(6))
-        self._status_dot = tk.Label(foot, text="●", bg=BORDER, fg=ACCENT2, font=self._m.font(10))
+        foot = tk.Frame(footer, bg=CARD_BG)
+        foot.pack(fill=tk.X, padx=pad, pady=self._m.px(7))
+        self._status_dot = tk.Label(foot, text="●", bg=CARD_BG, fg=ACCENT2, font=self._m.font(11))
         self._status_dot.pack(side=tk.LEFT)
-        self._status_label = tk.Label(foot, text="Ready", bg=BORDER, fg=TEXT, font=self._m.font(10))
+        self._status_label = tk.Label(foot, text="Ready", bg=CARD_BG, fg=TEXT, font=self._m.font(10))
         self._status_label.pack(side=tk.LEFT, padx=(6, 0))
         self._progress = ttk.Progressbar(foot, mode="indeterminate", style="Trader.Horizontal.TProgressbar",
                                        length=self._m.px(140))
@@ -1212,6 +1317,8 @@ class ETradeTraderApp(tk.Frame):
             text="Connect your E*TRADE account in four steps. Start in Sandbox (paper money) to test safely before going live.",
             bg=PANEL, fg=MUTED, font=self._m.font(10), wraplength=self._m.px(760), justify=tk.LEFT,
         ).pack(anchor="w", pady=(4, self._m.px(12)))
+
+        self._build_appearance_section(wrap)
 
         hero = tk.Frame(wrap, bg="#0d1424", highlightbackground=ACCENT, highlightthickness=1)
         hero.pack(fill=tk.X, pady=(0, self._m.px(14)))
@@ -1857,16 +1964,703 @@ class ETradeTraderApp(tk.Frame):
             self._show_setup_tab()
         self._validate_setup_fields()
 
-    def _stat_card(self, parent: tk.Misc, title: str, value: str) -> tk.Frame:
-        f = tk.Frame(parent, bg="#0d1424", highlightbackground=BORDER, highlightthickness=1)
-        tk.Label(f, text=title, bg="#0d1424", fg=MUTED, font=self._m.font(10)).pack(anchor="w", padx=14, pady=(12, 0))
-        val = tk.Label(f, text=value, bg="#0d1424", fg=TEXT, font=self._m.mono(15))
-        val.pack(anchor="w", padx=14, pady=(4, 12))
+    def _stat_card(self, parent: tk.Misc, title: str, value: str, *, accent: str | None = None) -> tk.Frame:
+        f = tk.Frame(parent, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
+        stripe_color = accent or BORDER
+        tk.Frame(f, bg=stripe_color, height=self._m.px(3)).pack(fill=tk.X)
+        inner = tk.Frame(f, bg=CARD_BG)
+        inner.pack(fill=tk.BOTH, expand=True)
+        tk.Label(inner, text=title, bg=CARD_BG, fg=MUTED, font=self._m.font(9, "bold")).pack(
+            anchor="w", padx=self._m.px(14), pady=(self._m.px(10), 0),
+        )
+        val = tk.Label(inner, text=value, bg=CARD_BG, fg=TEXT, font=self._m.mono(16))
+        val.pack(anchor="w", padx=self._m.px(14), pady=(self._m.px(4), self._m.px(12)))
         f._value_label = val  # type: ignore[attr-defined]
         return f
 
     def _set_card(self, card: tk.Frame, value: str, color: str = TEXT) -> None:
         card._value_label.configure(text=value, fg=color)  # type: ignore[attr-defined]
+
+    def _trades_tab_header(
+        self,
+        parent: tk.Misc,
+        *,
+        title: str,
+        subtitle: str,
+        actions: Callable[[tk.Frame], None] | None = None,
+    ) -> None:
+        wrap = tk.Frame(parent, bg=PANEL)
+        wrap.pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(10), 0))
+        top = tk.Frame(wrap, bg=PANEL)
+        top.pack(fill=tk.X)
+        text_col = tk.Frame(top, bg=PANEL)
+        text_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(text_col, text=title, bg=PANEL, fg=TEXT, font=self._m.font(12, "bold"), anchor="w").pack(
+            fill=tk.X,
+        )
+        tk.Label(text_col, text=subtitle, bg=PANEL, fg=MUTED, font=self._m.font(9), anchor="w").pack(
+            fill=tk.X, pady=(self._m.px(2), 0),
+        )
+        if actions is not None:
+            btn_row = tk.Frame(top, bg=PANEL)
+            btn_row.pack(side=tk.RIGHT, anchor="n", padx=(self._m.px(8), 0))
+            actions(btn_row)
+        tk.Frame(wrap, bg=BORDER, height=1).pack(fill=tk.X, pady=(self._m.px(8), self._m.px(4)))
+
+    def _stat_card_row(self, parent: tk.Misc, specs: list[tuple[str, str | None]]) -> list[tk.Frame]:
+        cards = tk.Frame(parent, bg=PANEL)
+        cards.pack(fill=tk.X, padx=self._m.px(12), pady=(0, self._m.px(8)))
+        for col in range(len(specs)):
+            cards.columnconfigure(col, weight=1)
+        built: list[tk.Frame] = []
+        for col, (title, accent) in enumerate(specs):
+            card = self._stat_card(cards, title, "—", accent=accent)
+            card.grid(row=0, column=col, sticky="ew", padx=(0, self._m.px(6) if col < len(specs) - 1 else 0))
+            built.append(card)
+        return built
+
+    def _meta_chip_bar(self, parent: tk.Misc) -> tuple[tk.Label, tk.Label]:
+        bar = tk.Frame(parent, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
+        bar.pack(fill=tk.X, padx=self._m.px(12), pady=(0, self._m.px(8)))
+        inner = tk.Frame(bar, bg=CARD_BG)
+        inner.pack(fill=tk.X, padx=self._m.px(10), pady=self._m.px(6))
+        baseline = tk.Label(inner, text="Account open: —", bg=CARD_BG, fg=MUTED, font=self._m.font(9), anchor="w")
+        baseline.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        updated = tk.Label(inner, text="Last updated: —", bg=CARD_BG, fg=MUTED, font=self._m.font(9), anchor="e")
+        updated.pack(side=tk.RIGHT)
+        return baseline, updated
+
+    def _section_heading(self, parent: tk.Misc, title: str) -> None:
+        row = tk.Frame(parent, bg=PANEL)
+        row.pack(fill=tk.X, padx=self._m.px(12), pady=(self._m.px(4), self._m.px(4)))
+        tk.Label(row, text=title, bg=PANEL, fg=TEXT, font=self._m.font(10, "bold"), anchor="w").pack(
+            side=tk.LEFT,
+        )
+        tk.Frame(row, bg=BORDER, height=1).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(self._m.px(10), 0), pady=6)
+
+    def _set_trades_split_ratio(self) -> None:
+        if not hasattr(self, "_trades_splitter") or self._trades_detail_hidden:
+            return
+        try:
+            total = max(self._trades_splitter.winfo_width(), self._m.px(900))
+            self._trades_splitter.sash_place(0, int(total * 0.64), 0)
+        except tk.TclError:
+            pass
+
+    def _toggle_trades_detail_panel(self) -> None:
+        if not hasattr(self, "_trades_splitter"):
+            return
+        try:
+            total = max(self._trades_splitter.winfo_width(), self._m.px(700))
+            if self._trades_detail_hidden:
+                self._trades_splitter.sash_place(0, int(total * 0.64), 0)
+                self._trades_detail_hidden = False
+                if hasattr(self, "_trade_detail_toggle_btn"):
+                    self._trade_detail_toggle_btn.configure(text="Hide")
+            else:
+                self._trades_splitter.sash_place(0, total - self._m.px(4), 0)
+                self._trades_detail_hidden = True
+                if hasattr(self, "_trade_detail_toggle_btn"):
+                    self._trade_detail_toggle_btn.configure(text="Show")
+        except tk.TclError:
+            pass
+
+    def _build_overview_tab(self) -> None:
+        hdr = tk.Frame(self._tab_overview, bg=PANEL)
+        hdr.pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), 0))
+        tk.Label(hdr, text="Account snapshot", bg=PANEL, fg=TEXT, font=self._m.font(11, "bold")).pack(
+            side=tk.LEFT,
+        )
+        self._make_btn(hdr, "Refresh", self._fetch_confirmed_balance, variant="secondary", compact=True)
+        (
+            self._balance_total_card,
+            self._balance_cash_card,
+            self._balance_gain_amt_card,
+            self._balance_gain_pct_card,
+        ) = self._stat_card_row(
+            self._tab_overview,
+            [
+                ("Account balance", ACCENT2),
+                ("Buying power", None),
+                ("Gain / loss ($)", UP),
+                ("Gain / loss (%)", UP),
+            ],
+        )
+        self._balance_baseline_label, self._balance_updated_label = self._meta_chip_bar(self._tab_overview)
+
+        chart_wrap = tk.Frame(self._tab_overview, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
+        chart_wrap.pack(fill=tk.BOTH, expand=True, padx=self._m.px(10), pady=(0, self._m.px(8)))
+
+        from account_growth_chart import AccountGrowthChart
+
+        self._balance_growth_points: list[dict] = []
+        self._balance_growth_baseline: float | None = None
+        self._balance_growth_chart = AccountGrowthChart(
+            chart_wrap,
+            width=max(self._m.px(400), int(self._m.win_w * 0.5)),
+            height=self._m.px(120),
+            bg=CARD_BG,
+            font=self._m.font(8),
+            default_range="Open",
+            on_range_change=self._on_balance_chart_range_changed,
+        )
+        self._balance_growth_chart.pack(fill=tk.BOTH, expand=True, padx=self._m.px(4), pady=self._m.px(4))
+
+    def _build_holdings_tab(self) -> None:
+        tk.Label(
+            self._tab_holdings,
+            text="Portfolio vs agent targets — select a row for analysis →",
+            bg=PANEL,
+            fg=MUTED,
+            font=self._m.font(9),
+            anchor="w",
+        ).pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
+        self._holdings_tree = self._make_tree(
+            self._tab_holdings,
+            ("symbol", "current_pct", "target_pct", "current_usd", "target_usd", "drift", "rationale"),
+            {
+                "symbol": ("Symbol", 88), "current_pct": ("Current %", 92), "target_pct": ("Target %", 92),
+                "current_usd": ("Current $", 108), "target_usd": ("Target $", 108), "drift": ("Drift", 80),
+                "rationale": ("Why chosen", 360),
+            },
+        )
+        self._bind_trade_tree_select(self._holdings_tree, "portfolio")
+
+    def _build_orders_tab(self) -> None:
+        self._orders_notebook = ttk.Notebook(self._tab_orders, style="Trader.Trades.TNotebook")
+        self._orders_notebook.pack(fill=tk.BOTH, expand=True, padx=self._m.px(2), pady=self._m.px(2))
+        self._tab_swing_orders = tk.Frame(self._orders_notebook, bg=PANEL)
+        self._tab_day_orders = tk.Frame(self._orders_notebook, bg=PANEL)
+        self._orders_notebook.add(self._tab_swing_orders, text="  Swing  ")
+        self._orders_notebook.add(self._tab_day_orders, text="  Day  ")
+
+        tk.Label(
+            self._tab_swing_orders,
+            text="Swing rebalance orders — select a row for analysis →",
+            bg=PANEL,
+            fg=MUTED,
+            font=self._m.font(9),
+            anchor="w",
+        ).pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
+        self._orders_tree = self._make_tree(
+            self._tab_swing_orders,
+            ("symbol", "action", "type", "qty", "price", "est_usd", "status", "message"),
+            {
+                "symbol": ("Symbol", 88), "action": ("Action", 64), "type": ("Type", 108), "qty": ("Qty", 56),
+                "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 280),
+            },
+        )
+        self._bind_trade_tree_select(self._orders_tree, "swing_order")
+
+        day_hdr = tk.Frame(self._tab_day_orders, bg=PANEL)
+        day_hdr.pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), 0))
+        tk.Label(day_hdr, text="Day trades", bg=PANEL, fg=MUTED, font=self._m.font(9)).pack(side=tk.LEFT)
+        self._make_btn(day_hdr, "Refresh", self._refresh_day_trading_panel, variant="secondary", compact=True)
+        self._day_summary_label = tk.Label(
+            self._tab_day_orders,
+            text="Turn on day trading on the Home tab.",
+            bg=PANEL,
+            fg=TEXT,
+            font=self._m.font(9),
+            anchor="w",
+            wraplength=self._m.px(700),
+            justify=tk.LEFT,
+        )
+        self._day_summary_label.pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(4), 0))
+
+        day_split = tk.PanedWindow(self._tab_day_orders, orient=tk.VERTICAL, bg=PANEL, sashwidth=self._m.px(4))
+        day_split.pack(fill=tk.BOTH, expand=True, padx=self._m.px(6), pady=(self._m.px(4), self._m.px(6)))
+        pos_wrap = tk.Frame(day_split, bg=PANEL)
+        day_split.add(pos_wrap, minsize=self._m.px(100))
+        tk.Label(pos_wrap, text="Open today", bg=PANEL, fg=TEXT, font=self._m.font(9, "bold"), anchor="w").pack(
+            fill=tk.X, padx=self._m.px(4), pady=(0, self._m.px(2)),
+        )
+        self._day_positions_tree = self._make_tree(
+            pos_wrap,
+            ("symbol", "qty", "entry", "target", "stop", "rationale"),
+            {
+                "symbol": ("Symbol", 88), "qty": ("Qty", 56), "entry": ("Entry $", 92),
+                "target": ("Take profit", 92), "stop": ("Stop loss", 92), "rationale": ("Note", 340),
+            },
+            compact_pad=True,
+        )
+        ord_wrap = tk.Frame(day_split, bg=PANEL)
+        day_split.add(ord_wrap, minsize=self._m.px(100))
+        tk.Label(ord_wrap, text="Ready to place", bg=PANEL, fg=TEXT, font=self._m.font(9, "bold"), anchor="w").pack(
+            fill=tk.X, padx=self._m.px(4), pady=(0, self._m.px(2)),
+        )
+        self._day_orders_tree = self._make_tree(
+            ord_wrap,
+            ("symbol", "action", "type", "qty", "price", "est_usd", "status", "message"),
+            {
+                "symbol": ("Symbol", 88), "action": ("Action", 64), "type": ("Type", 108), "qty": ("Qty", 56),
+                "price": ("Est $", 88), "est_usd": ("Value", 96), "status": ("Status", 88), "message": ("Note", 280),
+            },
+            compact_pad=True,
+        )
+        self._bind_trade_tree_select(self._day_positions_tree, "day_position")
+        self._bind_trade_tree_select(self._day_orders_tree, "day_order")
+
+    def _build_performance_tab(self) -> None:
+        self._perf_notebook = ttk.Notebook(self._tab_performance, style="Trader.Trades.TNotebook")
+        self._perf_notebook.pack(fill=tk.BOTH, expand=True, padx=self._m.px(2), pady=self._m.px(2))
+        self._tab_history = tk.Frame(self._perf_notebook, bg=PANEL)
+        self._tab_attribution = tk.Frame(self._perf_notebook, bg=PANEL)
+        self._tab_balance_log = tk.Frame(self._perf_notebook, bg=PANEL)
+        self._perf_notebook.add(self._tab_history, text="  Trade history  ")
+        self._perf_notebook.add(self._tab_attribution, text="  Attribution  ")
+        self._perf_notebook.add(self._tab_balance_log, text="  Balance log  ")
+        self._perf_notebook.bind("<<NotebookTabChanged>>", self._on_perf_tab_changed)
+        self._build_history_tab()
+        self._build_attribution_tab()
+        self._build_balance_log_tab()
+
+    def _build_balance_log_tab(self) -> None:
+        tk.Label(
+            self._tab_balance_log,
+            text="Recorded balance snapshots over time",
+            bg=PANEL,
+            fg=MUTED,
+            font=self._m.font(9),
+            anchor="w",
+        ).pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
+        self._balance_history_tree = self._make_tree(
+            self._tab_balance_log,
+            ("at", "total", "buying_power", "gain_amt", "gain_pct", "source"),
+            {
+                "at": ("Recorded", 150),
+                "total": ("Balance", 108),
+                "buying_power": ("Buying power", 108),
+                "gain_amt": ("Gain $", 96),
+                "gain_pct": ("Gain %", 72),
+                "source": ("Source", 120),
+            },
+        )
+
+    def _gain_color(self, value: float | None) -> str:
+        if value is None:
+            return TEXT
+        if value > 0:
+            return UP
+        if value < 0:
+            return DOWN
+        return TEXT
+
+    def _format_balance_timestamp(self, raw: str) -> str:
+        text = str(raw or "").strip()
+        if not text:
+            return "—"
+        try:
+            from datetime import datetime
+
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            return parsed.strftime("%b %d, %Y %I:%M %p")
+        except ValueError:
+            return text[:19].replace("T", " ")
+
+    def _clear_balance_tab(self) -> None:
+        if not hasattr(self, "_balance_total_card"):
+            return
+        for card in (
+            self._balance_total_card,
+            self._balance_cash_card,
+            self._balance_gain_amt_card,
+            self._balance_gain_pct_card,
+        ):
+            self._set_card(card, "—")
+        self._balance_baseline_label.configure(text="Account open: —")
+        self._balance_updated_label.configure(text="Last updated: —")
+        self._tree_clear(self._balance_history_tree)
+        if hasattr(self, "_balance_growth_chart"):
+            self._balance_growth_chart.show_placeholder()
+
+    def _build_history_tab(self) -> None:
+        hdr = tk.Frame(self._tab_history, bg=PANEL)
+        hdr.pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), 0))
+        tk.Label(hdr, text="Trade history & P&L", bg=PANEL, fg=TEXT, font=self._m.font(11, "bold")).pack(
+            side=tk.LEFT,
+        )
+        self._make_btn(hdr, "Export CSV", self._export_trade_history_csv, variant="accent", compact=True)
+        (
+            self._pnl_total_card,
+            self._pnl_swing_card,
+            self._pnl_day_card,
+            self._pnl_record_card,
+        ) = self._stat_card_row(
+            self._tab_history,
+            [
+                ("Total realized P&L", ACCENT),
+                ("Swing P&L", None),
+                ("Day P&L", None),
+                ("Trades logged", ACCENT2),
+            ],
+        )
+        self._history_tree = self._make_tree(
+            self._tab_history,
+            ("at", "symbol", "action", "qty", "price", "value", "pnl", "mode", "agents", "note"),
+            {
+                "at": ("Time", 140),
+                "symbol": ("Symbol", 72),
+                "action": ("Action", 64),
+                "qty": ("Qty", 48),
+                "price": ("Price", 80),
+                "value": ("Value", 88),
+                "pnl": ("P&L", 80),
+                "mode": ("Mode", 56),
+                "agents": ("Agents", 140),
+                "note": ("Note", 260),
+            },
+        )
+
+    def _build_attribution_tab(self) -> None:
+        tk.Label(
+            self._tab_attribution,
+            text="P&L grouped by agent research source",
+            bg=PANEL,
+            fg=MUTED,
+            font=self._m.font(9),
+            anchor="w",
+        ).pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
+        summary_bar = tk.Frame(self._tab_attribution, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
+        summary_bar.pack(fill=tk.X, padx=self._m.px(10), pady=(0, self._m.px(6)))
+        self._attribution_summary_label = tk.Label(
+            summary_bar,
+            text="—",
+            bg=CARD_BG,
+            fg=TEXT,
+            font=self._m.font(10),
+            anchor="w",
+            padx=self._m.px(12),
+            pady=self._m.px(8),
+        )
+        self._attribution_summary_label.pack(fill=tk.X)
+        self._attribution_tree = self._make_tree(
+            self._tab_attribution,
+            ("source", "trades", "realized", "wins", "losses", "win_rate"),
+            {
+                "source": ("Agent source", 180),
+                "trades": ("Trades", 72),
+                "realized": ("Realized P&L", 120),
+                "wins": ("Wins", 56),
+                "losses": ("Losses", 64),
+                "win_rate": ("Win %", 72),
+            },
+        )
+
+    def _export_trade_history_csv(self) -> None:
+        from tkinter import filedialog
+
+        from trade_history import export_trades_csv
+
+        default_name = f"etrade_trades_{time.strftime('%Y%m%d')}.csv"
+        path = filedialog.asksaveasfilename(
+            parent=self._window,
+            title="Export trade history",
+            defaultextension=".csv",
+            initialfile=default_name,
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            count = export_trades_csv(path)
+            messagebox.showinfo("Export complete", f"Exported {count} trade(s) to:\n{path}", parent=self._window)
+            self._log_line(f"Trade history exported: {path} ({count} rows)")
+        except OSError as exc:
+            messagebox.showerror("Export failed", str(exc), parent=self._window)
+
+    def _update_history_tab(self) -> None:
+        if not hasattr(self, "_history_tree"):
+            return
+        try:
+            from trade_history import get_pnl_summary, load_trade_history
+
+            summary = get_pnl_summary()
+            store = load_trade_history()
+        except Exception:
+            summary = {}
+            store = {"trades": []}
+
+        total = float(summary.get("total_realized_pnl_usd", 0))
+        swing = float(summary.get("swing_realized_pnl_usd", 0))
+        day = float(summary.get("day_realized_pnl_usd", 0))
+        self._set_card(self._pnl_total_card, f"${total:+,.2f}", self._gain_color(total))
+        self._set_card(self._pnl_swing_card, f"${swing:+,.2f}", self._gain_color(swing))
+        self._set_card(self._pnl_day_card, f"${day:+,.2f}", self._gain_color(day))
+        self._set_card(self._pnl_record_card, str(summary.get("trade_count", 0)))
+
+        self._tree_clear(self._history_tree)
+        for trade in reversed((store.get("trades") or [])[-80:]):
+            pnl = trade.get("realized_pnl_usd")
+            pnl_text = f"${float(pnl):+,.2f}" if pnl is not None else "—"
+            pnl_tags: tuple[str, ...] = ()
+            if pnl is not None:
+                pnl_tags = ("gain_up",) if float(pnl) >= 0 else ("gain_down",)
+            agents = ", ".join(trade.get("agent_sources") or []) or "—"
+            self._tree_insert(
+                self._history_tree,
+                (
+                    self._format_balance_timestamp(str(trade.get("executed_at", ""))),
+                    trade.get("symbol", "—"),
+                    trade.get("action", "—"),
+                    trade.get("quantity", "—"),
+                    f"${float(trade.get('price', 0)):.2f}" if trade.get("price") else "—",
+                    f"${float(trade.get('value_usd', 0)):,.2f}" if trade.get("value_usd") else "—",
+                    pnl_text,
+                    trade.get("mode", "—"),
+                    agents[:48],
+                    (trade.get("rationale") or "")[:120],
+                ),
+                extra_tags=pnl_tags,
+            )
+
+    def _update_attribution_tab(self) -> None:
+        if not hasattr(self, "_attribution_tree"):
+            return
+        try:
+            from trade_history import get_attribution_summary
+
+            rows = get_attribution_summary()
+        except Exception:
+            rows = []
+
+        total_pnl = sum(float(r.get("realized_pnl_usd", 0)) for r in rows)
+        self._attribution_summary_label.configure(
+            text=f"{len(rows)} agent source(s)  ·  Combined realized P&L: ${total_pnl:+,.2f}",
+            fg=self._gain_color(total_pnl),
+        )
+        self._tree_clear(self._attribution_tree)
+        for row in rows:
+            pnl = float(row.get("realized_pnl_usd", 0))
+            win_rate = row.get("win_rate_pct")
+            self._tree_insert(
+                self._attribution_tree,
+                (
+                    row.get("source", "—"),
+                    row.get("trades", 0),
+                    f"${pnl:+,.2f}",
+                    row.get("wins", 0),
+                    row.get("losses", 0),
+                    f"{win_rate:.1f}%" if win_rate is not None else "—",
+                ),
+                extra_tags=("gain_up",) if pnl > 0 else (("gain_down",) if pnl < 0 else ()),
+            )
+
+    def _current_account_key(self) -> str:
+        return str(getattr(self, "_persisted_account_key", "") or "").strip()
+
+    def _on_balance_chart_range_changed(self, _range_key: str) -> None:
+        self._populate_balance_history_tree()
+
+    def _populate_balance_history_tree(self) -> None:
+        if not hasattr(self, "_balance_history_tree"):
+            return
+        from account_growth_chart import (
+            filter_point_rows,
+            resolve_opened_at_for_account,
+            resolve_opening_balance_for_account,
+        )
+
+        self._tree_clear(self._balance_history_tree)
+        range_key = "Open"
+        if hasattr(self, "_balance_growth_chart"):
+            range_key = self._balance_growth_chart.range_key
+        baseline = self._balance_growth_baseline
+        account_key = self._current_account_key()
+        config_selected = get_selected_account(CONFIG_PATH)
+        try:
+            from analysis_history import get_account_growth
+
+            accounts_meta = get_account_growth().get("accounts")
+        except Exception:
+            accounts_meta = {}
+        accounts_meta = accounts_meta if isinstance(accounts_meta, dict) else {}
+        open_ts = resolve_opened_at_for_account(
+            account_key,
+            self._balance_growth_points,
+            config_selected=config_selected,
+            accounts_meta=accounts_meta,
+        )
+        opening_balance = resolve_opening_balance_for_account(
+            account_key,
+            self._balance_growth_points,
+            accounts_meta=accounts_meta,
+        )
+        points = filter_point_rows(
+            self._balance_growth_points,
+            range_key,
+            account_id_key=account_key,
+            account_opened_at=open_ts.isoformat() if open_ts else None,
+            opening_balance=opening_balance,
+        )
+        for point in reversed(points[-60:]):
+            value = point.get("total_account_value")
+            point_cash = point.get("cash_buying_power")
+            point_gain_amt = "—"
+            point_gain_pct = "—"
+            gain_tags: tuple[str, ...] = ()
+            if baseline is not None and value is not None:
+                try:
+                    delta = float(value) - float(baseline)
+                    pct = (delta / float(baseline) * 100) if float(baseline) else 0.0
+                    sign = "+" if delta >= 0 else ""
+                    point_gain_amt = f"{sign}${delta:,.2f}"
+                    point_gain_pct = f"{sign}{pct:.2f}%"
+                    if delta > 0:
+                        gain_tags = ("gain_up",)
+                    elif delta < 0:
+                        gain_tags = ("gain_down",)
+                except (TypeError, ValueError):
+                    pass
+            self._tree_insert(
+                self._balance_history_tree,
+                (
+                    self._format_balance_timestamp(str(point.get("at", ""))),
+                    f"${float(value):,.2f}" if value is not None else "—",
+                    f"${float(point_cash):,.2f}" if point_cash is not None else "—",
+                    point_gain_amt,
+                    point_gain_pct,
+                    str(point.get("source") or "—"),
+                ),
+                extra_tags=gain_tags,
+            )
+
+    def _update_balance_tab(
+        self,
+        total_value: float | None = None,
+        buying_power: float | None = None,
+    ) -> None:
+        if not hasattr(self, "_balance_total_card"):
+            return
+        try:
+            from analysis_history import get_account_growth
+
+            growth = get_account_growth()
+        except Exception:
+            growth = {}
+
+        from account_growth_chart import (
+            points_for_account,
+            resolve_opened_at_for_account,
+            resolve_opening_balance_for_account,
+        )
+
+        account_key = self._current_account_key()
+        config_selected = get_selected_account(CONFIG_PATH)
+        accounts_meta = growth.get("accounts") if isinstance(growth.get("accounts"), dict) else {}
+        scoped_points = points_for_account(list(growth.get("points") or []), account_key)
+        baseline = resolve_opening_balance_for_account(
+            account_key,
+            scoped_points,
+            accounts_meta=accounts_meta,
+        )
+        if baseline is None:
+            baseline = growth.get("baseline_value")
+        latest = total_value if total_value is not None else growth.get("latest_value")
+        cash = buying_power if buying_power is not None else None
+        self._balance_growth_points = scoped_points
+        self._balance_growth_baseline = float(baseline) if baseline is not None else None
+
+        if latest is not None:
+            self._set_card(self._balance_total_card, f"${float(latest):,.2f}")
+        else:
+            self._set_card(self._balance_total_card, "—")
+
+        if cash is not None:
+            self._set_card(self._balance_cash_card, f"${float(cash):,.2f}")
+        else:
+            points = growth.get("points") or []
+            last_cash = points[-1].get("cash_buying_power") if points else None
+            if last_cash is not None:
+                self._set_card(self._balance_cash_card, f"${float(last_cash):,.2f}")
+            else:
+                self._set_card(self._balance_cash_card, "—")
+
+        gain_amt: float | None = None
+        gain_pct: float | None = growth.get("growth_pct")
+        if baseline is not None and latest is not None:
+            try:
+                gain_amt = float(latest) - float(baseline)
+                if gain_pct is None and float(baseline) != 0:
+                    gain_pct = (gain_amt / float(baseline)) * 100
+            except (TypeError, ValueError):
+                gain_amt = None
+
+        if gain_amt is not None:
+            sign = "+" if gain_amt >= 0 else ""
+            self._set_card(self._balance_gain_amt_card, f"{sign}${gain_amt:,.2f}", self._gain_color(gain_amt))
+        else:
+            self._set_card(self._balance_gain_amt_card, "—")
+
+        if gain_pct is not None:
+            sign = "+" if float(gain_pct) >= 0 else ""
+            self._set_card(
+                self._balance_gain_pct_card,
+                f"{sign}{float(gain_pct):.2f}%",
+                self._gain_color(float(gain_pct)),
+            )
+        else:
+            self._set_card(self._balance_gain_pct_card, "—")
+
+        open_ts = resolve_opened_at_for_account(
+            account_key,
+            self._balance_growth_points,
+            config_selected=config_selected,
+            accounts_meta=accounts_meta,
+        )
+        if open_ts is not None and baseline is not None:
+            self._balance_baseline_label.configure(
+                text=f"Account open: {open_ts.strftime('%b %d, %Y')} · ${float(baseline):,.2f}",
+            )
+        elif baseline is not None:
+            self._balance_baseline_label.configure(text=f"Account open: ${float(baseline):,.2f}")
+        else:
+            self._balance_baseline_label.configure(
+                text="Account open: — (recorded on first balance refresh)",
+            )
+
+        updated = growth.get("updated_at")
+        self._balance_updated_label.configure(
+            text=f"Last updated: {self._format_balance_timestamp(str(updated or ''))}",
+        )
+
+        if hasattr(self, "_balance_growth_chart"):
+            if self._balance_growth_points:
+                self._balance_growth_chart.load_points(
+                    self._balance_growth_points,
+                    baseline=baseline,
+                    account_id_key=account_key,
+                    accounts_meta=accounts_meta,
+                    config_selected=config_selected,
+                )
+            else:
+                self._balance_growth_chart.show_placeholder()
+
+        self._populate_balance_history_tree()
+
+    def _on_perf_tab_changed(self, _event: tk.Event | None = None) -> None:
+        try:
+            selected = str(self._perf_notebook.select())
+        except tk.TclError:
+            return
+        if selected == str(self._tab_history):
+            self._update_history_tab()
+        elif selected == str(self._tab_attribution):
+            self._update_attribution_tab()
+        elif selected == str(self._tab_balance_log):
+            self._update_balance_tab()
+
+    def _on_trades_tab_changed(self, _event: tk.Event | None = None) -> None:
+        try:
+            selected = str(self._trades_notebook.select())
+        except tk.TclError:
+            return
+        if selected == str(self._tab_overview):
+            self._update_balance_tab()
+            if self._selected_account() and self._client:
+                self._fetch_confirmed_balance()
+        elif selected == str(self._tab_performance):
+            self._on_perf_tab_changed()
 
     def _tree_clear(self, tree: ttk.Treeview) -> None:
         tree_clear(tree)
@@ -1899,7 +2693,7 @@ class ETradeTraderApp(tk.Frame):
         self._show_trade_analysis(symbol, context)
 
     def _show_trade_analysis(self, symbol: str, context: str) -> None:
-        from position_analysis import build_position_analysis
+        from position_analysis import build_position_analysis, get_company_profile
 
         holding: dict[str, Any] | None = None
         current: dict[str, Any] | None = None
@@ -1941,12 +2735,52 @@ class ETradeTraderApp(tk.Frame):
             "day_position": "Day trade position",
             "day_order": "Day trade order",
         }
-        self._trade_detail_title.configure(text=f"{symbol} — {labels.get(context, 'Analysis')}")
+        profile = get_company_profile(symbol)
+        company_name = str(profile.get("name") or symbol).strip()
+        price_bit = ""
+        if profile.get("price") is not None:
+            price = float(profile["price"])
+            price_bit = f" · ${price:.2f}"
+            if profile.get("change_pct") is not None:
+                price_bit += f" ({float(profile['change_pct']):+.2f}%)"
+        self._trade_detail_title.configure(
+            text=f"{company_name} ({symbol}){price_bit} — {labels.get(context, 'Analysis')}"
+        )
         self._trade_detail_text.configure(state=tk.NORMAL)
         self._trade_detail_text.delete("1.0", tk.END)
         self._trade_detail_text.insert("1.0", text)
         self._trade_detail_text.configure(state=tk.DISABLED)
         self._trade_detail_text.see("1.0")
+        current_price = float(profile["price"]) if profile.get("price") is not None else None
+        self._load_trade_detail_chart(symbol, current_price=current_price)
+
+    def _load_trade_detail_chart(self, symbol: str, *, current_price: float | None = None) -> None:
+        self._trade_chart_token += 1
+        token = self._trade_chart_token
+        self._trade_detail_chart.show_placeholder("Loading 10-day chart…")
+
+        def _fetch() -> None:
+            from position_chart import CHART_DAYS, fetch_candle_bars
+
+            bars = fetch_candle_bars(symbol, days=CHART_DAYS)
+            self._window.after(
+                0,
+                lambda: self._apply_trade_detail_chart(symbol, bars, token, current_price=current_price),
+            )
+
+        threading.Thread(target=_fetch, daemon=True, name="trade-chart").start()
+
+    def _apply_trade_detail_chart(
+        self,
+        symbol: str,
+        bars: list[Any],
+        token: int,
+        *,
+        current_price: float | None = None,
+    ) -> None:
+        if token != self._trade_chart_token:
+            return
+        self._trade_detail_chart.load_symbol(symbol, bars=bars, current_price=current_price)
 
     def _tree_insert(
         self,
@@ -2017,7 +2851,7 @@ class ETradeTraderApp(tk.Frame):
             pass
 
     def _set_status(self, text: str, color: str = ACCENT2) -> None:
-        self._status_label.configure(text=text)
+        self._status_label.configure(text=text, fg=color if color != TEXT else TEXT)
         self._status_dot.configure(fg=color)
 
     def _set_busy(self, busy: bool) -> None:
@@ -2371,6 +3205,7 @@ class ETradeTraderApp(tk.Frame):
     def _clear_account_cards(self) -> None:
         self._set_card(self._card_value, "—")
         self._set_card(self._card_cash, "—")
+        self._clear_balance_tab()
 
     def _fetch_confirmed_balance(self) -> None:
         acct = self._selected_account()
@@ -2409,6 +3244,7 @@ class ETradeTraderApp(tk.Frame):
                     )
             except Exception:
                 pass
+            self._schedule(self._update_balance_tab, total_value, buying_power)
         except Exception as exc:
             self._schedule(self._log_line, f"Balance load failed: {exc}")
 
@@ -3203,6 +4039,9 @@ class ETradeTraderApp(tk.Frame):
     def _render_plan(self, plan: StrategyPlan, focus_orders_tab: bool = True) -> None:
         self._set_card(self._card_value, f"${plan.total_account_value:,.0f}")
         self._set_card(self._card_orders, str(len(plan.orders)), WARN if plan.orders else UP)
+        self._update_balance_tab(plan.total_account_value)
+        self._update_history_tab()
+        self._update_attribution_tab()
 
         self._tree_clear(self._holdings_tree)
         self._tree_clear(self._orders_tree)

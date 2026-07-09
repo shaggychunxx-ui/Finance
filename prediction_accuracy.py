@@ -19,11 +19,12 @@ MAGNITUDE_TOLERANCE_PCT = {"24h": 1.0, "1wk": 2.5, "1mo": 5.0, "1yr": 12.0}
 DEFAULT_HORIZON = "24h"
 MAX_PENDING = 4000
 MAX_SCORED = 2500
-MIN_SAMPLES_FOR_WEIGHT = 8
-MIN_SAMPLES_FOR_MAGNITUDE = 4
+MIN_SAMPLES_FOR_WEIGHT = 25
+MIN_SAMPLES_FOR_MAGNITUDE = 8
 DIRECTION_WEIGHT = 0.6
 MAGNITUDE_WEIGHT = 0.4
 SKIP_SOURCES = frozenset({"etrade", "history", "market-predictor"})
+RETURN_SOURCE_MIGRATION_CUTOFF = "2026-07-08T22:00:00+00:00"
 
 
 def _now() -> datetime:
@@ -171,8 +172,9 @@ def _append_prediction(
     regime_posture: str = "",
     event_day: bool = False,
     sector_hint: str = "",
+    return_source: str = "explicit",
 ) -> None:
-    from agent_fusion import agent_in_domain, is_event_day, score_symbol_allowed
+    from agent_fusion import agent_in_domain, score_symbol_allowed
 
     sym = str(symbol or "").strip().upper()
     aid = str(agent_id or "").strip()
@@ -207,6 +209,7 @@ def _append_prediction(
             "cycle_id": cycle_id,
             "regime_posture": regime_posture or "neutral",
             "event_day": bool(event_day),
+            "return_source": "explicit" if predicted_return_pct is not None else "estimated",
         }
     )
 
@@ -222,7 +225,7 @@ def _extract_from_agent_file(
     regime_posture: str = "neutral",
     event_day: bool = False,
 ) -> None:
-    from agent_fusion import estimate_return_from_bias
+    from agent_fusion import agent_default_horizon
     preds = data.get("predictions", {})
     if isinstance(preds, dict):
         for horizon, rows in preds.items():
@@ -235,6 +238,7 @@ def _extract_from_agent_file(
                 price = row.get("price_at_prediction")
                 if price is None and sym:
                     price = quotes.get(str(sym).upper())
+                explicit_ret = _predicted_return_value(row.get("predicted_return_pct"))
                 _append_prediction(
                     pending,
                     agent_id=agent_id,
@@ -242,12 +246,13 @@ def _extract_from_agent_file(
                     horizon=horizon,
                     predicted_direction=str(row.get("predicted_direction", "flat")),
                     confidence=float(row.get("confidence", 0.5)),
-                    predicted_return_pct=row.get("predicted_return_pct"),
+                    predicted_return_pct=explicit_ret,
                     price_at_prediction=float(price) if price is not None else None,
                     cycle_id=cycle_id,
                     recorded_at=recorded_at,
                     regime_posture=regime_posture,
                     event_day=event_day,
+                    return_source="explicit" if explicit_ret is not None else "estimated",
                 )
 
     for sig in data.get("market_signals", []):
@@ -262,16 +267,17 @@ def _extract_from_agent_file(
                 pending,
                 agent_id=agent_id,
                 symbol=sym,
-                horizon=DEFAULT_HORIZON,
+                horizon=agent_default_horizon(agent_id),
                 predicted_direction=direction,
                 confidence=conf,
-                predicted_return_pct=estimate_return_from_bias(direction, confidence=conf),
+                predicted_return_pct=None,
                 price_at_prediction=quotes.get(sym),
                 cycle_id=cycle_id,
                 recorded_at=recorded_at,
                 regime_posture=regime_posture,
                 event_day=event_day,
                 sector_hint=sector,
+                return_source="estimated",
             )
 
     if agent_id == "finance":
@@ -282,19 +288,21 @@ def _extract_from_agent_file(
             direction = "up" if score >= 0.35 else "flat"
             sym = str(opp.get("symbol", "")).upper()
             conf = min(0.9, 0.45 + score * 0.2)
+            explicit_ret = _predicted_return_value(opp.get("expected_return_pct", opp.get("predicted_return_pct")))
             _append_prediction(
                 pending,
                 agent_id=agent_id,
                 symbol=sym,
-                horizon=DEFAULT_HORIZON,
+                horizon=agent_default_horizon(agent_id),
                 predicted_direction=direction,
                 confidence=conf,
-                predicted_return_pct=estimate_return_from_bias(direction, confidence=conf),
+                predicted_return_pct=explicit_ret,
                 price_at_prediction=opp.get("price") or quotes.get(sym),
                 cycle_id=cycle_id,
                 recorded_at=recorded_at,
                 regime_posture=regime_posture,
                 event_day=event_day,
+                return_source="explicit" if explicit_ret is not None else "estimated",
             )
 
     if agent_id == "datascience":
@@ -303,22 +311,23 @@ def _extract_from_agent_file(
                 continue
             sym = str(pick.get("symbol", "")).upper()
             conf = float(pick.get("confidence", 0.55))
-            ret = pick.get("expected_return_pct", pick.get("predicted_return_pct"))
-            if ret is None:
-                ret = estimate_return_from_bias("up", confidence=conf)
+            explicit_ret = _predicted_return_value(
+                pick.get("expected_return_pct", pick.get("predicted_return_pct"))
+            )
             _append_prediction(
                 pending,
                 agent_id=agent_id,
                 symbol=sym,
-                horizon=DEFAULT_HORIZON,
+                horizon=agent_default_horizon(agent_id),
                 predicted_direction="up",
                 confidence=conf,
-                predicted_return_pct=ret,
+                predicted_return_pct=explicit_ret,
                 price_at_prediction=pick.get("price") or quotes.get(sym),
                 cycle_id=cycle_id,
                 recorded_at=recorded_at,
                 regime_posture=regime_posture,
                 event_day=event_day,
+                return_source="explicit" if explicit_ret is not None else "estimated",
             )
 
 
@@ -444,13 +453,22 @@ def score_matured_predictions() -> int:
         predicted = str(pred.get("predicted_direction", "flat")).lower()
         hit = _prediction_hit(predicted, actual)
         conf = float(pred.get("confidence", 0.5))
-        predicted_return_pct = _predicted_return_value(pred.get("predicted_return_pct"))
-        magnitude_hit = _magnitude_hit(
-            predicted_direction=predicted,
-            actual_direction=actual,
-            predicted_return_pct=predicted_return_pct,
-            actual_return_pct=return_pct,
-            horizon=horizon,
+        return_source = str(pred.get("return_source") or "estimated")
+        predicted_return_pct = (
+            _predicted_return_value(pred.get("predicted_return_pct"))
+            if return_source == "explicit"
+            else None
+        )
+        magnitude_hit = (
+            _magnitude_hit(
+                predicted_direction=predicted,
+                actual_direction=actual,
+                predicted_return_pct=predicted_return_pct,
+                actual_return_pct=return_pct,
+                horizon=horizon,
+            )
+            if return_source == "explicit" and predicted_return_pct is not None
+            else None
         )
         magnitude_error_pct = (
             round(abs(return_pct - predicted_return_pct), 3)
@@ -481,6 +499,7 @@ def score_matured_predictions() -> int:
                 "brier_term": round((conf - outcome) ** 2, 4),
                 "regime_posture": pred.get("regime_posture", "neutral"),
                 "event_day": bool(pred.get("event_day")),
+                "return_source": return_source,
                 "scored_at": _now_iso(),
                 "recorded_at": pred.get("recorded_at"),
             }
@@ -500,21 +519,49 @@ def score_matured_predictions() -> int:
 
 
 def _backfill_scored_row(row: dict[str, Any]) -> bool:
-    """Fill magnitude fields on legacy scored rows that predate return tracking."""
-    if row.get("magnitude_hit") is not None and row.get("predicted_return_pct") is not None:
-        return False
+    """Normalize legacy scored rows; direction-only unless return was explicit."""
+    updated = False
+    scored_at = str(row.get("scored_at") or row.get("recorded_at") or "")
+    if (
+        row.get("return_source") == "explicit"
+        and scored_at
+        and scored_at < RETURN_SOURCE_MIGRATION_CUTOFF
+    ):
+        row["return_source"] = "estimated"
+        row["magnitude_hit"] = None
+        row["magnitude_error_pct"] = None
+        updated = True
+    if row.get("return_source") is None:
+        row["return_source"] = "estimated"
+        row["magnitude_hit"] = None
+        row["magnitude_error_pct"] = None
+        updated = True
+
+    row.setdefault("regime_posture", "neutral")
+    row.setdefault("event_day", False)
+
+    if row.get("return_source") != "explicit":
+        if row.get("magnitude_hit") is not None or row.get("magnitude_error_pct") is not None:
+            row["magnitude_hit"] = None
+            row["magnitude_error_pct"] = None
+            updated = True
+        conf = float(row.get("confidence", 0.5))
+        hit = bool(row.get("hit"))
+        row["brier_term"] = round((conf - (1.0 if hit else 0.0)) ** 2, 4)
+        return updated
 
     predicted = str(row.get("predicted_direction", "flat")).lower()
     actual = str(row.get("actual_direction", "flat")).lower()
     horizon = str(row.get("horizon") or DEFAULT_HORIZON)
     conf = float(row.get("confidence", 0.5))
     hit = bool(row.get("hit"))
-
     predicted_return_pct = _predicted_return_value(row.get("predicted_return_pct"))
     if predicted_return_pct is None:
-        from agent_fusion import estimate_return_from_bias
-
-        predicted_return_pct = estimate_return_from_bias(predicted, confidence=conf)
+        row["return_source"] = "estimated"
+        row["magnitude_hit"] = None
+        row["magnitude_error_pct"] = None
+        row["brier_term"] = round((conf - (1.0 if hit else 0.0)) ** 2, 4)
+        return True
 
     actual_return_pct = float(row.get("actual_return_pct", 0.0) or 0.0)
     magnitude_hit = _magnitude_hit(
@@ -527,8 +574,6 @@ def _backfill_scored_row(row: dict[str, Any]) -> bool:
     row["predicted_return_pct"] = round(predicted_return_pct, 3)
     row["magnitude_hit"] = magnitude_hit
     row["magnitude_error_pct"] = round(abs(actual_return_pct - predicted_return_pct), 3)
-    row.setdefault("regime_posture", "neutral")
-    row.setdefault("event_day", False)
     row["brier_term"] = round((conf - (1.0 if hit else 0.0)) ** 2, 4)
     return True
 
@@ -584,6 +629,8 @@ def rebuild_accuracy_index() -> dict[str, Any]:
         bucket["brier_sum"] += float(row.get("brier_term", (conf - (1.0 if hit else 0.0)) ** 2))
 
         magnitude_hit = row.get("magnitude_hit")
+        if row.get("return_source") != "explicit":
+            magnitude_hit = None
         if magnitude_hit is not None:
             bucket["magnitude_total"] += 1
             bucket["magnitude_hits"] += 1 if magnitude_hit else 0
@@ -748,6 +795,7 @@ def agent_accuracy_weight(
     horizon: str = "24h",
     symbol: str = "",
     sector_hint: str = "",
+    for_trading: bool = False,
 ) -> float:
     """Scale agent influence in fusion via walk-forward accuracy weights."""
     try:
@@ -758,6 +806,7 @@ def agent_accuracy_weight(
             horizon=horizon,
             symbol=symbol,
             sector_hint=sector_hint,
+            for_trading=for_trading,
         )
     except Exception:
         data = store or _accuracy_store()
@@ -792,4 +841,18 @@ def run_accuracy_cycle(*, cycle_id: str | None = None) -> dict[str, int]:
     scored = score_matured_predictions()
     if scored == 0:
         rebuild_accuracy_index()
-    return {"recorded": recorded, "scored": scored}
+
+    simulated = 0
+    try:
+        from historical_simulation import run_historical_simulation
+
+        sim_report = run_historical_simulation(quick=True)
+        simulated = int((sim_report.get("metrics") or {}).get("total_trials") or 0)
+        if simulated:
+            from agent_fusion import export_walk_forward_weights
+
+            export_walk_forward_weights()
+    except Exception:
+        pass
+
+    return {"recorded": recorded, "scored": scored, "simulated": simulated}

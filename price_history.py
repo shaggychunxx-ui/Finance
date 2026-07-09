@@ -14,9 +14,11 @@ from app_paths import OUTPUT
 
 HISTORY_ROOT = OUTPUT / "history"
 PRICE_DIR = HISTORY_ROOT / "prices"
+BAR_CACHE_DIR = HISTORY_ROOT / "bars"
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Finance/1.0)"}
 MAX_PRICE_POINTS = 2000
+BAR_CACHE_MAX_AGE_HOURS = 24
 _yahoo_cache: dict[tuple[str, str], float | None] = {}
 
 
@@ -193,3 +195,131 @@ def resolve_price_at(
 
 def clear_yahoo_cache() -> None:
     _yahoo_cache.clear()
+
+
+def _bar_cache_fresh(path: Path, *, max_age_hours: int = BAR_CACHE_MAX_AGE_HOURS) -> bool:
+    if not path.exists():
+        return False
+    try:
+        age_h = (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
+        return age_h <= max_age_hours
+    except OSError:
+        return False
+
+
+def load_daily_bars(symbol: str) -> list[dict[str, Any]]:
+    """Load cached daily OHLCV bars for a symbol (empty if missing)."""
+    path = BAR_CACHE_DIR / f"{symbol.upper()}.json"
+    data = _load_json(path)
+    if not isinstance(data, dict):
+        return []
+    bars = data.get("bars") or []
+    return [row for row in bars if isinstance(row, dict)]
+
+
+def fetch_daily_bars(
+    symbol: str,
+    *,
+    days: int = 400,
+    use_cache: bool = True,
+) -> list[dict[str, Any]]:
+    """Fetch daily close bars from Yahoo and cache under output/history/bars/."""
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return []
+
+    cache_path = BAR_CACHE_DIR / f"{sym}.json"
+    if use_cache and _bar_cache_fresh(cache_path):
+        cached = load_daily_bars(sym)
+        if len(cached) >= min(days // 2, 60):
+            return cached
+
+    period1 = int((datetime.now(timezone.utc) - timedelta(days=days + 30)).timestamp())
+    period2 = int(datetime.now(timezone.utc).timestamp())
+    bars: list[dict[str, Any]] = []
+    try:
+        resp = requests.get(
+            CHART_API.format(symbol=sym),
+            params={"period1": period1, "period2": period2, "interval": "1d"},
+            headers=HEADERS,
+            timeout=25,
+        )
+        if resp.status_code == 429:
+            time.sleep(2)
+            resp = requests.get(
+                CHART_API.format(symbol=sym),
+                params={"period1": period1, "period2": period2, "interval": "1d"},
+                headers=HEADERS,
+                timeout=25,
+            )
+        resp.raise_for_status()
+        result = (resp.json().get("chart") or {}).get("result") or []
+        if not result:
+            return load_daily_bars(sym)
+        timestamps = result[0].get("timestamp") or []
+        closes = ((result[0].get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+        for ts, close in zip(timestamps, closes):
+            if close is None or ts is None:
+                continue
+            try:
+                px = float(close)
+            except (TypeError, ValueError):
+                continue
+            if px <= 0:
+                continue
+            at = datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
+            bars.append({"at": at, "close": round(px, 6)})
+    except Exception:
+        return load_daily_bars(sym)
+
+    if bars:
+        _write_json(
+            cache_path,
+            {
+                "symbol": sym,
+                "bars": bars,
+                "interval": "1d",
+                "fetched_at": _now_iso(),
+            },
+        )
+    return bars
+
+
+def bar_closes(bars: list[dict[str, Any]]) -> list[float]:
+    out: list[float] = []
+    for row in bars:
+        try:
+            px = float(row.get("close"))
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            out.append(px)
+    return out
+
+
+def bar_datetimes(bars: list[dict[str, Any]]) -> list[datetime]:
+    out: list[datetime] = []
+    for row in bars:
+        at = _parse_iso(row.get("at"))
+        if at is not None:
+            out.append(at)
+    return out
+
+
+def bar_index_at_or_before(dates: list[datetime], target: datetime) -> int | None:
+    best: int | None = None
+    for i, at in enumerate(dates):
+        if at <= target + timedelta(hours=18):
+            best = i
+    return best
+
+
+def forward_return_pct(closes: list[float], start_idx: int, bars_forward: int) -> float | None:
+    end_idx = start_idx + bars_forward
+    if start_idx < 0 or end_idx >= len(closes):
+        return None
+    start = closes[start_idx]
+    end = closes[end_idx]
+    if start <= 0:
+        return None
+    return (end - start) / start * 100.0

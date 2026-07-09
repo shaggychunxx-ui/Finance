@@ -67,7 +67,7 @@ ONE DESKTOP APP
 E*TRADE Trader includes everything in one window:
   Home      - dashboard and automation controls
   Agents    - browse agent research reports (Finance Agents built in)
-  Trades    - portfolio, swing, and day trading
+  Trades    - balance, history/P&L, attribution, portfolio, swing, day trading
   Settings  - E*TRADE API keys and account setup
   Activity  - app log
 

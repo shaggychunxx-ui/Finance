@@ -15,6 +15,10 @@
     "min_buy_return_pct": 0.05,
     "min_sell_return_pct": -0.10,
     "max_deploy_pct": 0.94,
+    "stop_loss_pct": 8.0,
+    "take_profit_pct": 15.0,
+    "use_stop_orders": true,
+    "place_protective_orders": true,
     "profit_horizons": {
       "daily": {"weight": 0.25, "label": "24h"},
       "weekly": {"weight": 0.25, "label": "1wk"},
@@ -25,7 +29,8 @@
   "selected_account": {
     "account_id_key": "",
     "display_label": "",
-    "confirmed_at": ""
+    "confirmed_at": "",
+    "account_opened_at": ""
   },
   "day_trading": {
     "enabled": true,

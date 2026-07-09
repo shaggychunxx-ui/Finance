@@ -266,6 +266,12 @@ HEALTH_CHECKS: list[dict[str, str]] = [
     {"source_id": "nws_api", "method": "GET", "headers": {"User-Agent": "(Finance-Steward, contact@example.com)"}},
 ]
 
+SIDECAR_FILENAMES: frozenset[str] = frozenset(
+    sidecar
+    for entry in AGENT_REGISTRY
+    for sidecar in entry.get("sidecars", [])
+)
+
 
 @dataclass
 class SourceHealth:
@@ -281,6 +287,7 @@ class SourceHealth:
 class ArtifactQuality:
     filename: str
     agent_command: str | None
+    artifact_role: str
     exists: bool
     valid_json: bool
     schema_valid: bool
@@ -397,9 +404,29 @@ class DataStewardExpert:
             return "aging"
         return "stale"
 
+    def _artifact_role(self, filename: str, agent_command: str | None) -> str:
+        if filename in SIDECAR_FILENAMES:
+            return "sidecar"
+        if agent_command and filename in {e["primary_output"] for e in AGENT_REGISTRY}:
+            return "primary"
+        return "supplemental"
+
+    def _validate_sidecar(self, data: Any) -> tuple[bool, float, list[str]]:
+        issues: list[str] = []
+        if isinstance(data, list):
+            if data:
+                return True, 0.9, issues
+            issues.append("empty sidecar list")
+            return False, 0.25, issues
+        if isinstance(data, dict) and data:
+            return True, 0.9, issues
+        issues.append("empty or unsupported sidecar structure")
+        return False, 0.25, issues
+
     def _validate_artifact(
         self, path: Path, agent_command: str | None
     ) -> ArtifactQuality:
+        role = self._artifact_role(path.name, agent_command)
         issues: list[str] = []
         exists = path.exists()
         valid_json = False
@@ -412,6 +439,7 @@ class DataStewardExpert:
             return ArtifactQuality(
                 filename=path.name,
                 agent_command=agent_command,
+                artifact_role=role,
                 exists=False,
                 valid_json=False,
                 schema_valid=False,
@@ -429,12 +457,29 @@ class DataStewardExpert:
             return ArtifactQuality(
                 filename=path.name,
                 agent_command=agent_command,
+                artifact_role=role,
                 exists=True,
                 valid_json=False,
                 schema_valid=False,
                 freshness_hours=None,
                 freshness_label="invalid",
                 completeness_score=0.0,
+                issues=issues,
+            )
+
+        if role == "sidecar":
+            schema_valid, completeness, sidecar_issues = self._validate_sidecar(data)
+            issues.extend(sidecar_issues)
+            return ArtifactQuality(
+                filename=path.name,
+                agent_command=agent_command,
+                artifact_role=role,
+                exists=True,
+                valid_json=True,
+                schema_valid=schema_valid,
+                freshness_hours=None,
+                freshness_label="reference",
+                completeness_score=completeness,
                 issues=issues,
             )
 
@@ -472,6 +517,7 @@ class DataStewardExpert:
         return ArtifactQuality(
             filename=path.name,
             agent_command=agent_command,
+            artifact_role=role,
             exists=True,
             valid_json=True,
             schema_valid=schema_valid,
@@ -542,29 +588,18 @@ class DataStewardExpert:
                 remediation=f"Refresh by re-running agent {a.agent_command or 'unknown'}",
             ))
 
-        invalid = [a for a in artifacts if a.exists and not a.schema_valid]
+        invalid = [
+            a for a in artifacts
+            if a.exists and a.artifact_role == "primary" and not a.schema_valid
+        ]
         for a in invalid[:4]:
+            detail = "; ".join(a.issues) or "missing required report fields"
             issues.append(StewardshipIssue(
                 severity="low",
                 category="validity",
-                message=f"{a.filename} schema incomplete: {'; '.join(a.issues)}",
+                message=f"{a.filename} schema incomplete: {detail}",
                 remediation="Re-generate report; ensure meta, signals, and recommendations present",
             ))
-
-        for src in DATA_SOURCES:
-            key = src.get("config_key")
-            if key and not config.get(key):
-                agent_needs = any(
-                    src["name"].split()[0] in " ".join(e["sources"])
-                    for e in AGENT_REGISTRY
-                )
-                if agent_needs:
-                    issues.append(StewardshipIssue(
-                        severity="low",
-                        category="governance",
-                        message=f"Optional key '{key}' not configured for {src['name']}",
-                        remediation=f"Copy config.example.json to config.json and set {key}",
-                    ))
 
         if not self.config_path.exists():
             issues.append(StewardshipIssue(
@@ -573,6 +608,28 @@ class DataStewardExpert:
                 message="config.json not found — using defaults and proxy fallbacks",
                 remediation="Copy config.example.json to config.json for production keys",
             ))
+        else:
+            unset_keys: list[str] = []
+            for src in DATA_SOURCES:
+                key = src.get("config_key")
+                if not key or key in config:
+                    continue
+                agent_needs = any(
+                    src["name"].split()[0] in " ".join(e["sources"])
+                    for e in AGENT_REGISTRY
+                )
+                if agent_needs:
+                    unset_keys.append(key)
+            if unset_keys:
+                issues.append(StewardshipIssue(
+                    severity="low",
+                    category="governance",
+                    message=(
+                        "Optional API keys not defined in config.json: "
+                        + ", ".join(unset_keys)
+                    ),
+                    remediation="Add keys to config.json when live API access is required",
+                ))
 
         return issues
 
@@ -834,6 +891,7 @@ class DataStewardExpert:
                 {
                     "filename": aq.filename,
                     "agent_command": aq.agent_command,
+                    "artifact_role": aq.artifact_role,
                     "exists": aq.exists,
                     "valid_json": aq.valid_json,
                     "schema_valid": aq.schema_valid,

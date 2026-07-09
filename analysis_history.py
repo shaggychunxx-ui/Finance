@@ -182,21 +182,55 @@ def record_account_value(
     if not isinstance(data, dict):
         data = {"points": [], "baseline_value": None, "objective": "grow_account_value"}
     points: list[dict[str, Any]] = data.setdefault("points", [])
+    stamp = _now_iso()
+    rounded_total = round(total_value, 2)
+    rounded_cash = round(cash_buying_power, 2) if cash_buying_power is not None else None
+
+    if points:
+        last = points[-1]
+        try:
+            last_total = float(last.get("total_account_value", 0) or 0)
+        except (TypeError, ValueError):
+            last_total = 0.0
+        last_cash = last.get("cash_buying_power")
+        last_at = str(last.get("at") or "")
+        try:
+            last_ts = datetime.fromisoformat(last_at.replace("Z", "+00:00"))
+            age_sec = (datetime.now(timezone.utc) - last_ts).total_seconds()
+        except ValueError:
+            age_sec = 999999.0
+        same_account = not account_id_key or str(last.get("account_id_key") or "") == str(account_id_key)
+        value_unchanged = abs(last_total - rounded_total) < 0.01
+        cash_unchanged = (
+            rounded_cash is None
+            or last_cash is None
+            or abs(float(last_cash) - float(rounded_cash)) < 0.01
+        )
+        if same_account and value_unchanged and cash_unchanged and age_sec < 900:
+            if rounded_cash is not None:
+                last["cash_buying_power"] = rounded_cash
+            last["source"] = source
+            data["latest_value"] = rounded_total
+            data["growth_pct"] = _growth_pct(data)
+            data["updated_at"] = stamp
+            _write_json(ACCOUNT_VALUES_FILE, data)
+            return
+
     points.append(
         {
-            "at": _now_iso(),
-            "total_account_value": round(total_value, 2),
-            "cash_buying_power": round(cash_buying_power, 2) if cash_buying_power is not None else None,
+            "at": stamp,
+            "total_account_value": rounded_total,
+            "cash_buying_power": rounded_cash,
             "account_id_key": account_id_key,
             "source": source,
         }
     )
     data["points"] = points[-MAX_ACCOUNT_POINTS:]
     if data.get("baseline_value") is None:
-        data["baseline_value"] = round(total_value, 2)
-    data["latest_value"] = round(total_value, 2)
+        data["baseline_value"] = rounded_total
+    data["latest_value"] = rounded_total
     data["growth_pct"] = _growth_pct(data)
-    data["updated_at"] = _now_iso()
+    data["updated_at"] = stamp
     _write_json(ACCOUNT_VALUES_FILE, data)
     build_agent_context()
 
@@ -215,8 +249,40 @@ def _growth_pct(account_data: dict[str, Any]) -> float | None:
 def get_account_growth() -> dict[str, Any]:
     data = _load_json(ACCOUNT_VALUES_FILE)
     if not isinstance(data, dict):
-        return {"baseline_value": None, "latest_value": None, "growth_pct": None, "points": []}
+        return {
+            "baseline_value": None,
+            "latest_value": None,
+            "growth_pct": None,
+            "points": [],
+            "accounts": {},
+        }
+    data.setdefault("accounts", {})
     return data
+
+
+def set_account_opened_at(
+    account_id_key: str,
+    opened_at: str,
+    *,
+    opening_balance: float | None = None,
+) -> None:
+    """Persist the brokerage account open date for equity-curve anchoring."""
+    key = str(account_id_key or "").strip()
+    opened = str(opened_at or "").strip()
+    if not key or not opened:
+        return
+    _ensure_dirs()
+    data = get_account_growth()
+    accounts = data.setdefault("accounts", {})
+    if not isinstance(accounts, dict):
+        accounts = {}
+        data["accounts"] = accounts
+    entry: dict[str, Any] = {"opened_at": opened}
+    if opening_balance is not None:
+        entry["opening_balance"] = round(float(opening_balance), 2)
+    accounts[key] = {**accounts.get(key, {}), **entry}
+    data["updated_at"] = _now_iso()
+    _write_json(ACCOUNT_VALUES_FILE, data)
 
 
 def get_ticker_momentum(symbol: str, *, lookback_points: int = 8) -> float:

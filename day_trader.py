@@ -482,17 +482,16 @@ def apply_day_trade_executions(
                 stats["wins"] = int(stats.get("wins", 0)) + 1
             else:
                 stats["losses"] = int(stats.get("losses", 0)) + 1
-            state.setdefault("closed_trades", []).append(
-                {
-                    "symbol": sym,
-                    "quantity": order.quantity,
-                    "entry_price": entry.entry_price,
-                    "exit_price": order.estimated_price,
-                    "pnl_usd": round(pnl, 2),
-                    "closed_at": datetime.now(timezone.utc).isoformat(),
-                    "rationale": order.rationale,
-                }
-            )
+            closed_row = {
+                "symbol": sym,
+                "quantity": order.quantity,
+                "entry_price": entry.entry_price,
+                "exit_price": order.estimated_price,
+                "pnl_usd": round(pnl, 2),
+                "closed_at": datetime.now(timezone.utc).isoformat(),
+                "rationale": order.rationale,
+            }
+            state.setdefault("closed_trades", []).append(closed_row)
             remaining = entry.quantity - order.quantity
             if remaining > 0:
                 by_symbol[sym] = DayPosition(

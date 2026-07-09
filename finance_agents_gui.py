@@ -32,6 +32,8 @@ from gui_theme import (
     ACCENT2,
     BG,
     BORDER,
+    BTN_PRIMARY_FG,
+    BTN_PRIMARY_HOVER,
     DOWN,
     MUTED,
     PANEL,
@@ -40,6 +42,12 @@ from gui_theme import (
     UP,
     WARN,
     ScreenMetrics,
+    build_color_remap,
+    configure_finance_styles,
+    current_palette_name,
+    load_palette_from_prefs,
+    recolor_widget_tree,
+    sync_module_globals,
 )
 
 ensure_app_path()
@@ -103,6 +111,9 @@ class FinanceAgentsApp(tk.Frame):
         )
         self._ui_poll_job: str | None = None
 
+        load_palette_from_prefs()
+        sync_module_globals(sys.modules[__name__])
+
         if not embedded:
             self._set_icon()
             self._build_menu()
@@ -132,55 +143,7 @@ class FinanceAgentsApp(tk.Frame):
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure(
-            "Finance.TFrame",
-            background=PANEL,
-        )
-        style.configure(
-            "Finance.TLabel",
-            background=PANEL,
-            foreground=TEXT,
-            font=self._m.font(11),
-        )
-        style.configure(
-            "FinanceTitle.TLabel",
-            background=PANEL,
-            foreground=TEXT,
-            font=self._m.font(15, "bold"),
-        )
-        style.configure(
-            "FinanceMuted.TLabel",
-            background=PANEL,
-            foreground=MUTED,
-            font=self._m.font(10),
-        )
-        style.configure(
-            "Finance.TButton",
-            font=self._m.font(11),
-            padding=(self._m.px(12), self._m.px(8)),
-        )
-        tree_row = self._m.px(44 if self._embedded else 38)
-        tree_font = self._m.font(12 if self._embedded else 11)
-        style.configure(
-            "Finance.Treeview",
-            background="#0d1424",
-            fieldbackground="#0d1424",
-            foreground=TEXT,
-            rowheight=tree_row,
-            font=tree_font,
-        )
-        style.configure(
-            "Finance.Treeview.Heading",
-            background=TREE_HEADING_BG,
-            foreground=TEXT,
-            font=self._m.font(11 if self._embedded else 11, "bold"),
-            padding=(self._m.px(8), self._m.px(7)),
-        )
-        style.map(
-            "Finance.Treeview",
-            background=[("selected", ACCENT)],
-            foreground=[("selected", "#ffffff")],
-        )
+        configure_finance_styles(style, self._m, embedded=self._embedded)
         style.configure(
             "Finance.Horizontal.TProgressbar",
             troughcolor=BORDER,
@@ -201,6 +164,16 @@ class FinanceAgentsApp(tk.Frame):
             foreground=[("selected", TEXT)],
         )
 
+    def refresh_theme(self, previous_palette: str | None = None) -> None:
+        from gui_treekit import refresh_tree_tags_in_widget
+
+        previous = previous_palette or current_palette_name()
+        sync_module_globals(sys.modules[__name__])
+        self._build_styles()
+        color_map = build_color_remap(previous, current_palette_name())
+        recolor_widget_tree(self, color_map)
+        refresh_tree_tags_in_widget(self, trading=False)
+
     def _make_button(
         self,
         parent: tk.Misc,
@@ -212,8 +185,8 @@ class FinanceAgentsApp(tk.Frame):
         padx: tuple[int, int] | int = 0,
     ) -> tk.Button:
         styles = {
-            "primary": (ACCENT, "#ffffff", "#5a4bd6", self._m.font(10, "bold")),
-            "accent": (ACCENT2, "#0a0e17", "#00b5b0", self._m.font(10, "bold")),
+            "primary": (ACCENT, BTN_PRIMARY_FG, BTN_PRIMARY_HOVER, self._m.font(10, "bold")),
+            "accent": (ACCENT2, BG, ACCENT2, self._m.font(10, "bold")),
             "secondary": (BORDER, TEXT, ACCENT, self._m.font(10)),
             "ghost": (PANEL, MUTED, BORDER, self._m.font(9)),
         }

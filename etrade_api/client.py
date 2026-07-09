@@ -175,6 +175,7 @@ class ETradeClient:
         price_type: str = "MARKET",
         order_term: str = "GOOD_FOR_DAY",
         limit_price: float | None = None,
+        stop_price: float | None = None,
     ) -> dict[str, Any]:
         if quantity <= 0:
             raise ValueError("quantity must be positive")
@@ -195,8 +196,10 @@ class ETradeClient:
             "marketSession": "REGULAR",
             "Instrument": [instrument],
         }
-        if price_type == "LIMIT" and limit_price is not None:
+        if price_type in {"LIMIT", "STOP_LIMIT"} and limit_price is not None:
             order["limitPrice"] = limit_price
+        if price_type in {"STOP", "STOP_LIMIT"} and stop_price is not None:
+            order["stopPrice"] = stop_price
 
         return {
             "orderType": "EQ",

@@ -29,6 +29,7 @@ echo   %USERPROFILE%\Desktop\Finance Agents.lnk  (opens Agents tab)
 echo Start Menu: %APPDATA%\Microsoft\Windows\Start Menu\Programs\ETrade Trader.lnk
 echo.
 echo One app — tabs: Home, Agents, Trades, Settings, Activity
+echo Trades: Balance, History/P&L, Attribution, Portfolio, Swing, Day
 echo.
 echo Next steps:
 echo   1. Edit etrade_config.json with your E*TRADE consumer key/secret

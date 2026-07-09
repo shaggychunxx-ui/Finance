@@ -40,6 +40,15 @@ def configure_data_tree_tags(tree: ttk.Treeview, *, trading: bool = False) -> No
         tree.tag_configure("buy", foreground=UP)
         tree.tag_configure("sell", foreground=DOWN)
         tree.tag_configure("drift_high", foreground=WARN)
+        tree.tag_configure("gain_up", foreground=UP)
+        tree.tag_configure("gain_down", foreground=DOWN)
+
+
+def refresh_tree_tags_in_widget(widget: tk.Misc, *, trading: bool = False) -> None:
+    if isinstance(widget, ttk.Treeview):
+        configure_data_tree_tags(widget, trading=trading)
+    for child in widget.winfo_children():
+        refresh_tree_tags_in_widget(child, trading=trading)
 
 
 def tree_clear(tree: ttk.Treeview) -> None:
@@ -294,8 +303,8 @@ def make_data_tree(
     tree._zebra_i = 0  # type: ignore[attr-defined]
     bind_tree_sort(tree, columns, headings)
 
-    yscroll = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
-    xscroll = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=tree.xview)
+    yscroll = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview, style="Trader.Vertical.TScrollbar")
+    xscroll = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=tree.xview, style="Trader.Horizontal.TScrollbar")
     tree.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
     tree.grid(row=0, column=0, sticky="nsew")
     yscroll.grid(row=0, column=1, sticky="ns")

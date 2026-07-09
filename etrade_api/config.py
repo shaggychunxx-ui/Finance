@@ -148,6 +148,7 @@ def get_selected_account(path: str | Path | None = None) -> dict[str, Any] | Non
                 "account_id_key": key,
                 "display_label": str(selected.get("display_label") or "").strip(),
                 "confirmed_at": selected.get("confirmed_at"),
+                "account_opened_at": selected.get("account_opened_at"),
             }
     return None
 
@@ -156,6 +157,7 @@ def save_selected_account(
     account_id_key: str,
     *,
     display_label: str = "",
+    account_opened_at: str | None = None,
     path: str | Path | None = None,
 ) -> None:
     key = (account_id_key or "").strip()
@@ -163,11 +165,18 @@ def save_selected_account(
         raise ValueError("account_id_key is required")
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     raw = read_config_raw(config_path)
-    raw["selected_account"] = {
+    existing = raw.get("selected_account") if isinstance(raw.get("selected_account"), dict) else {}
+    opened = account_opened_at
+    if opened is None and str(existing.get("account_id_key") or "").strip() == key:
+        opened = existing.get("account_opened_at")
+    entry: dict[str, Any] = {
         "account_id_key": key,
         "display_label": display_label.strip(),
         "confirmed_at": datetime.now(timezone.utc).isoformat(),
     }
+    if opened:
+        entry["account_opened_at"] = str(opened).strip()
+    raw["selected_account"] = entry
     write_config_raw(config_path, raw)
 
 

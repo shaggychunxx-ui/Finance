@@ -108,7 +108,21 @@ def load_pdt_tracker() -> dict[str, Any]:
     data = _load_json(PDT_TRACKER_FILE)
     data.setdefault("day_trades", [])
     data.setdefault("same_day_activity", {})
+    data.setdefault("opening_positions", {})
     return data
+
+
+def ensure_opening_positions(
+    tracker: dict[str, Any],
+    session_date: str,
+    positions: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Capture broker positions once per session for overnight sell detection."""
+    openings = tracker.setdefault("opening_positions", {})
+    if session_date not in openings:
+        openings[session_date] = _position_qty_map(positions)
+        save_pdt_tracker(tracker)
+    return {str(sym).upper(): int(qty) for sym, qty in openings[session_date].items()}
 
 
 def save_pdt_tracker(data: dict[str, Any]) -> None:
@@ -168,24 +182,49 @@ def _intraday_buy_qty(day_state: dict[str, Any] | None) -> dict[str, int]:
     return out
 
 
+def _unmatched_same_day_buy_qty(
+    sym: str,
+    *,
+    activity: dict[str, dict[str, int]],
+    intraday_buys: dict[str, int],
+) -> int:
+    row = activity.get(sym, {})
+    bought = int(row.get("buy_qty", 0) or 0) + int(intraday_buys.get(sym, 0) or 0)
+    sold = int(row.get("sell_qty", 0) or 0)
+    return max(0, bought - sold)
+
+
+def _overnight_sell_capacity(
+    sym: str,
+    *,
+    opening_qty: dict[str, int],
+    activity: dict[str, dict[str, int]],
+) -> int:
+    opening = int(opening_qty.get(sym, 0) or 0)
+    sold_today = int(activity.get(sym, {}).get("sell_qty", 0) or 0)
+    return max(0, opening - min(sold_today, opening))
+
+
 def _sell_is_day_trade(
     order: Any,
     *,
     activity: dict[str, dict[str, int]],
     intraday_buys: dict[str, int],
-    held_qty: dict[str, int],
+    opening_qty: dict[str, int],
 ) -> bool:
     sym = order.symbol.upper()
     sell_qty = int(order.quantity)
     if sell_qty <= 0:
         return False
 
-    bought_today = int(activity.get(sym, {}).get("buy_qty", 0)) + int(intraday_buys.get(sym, 0))
-    if bought_today <= 0:
+    if sell_qty <= _unmatched_same_day_buy_qty(sym, activity=activity, intraday_buys=intraday_buys):
         return False
 
-    overnight_qty = max(0, int(held_qty.get(sym, 0)) - bought_today)
-    return sell_qty > overnight_qty
+    if sell_qty <= _overnight_sell_capacity(sym, opening_qty=opening_qty, activity=activity):
+        return False
+
+    bought_today = int(activity.get(sym, {}).get("buy_qty", 0)) + int(intraday_buys.get(sym, 0))
+    return bought_today > 0
 
 
 def _buy_is_day_trade(order: Any, *, activity: dict[str, dict[str, int]]) -> bool:
@@ -199,7 +238,7 @@ def _order_needs_day_trade_slot(
     *,
     activity: dict[str, dict[str, int]],
     intraday_buys: dict[str, int],
-    held_qty: dict[str, int],
+    opening_qty: dict[str, int],
     is_day_trading_plan: bool,
 ) -> tuple[bool, str]:
     sym = order.symbol.upper()
@@ -209,13 +248,21 @@ def _order_needs_day_trade_slot(
             return True, f"intraday BUY {sym} (same-day exit expected)"
         return False, ""
 
-    if order.action == "SELL" and _sell_is_day_trade(
-        order,
-        activity=activity,
-        intraday_buys=intraday_buys,
-        held_qty=held_qty,
-    ):
-        return True, f"SELL {sym} of shares bought today"
+    if order.action == "SELL":
+        sell_qty = int(order.quantity)
+        unmatched = _unmatched_same_day_buy_qty(sym, activity=activity, intraday_buys=intraday_buys)
+        if sell_qty > 0 and sell_qty <= unmatched:
+            return False, ""
+        overnight_left = _overnight_sell_capacity(sym, opening_qty=opening_qty, activity=activity)
+        if sell_qty > 0 and sell_qty <= overnight_left:
+            return False, ""
+        if _sell_is_day_trade(
+            order,
+            activity=activity,
+            intraday_buys=intraday_buys,
+            opening_qty=opening_qty,
+        ):
+            return True, f"SELL {sym} of shares bought today"
     if order.action == "BUY" and _buy_is_day_trade(order, activity=activity):
         return True, f"BUY {sym} after same-day SELL"
     return False, ""
@@ -283,16 +330,17 @@ def apply_pdt_guard(
             "blocked_day_trades": 0,
         }
 
+    opening_qty = ensure_opening_positions(tracker, session_date, positions)
     activity = deepcopy(_today_activity(tracker, session_date))
     intraday_buys = _intraday_buy_qty(day_state)
-    held_qty = _position_qty_map(positions)
     slots_remaining = max(0, max_trades - current)
     blocked = 0
     reserved = 0
 
-    for order in orders:
-        if order.quantity <= 0 or order.status == "blocked":
-            continue
+    plan_orders = [order for order in orders if order.quantity > 0 and order.status != "blocked"]
+    plan_orders.sort(key=lambda order: (0 if order.action == "SELL" else 1, order.symbol.upper()))
+
+    for order in plan_orders:
         sym = order.symbol.upper()
         activity.setdefault(sym, {"buy_qty": 0, "sell_qty": 0})
 
@@ -300,7 +348,7 @@ def apply_pdt_guard(
             order,
             activity=activity,
             intraday_buys=intraday_buys,
-            held_qty=held_qty,
+            opening_qty=opening_qty,
             is_day_trading_plan=is_day_trading_plan,
         )
         if needs_slot:
@@ -390,7 +438,7 @@ def record_placed_orders_for_pdt(
     today = activity.setdefault(session_date, {})
 
     for order in orders:
-        if order.status not in {"placed", "dry_run"} or order.quantity <= 0:
+        if order.status != "placed" or order.quantity <= 0:
             continue
         sym = order.symbol.upper()
         row = today.setdefault(sym, {"buy_qty": 0, "sell_qty": 0})
@@ -439,4 +487,12 @@ def prune_old_pdt_records(*, keep_days: int = 30) -> None:
         if day and day >= cutoff:
             trimmed[day_key] = rows
     tracker["same_day_activity"] = trimmed
+
+    openings = tracker.get("opening_positions", {}) or {}
+    trimmed_openings: dict[str, Any] = {}
+    for day_key, rows in openings.items():
+        day = _parse_date(day_key)
+        if day and day >= cutoff:
+            trimmed_openings[day_key] = rows
+    tracker["opening_positions"] = trimmed_openings
     save_pdt_tracker(tracker)

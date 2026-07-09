@@ -88,7 +88,9 @@ def _add_score(
     try:
         from prediction_accuracy import agent_accuracy_weight
 
-        delta *= agent_accuracy_weight(source, symbol=sym, horizon=horizon or "24h")
+        delta *= agent_accuracy_weight(
+            source, symbol=sym, horizon=horizon or "24h", for_trading=True
+        )
     except Exception:
         pass
     entry = scores.setdefault(sym, TickerScore(symbol=sym))

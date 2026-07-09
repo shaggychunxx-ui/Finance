@@ -44,6 +44,8 @@ class TradeOrder:
     rationale: str = ""
     price_type: str = "MARKET"
     limit_price: float | None = None
+    stop_price: float | None = None
+    order_term: str = ""
     preview_id: int | None = None
     status: str = "proposed"
     message: str = ""
@@ -66,6 +68,10 @@ class TradeOrder:
         }
         if self.limit_price is not None:
             payload["limit_price"] = round(self.limit_price, 2)
+        if self.stop_price is not None:
+            payload["stop_price"] = round(self.stop_price, 2)
+        if self.order_term:
+            payload["order_term"] = self.order_term
         return payload
 
 
@@ -359,6 +365,19 @@ def build_strategy_plan(
             pass
         orders.append(order)
 
+    try:
+        from trade_history import append_stop_target_exit_orders
+
+        orders = append_stop_target_exit_orders(
+            orders,
+            pos_map=pos_map,
+            prices=prices,
+            settings=settings,
+            total_value=total_value,
+        )
+    except Exception:
+        pass
+
     for sym, pos in pos_map.items():
         if sym in handled:
             continue
@@ -492,6 +511,8 @@ def plan_from_dict(data: dict[str, Any]) -> StrategyPlan:
             rationale=o.get("rationale", ""),
             price_type=str(o.get("price_type", "MARKET")).upper(),
             limit_price=float(o["limit_price"]) if o.get("limit_price") is not None else None,
+            stop_price=float(o["stop_price"]) if o.get("stop_price") is not None else None,
+            order_term=str(o.get("order_term") or ""),
             preview_id=o.get("preview_id"),
             status=o.get("status", "proposed"),
             message=o.get("message", ""),
@@ -516,12 +537,19 @@ def plan_from_dict(data: dict[str, Any]) -> StrategyPlan:
 
 def _order_body(client: ETradeClient, order: TradeOrder) -> dict[str, Any]:
     price_type = (order.price_type or "MARKET").upper()
+    limit_px = order.limit_price if price_type in {"LIMIT", "STOP_LIMIT"} else None
+    stop_px = getattr(order, "stop_price", None)
+    if price_type in {"STOP", "STOP_LIMIT"} and stop_px is None and limit_px is not None:
+        stop_px = limit_px
+    order_term = (getattr(order, "order_term", None) or "").strip() or "GOOD_FOR_DAY"
     return client.build_equity_order(
         order.symbol,
         order.quantity,
         order.action,
         price_type=price_type,
-        limit_price=order.limit_price if price_type == "LIMIT" else None,
+        order_term=order_term,
+        limit_price=limit_px,
+        stop_price=stop_px,
     )
 
 
@@ -624,8 +652,12 @@ def execute_orders(
             type_note = order.price_type
             if order.price_type == "LIMIT" and order.limit_price is not None:
                 type_note = f"LIMIT @ ${order.limit_price:.2f}"
+            elif order.price_type in {"STOP", "STOP_LIMIT"} and getattr(order, "stop_price", None):
+                type_note = f"{order.price_type} @ ${float(order.stop_price):.2f}"
             order.message = f"{type_note} order submitted"
             _ = placed
+            if not dry_run and order.action == "BUY" and (plan.meta or {}).get("mode") != "day_trading":
+                _place_swing_protective_orders(client, plan, order)
         except Exception as exc:
             order.status = "error"
             order.message = str(exc)
@@ -638,7 +670,72 @@ def execute_orders(
             prune_old_pdt_records()
     except Exception:
         pass
+
+    try:
+        from trade_history import record_executed_orders
+
+        record_executed_orders(plan, dry_run=dry_run)
+    except Exception:
+        pass
     return plan
+
+
+def _place_swing_protective_orders(client: ETradeClient, plan: StrategyPlan, buy_order: TradeOrder) -> None:
+    """After a swing BUY fill, optionally place GTC stop-limit and limit take-profit sells."""
+    try:
+        from trade_history import compute_stop_target_prices, load_swing_stop_settings
+
+        cfg = load_swing_stop_settings()
+        if not cfg.get("place_protective_orders", True):
+            return
+        price = float(buy_order.estimated_price or 0)
+        qty = int(buy_order.quantity or 0)
+        if price <= 0 or qty <= 0:
+            return
+        stop_px, target_px = compute_stop_target_prices(price, settings=cfg)
+        sym = buy_order.symbol.upper()
+
+        if stop_px is not None and cfg.get("use_stop_orders", True):
+            limit_px = round(stop_px * 0.995, 2)
+            stop_body = client.build_equity_order(
+                sym,
+                qty,
+                "SELL",
+                price_type="STOP_LIMIT",
+                order_term="GOOD_UNTIL_CANCEL",
+                stop_price=stop_px,
+                limit_price=limit_px,
+            )
+            try:
+                preview = client.preview_equity_order(plan.account_id_key, stop_body)
+                preview_response = preview.get("PreviewOrderResponse", preview)
+                preview_ids = preview_response.get("PreviewIds", [])
+                preview_id = preview_ids[0].get("previewId") if isinstance(preview_ids, list) and preview_ids else None
+                if preview_id is not None:
+                    client.place_equity_order(plan.account_id_key, stop_body, int(preview_id))
+            except Exception:
+                pass
+
+        if target_px is not None:
+            target_body = client.build_equity_order(
+                sym,
+                qty,
+                "SELL",
+                price_type="LIMIT",
+                order_term="GOOD_UNTIL_CANCEL",
+                limit_price=target_px,
+            )
+            try:
+                preview = client.preview_equity_order(plan.account_id_key, target_body)
+                preview_response = preview.get("PreviewOrderResponse", preview)
+                preview_ids = preview_response.get("PreviewIds", [])
+                preview_id = preview_ids[0].get("previewId") if isinstance(preview_ids, list) and preview_ids else None
+                if preview_id is not None:
+                    client.place_equity_order(plan.account_id_key, target_body, int(preview_id))
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def run_agent_pipeline(
@@ -710,6 +807,10 @@ def run_agent_pipeline(
         stats = run_accuracy_cycle(cycle_id=cycle_id)
         if on_progress and stats.get("scored"):
             on_progress(f"Scored {stats['scored']} matured prediction(s) for accuracy tracking.")
+        if on_progress and stats.get("simulated"):
+            on_progress(
+                f"Historical simulation: {stats['simulated']} walk-forward trial(s) scored."
+            )
     except Exception:
         pass
     return ok

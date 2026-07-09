@@ -12,14 +12,38 @@ from app_paths import OUTPUT
 
 FUSION_WEIGHTS_FILE = OUTPUT / "history" / "fusion_weights.json"
 
-ACCURACY_FLOOR_PCT = 40.0
-ACCURACY_EXCLUDE_PCT = 35.0
+ACCURACY_FLOOR_PCT = 42.0
+ACCURACY_EXCLUDE_PCT = 38.0
+TRADING_ACCURACY_FLOOR_PCT = 45.0
+TRADING_ACCURACY_EXCLUDE_PCT = 40.0
 ACCURACY_FLOOR_WEIGHT = 0.25
-MIN_SAMPLES_FLOOR = 8
+MIN_SAMPLES_FLOOR = 20
 MIN_SAMPLES_HORIZON = 4
 MIN_SAMPLES_REGIME = 4
+
+AGENT_DEFAULT_HORIZON: dict[str, str] = {
+    "markets": "24h",
+    "finance": "24h",
+    "financial-data": "24h",
+    "datascience": "24h",
+    "order-execution": "24h",
+    "sales-analytics": "1wk",
+    "geopolitics": "1wk",
+    "events": "1wk",
+    "patents": "1mo",
+    "electricity": "1wk",
+    "grid": "1wk",
+    "meteorology": "1wk",
+    "transportation": "1wk",
+    "logistics": "1wk",
+    "theoretical-probability": "1wk",
+    "empirical-probability": "1wk",
+    "combined-conditional": "1wk",
+    "research-statistics": "1mo",
+}
 CLUSTER_WEIGHT_CAP = 0.45
 OUT_OF_DOMAIN_FACTOR = 0.3
+HISTORICAL_BLEND = 0.35
 
 GENERALIST_AGENTS = frozenset({
     "finance",
@@ -141,30 +165,65 @@ def current_regime() -> dict[str, Any]:
     markets = _load_json(OUTPUT / "markets.json")
     if markets and isinstance(markets.get("regime"), dict):
         return markets["regime"]
-    metrics = (markets or {}).get("metrics", {}) if markets else {}
-    score = float(metrics.get("risk_on_score", 0.5) or 0.5)
-    posture = "risk-on" if score >= 0.58 else "risk-off" if score <= 0.42 else "neutral"
+    score = 0.5
+    posture = "neutral"
+    if markets:
+        metrics = markets.get("metrics", {}) or {}
+        score = float(metrics.get("risk_on_score", 0.5) or 0.5)
+        assessment = markets.get("assessment") or {}
+        regime_label = str(assessment.get("regime", "") or markets.get("trend_label", "")).lower()
+        if any(token in regime_label for token in ("risk-on", "risk on", "bull", "expansion")):
+            posture = "risk-on"
+        elif any(token in regime_label for token in ("risk-off", "risk off", "bear", "contraction", "defensive")):
+            posture = "risk-off"
+        else:
+            posture = "risk-on" if score >= 0.58 else "risk-off" if score <= 0.42 else "neutral"
     return {"label": posture.title(), "posture": posture, "risk_on_score": score}
+
+
+def agent_default_horizon(agent_id: str) -> str:
+    return AGENT_DEFAULT_HORIZON.get(str(agent_id or ""), "24h")
 
 
 def is_event_day(*, recorded_at: str | None = None) -> bool:
     """True when high-impact macro/earnings-style events are active today."""
     when = recorded_at or datetime.now(timezone.utc).isoformat()
     day = when[:10]
-    events = _load_json(OUTPUT / "world_events.json")
-    if not events:
+
+    def _scan_event_rows(rows: list[Any] | None) -> bool:
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            impact = str(row.get("impact", row.get("severity", row.get("risk_level", "")))).lower()
+            if impact not in {"high", "critical", "major", "elevated"}:
+                continue
+            event_day = str(row.get("date", row.get("event_date", "")))[:10]
+            if event_day == day:
+                return True
+            if row.get("active") is True:
+                return True
         return False
-    for row in events.get("active_events", []) or events.get("events", []) or []:
-        if not isinstance(row, dict):
+
+    for filename in ("world_events.json", "geopolitics.json", "events.json"):
+        data = _load_json(OUTPUT / filename)
+        if not isinstance(data, dict):
             continue
-        impact = str(row.get("impact", row.get("severity", ""))).lower()
-        if impact not in {"high", "critical", "major"}:
-            continue
-        event_day = str(row.get("date", row.get("event_date", "")))[:10]
-        if event_day == day:
+        if _scan_event_rows(data.get("active_events")):
             return True
-        if row.get("active") is True:
+        if _scan_event_rows(data.get("events")):
             return True
+        if _scan_event_rows(data.get("risk_events")):
+            return True
+
+    markets = _load_json(OUTPUT / "markets.json")
+    if isinstance(markets, dict):
+        metrics = markets.get("metrics", {}) or {}
+        try:
+            vix = float(metrics.get("vix_level", metrics.get("^VIX", 0)) or 0)
+            if vix >= 28:
+                return True
+        except (TypeError, ValueError):
+            pass
     return False
 
 
@@ -194,7 +253,14 @@ def affordable_max_share_price() -> float | None:
 
 
 def score_symbol_allowed(symbol: str, price: float | None = None) -> bool:
-    """For small accounts, limit accuracy scoring to affordable tradeable tickers."""
+    """Limit accuracy scoring to liquid, tradeable tickers."""
+    try:
+        from symbol_universe import is_liquid_symbol
+
+        if not is_liquid_symbol(symbol, price):
+            return False
+    except Exception:
+        pass
     cap = affordable_max_share_price()
     if cap is None:
         return True
@@ -224,6 +290,7 @@ def fusion_weight(
     symbol: str = "",
     sector_hint: str = "",
     regime_posture: str | None = None,
+    for_trading: bool = False,
 ) -> float:
     """Combined walk-forward fusion weight for an agent contribution."""
     from prediction_accuracy import MIN_SAMPLES_FOR_WEIGHT, get_agent_accuracy
@@ -235,15 +302,18 @@ def fusion_weight(
     if not agent_in_domain(aid, symbol, sector_hint=sector_hint):
         return OUT_OF_DOMAIN_FACTOR
 
+    exclude_pct = TRADING_ACCURACY_EXCLUDE_PCT if for_trading else ACCURACY_EXCLUDE_PCT
+    floor_pct = TRADING_ACCURACY_FLOOR_PCT if for_trading else ACCURACY_FLOOR_PCT
+
     entry = get_agent_accuracy(aid)
     base = 1.0
     if entry:
         total = int(entry.get("total_scored") or entry.get("total") or 0)
         combined = entry.get("combined_accuracy_pct")
         if total >= MIN_SAMPLES_FLOOR and combined is not None:
-            if float(combined) < ACCURACY_EXCLUDE_PCT:
+            if float(combined) < exclude_pct:
                 return 0.0
-            if float(combined) < ACCURACY_FLOOR_PCT:
+            if float(combined) < floor_pct:
                 base = ACCURACY_FLOOR_WEIGHT
             else:
                 base = float(entry.get("weight_multiplier") or 1.0)
@@ -264,6 +334,16 @@ def fusion_weight(
             base *= 0.55 + racc / 200.0
 
     base *= calibration_factor(aid)
+
+    try:
+        from historical_simulation import historical_weight_multiplier
+
+        hist_mult = historical_weight_multiplier(aid, horizon=horizon)
+        if hist_mult is not None:
+            base = base * (1.0 - HISTORICAL_BLEND) + hist_mult * HISTORICAL_BLEND
+    except Exception:
+        pass
+
     return max(0.0, min(1.5, base))
 
 
@@ -309,6 +389,8 @@ def export_walk_forward_weights() -> dict[str, Any]:
         "agents": agents,
         "accuracy_floor_pct": ACCURACY_FLOOR_PCT,
         "accuracy_exclude_pct": ACCURACY_EXCLUDE_PCT,
+        "trading_accuracy_floor_pct": TRADING_ACCURACY_FLOOR_PCT,
+        "trading_accuracy_exclude_pct": TRADING_ACCURACY_EXCLUDE_PCT,
     }
     _write_json(FUSION_WEIGHTS_FILE, payload)
     return payload

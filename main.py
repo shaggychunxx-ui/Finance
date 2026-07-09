@@ -29,6 +29,7 @@ from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
+from historical_simulation import run_historical_simulation_cli
 
 
 def _print_signals(signals: list[dict[str, Any]]) -> None:
@@ -275,6 +276,45 @@ def _print_datascience(data: dict[str, Any]) -> None:
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
+
+
+def _print_historical_sim(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Historical Simulation')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Trials: {metrics.get('total_trials')} "
+        f"(bar {metrics.get('bar_walk_trials')}, snapshot {metrics.get('snapshot_trials')}) | "
+        f"Universe: {meta.get('universe_size')} symbols"
+    )
+    print()
+    board = data.get("leaderboard", [])
+    if board:
+        print("  Agent leaderboard (historical):")
+        for row in board[:10]:
+            print(
+                f"    • {row.get('agent_id')}: {row.get('accuracy_pct')}% "
+                f"({row.get('total_trials')} trials)"
+            )
+        print()
+    recent = data.get("recent_trials", [])
+    if recent:
+        print("  Recent trials:")
+        for row in recent[-5:]:
+            mark = "hit" if row.get("hit") else "miss"
+            print(
+                f"    [{mark}] {row.get('agent_id')} {row.get('symbol')} {row.get('horizon')}: "
+                f"pred {row.get('predicted_direction')} / actual {row.get('actual_direction')} "
+                f"({row.get('actual_return_pct'):+.2f}%)"
+            )
+        print()
 
 
 def _print_data_steward(data: dict[str, Any]) -> None:
@@ -956,6 +996,7 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
+    "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
@@ -979,6 +1020,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
+    "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
