@@ -425,13 +425,19 @@ def export_walk_forward_weights() -> dict[str, Any]:
             bal_benchmark = float(bal_entry.get("benchmark_reward_score") or 0.0)
         personality_label = ""
         personality_fit = 1.0
+        personality_tuned = False
         learning_label = ""
         learning_fit = 1.0
         try:
-            from agent_personality import get_agent_personality, personality_fusion_factor
+            from agent_personality import (
+                get_agent_personality,
+                personality_fusion_factor,
+                personality_is_tuned,
+            )
 
             personality_label = get_agent_personality(aid).label
             personality_fit = personality_fusion_factor(aid, regime_posture=posture)
+            personality_tuned = personality_is_tuned(aid)
         except Exception:
             pass
         try:
@@ -453,6 +459,7 @@ def export_walk_forward_weights() -> dict[str, Any]:
             "daily_benchmark_reward": round(bal_benchmark, 3),
             "personality_label": personality_label,
             "personality_fit": round(personality_fit, 3),
+            "personality_tuned": personality_tuned,
             "learning_label": learning_label,
             "learning_fit": round(learning_fit, 3),
         }

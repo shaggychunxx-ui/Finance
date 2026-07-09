@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = ROOT / "config"
 PERSONALITIES_FILE = CONFIG_DIR / "agent_personalities.json"
 PERSONALITIES_LOCAL_FILE = CONFIG_DIR / "agent_personalities.local.json"
+PERSONALITIES_LEARNED_FILE = CONFIG_DIR / "agent_personalities.learned.json"
 PERSONALITIES_EXAMPLE_FILE = CONFIG_DIR / "agent_personalities.example.json"
+
+LEARN_BLEND = 0.35
+MAX_TRAIT_DELTA = 0.22
 
 TRAIT_KEYS = (
     "risk_appetite",
@@ -127,6 +131,13 @@ def _config_store() -> dict[str, Any]:
                 merged["agents"].setdefault(aid, {})
                 merged["agents"][aid].update(entry)
 
+    learned_data = _load_json(PERSONALITIES_LEARNED_FILE)
+    if learned_data and isinstance(learned_data.get("agents"), dict):
+        for aid, entry in learned_data["agents"].items():
+            if isinstance(entry, dict):
+                merged["agents"].setdefault(aid, {})
+                merged["agents"][aid].update(entry)
+
     local_data = _load_json(PERSONALITIES_LOCAL_FILE)
     if local_data and isinstance(local_data.get("agents"), dict):
         for aid, entry in local_data["agents"].items():
@@ -137,6 +148,161 @@ def _config_store() -> dict[str, Any]:
     return merged
 
 
+def _base_personality(agent_id: str) -> PersonalityTraits:
+    """Platform defaults only — no learned or local overlays."""
+    return _merge_entry(agent_id, _PLATFORM_DEFAULTS.get(agent_id))
+
+
+def _trait_deltas(base: PersonalityTraits, tuned: dict[str, float]) -> dict[str, float]:
+    return {
+        key: round(tuned.get(key, getattr(base, key)) - getattr(base, key), 3)
+        for key in TRAIT_KEYS
+    }
+
+
+def compute_learned_trait_targets(agent_id: str, learning: Any) -> dict[str, float]:
+    """Map learning outcomes to target personality trait values."""
+    base = _base_personality(agent_id)
+    traits = {key: getattr(base, key) for key in TRAIT_KEYS}
+    acc = float(learning.accuracy_pct) if learning.accuracy_pct is not None else 50.0
+
+    if acc < 35:
+        traits["conviction"] -= 0.14
+        traits["risk_appetite"] -= 0.12
+        traits["defensive_bias"] += 0.14
+        traits["volatility_tolerance"] -= 0.08
+    elif acc < 42:
+        traits["conviction"] -= 0.08
+        traits["risk_appetite"] -= 0.06
+        traits["defensive_bias"] += 0.08
+    elif acc >= 55:
+        traits["conviction"] += 0.06
+        if not learning.bullish_miss_rate or learning.bullish_miss_rate < 0.5:
+            traits["risk_appetite"] += 0.04
+
+    if learning.bullish_miss_rate is not None and learning.bullish_miss_rate >= 0.55:
+        traits["risk_appetite"] -= min(0.16, (learning.bullish_miss_rate - 0.5) * 0.35)
+        traits["contrarian"] += min(0.14, (learning.bullish_miss_rate - 0.5) * 0.28)
+        traits["defensive_bias"] += 0.06
+
+    if learning.bearish_miss_rate is not None and learning.bearish_miss_rate >= 0.55:
+        traits["defensive_bias"] -= min(0.10, (learning.bearish_miss_rate - 0.5) * 0.2)
+        traits["risk_appetite"] += 0.05
+
+    blame = float(getattr(learning, "blame_score", 0.0) or 0.0)
+    if blame >= 0.15:
+        traits["defensive_bias"] += min(0.16, blame * 0.45)
+        traits["risk_appetite"] -= min(0.14, blame * 0.4)
+        traits["conviction"] -= min(0.10, blame * 0.25)
+
+    horizon = str(getattr(learning, "preferred_horizon", "24h") or "24h")
+    if horizon == "1mo":
+        traits["patience"] += 0.14
+    elif horizon == "1wk":
+        traits["patience"] += 0.08
+    elif horizon == "24h" and traits["patience"] > 0.45:
+        traits["patience"] -= 0.06
+
+    posture = str(getattr(learning, "posture", "") or "")
+    if posture == "cautious":
+        traits["conviction"] -= 0.05
+        traits["defensive_bias"] += 0.05
+    elif posture == "confident":
+        traits["conviction"] += 0.04
+
+    for key in TRAIT_KEYS:
+        base_val = getattr(base, key)
+        delta = traits[key] - base_val
+        traits[key] = _clamp(base_val + max(-MAX_TRAIT_DELTA, min(MAX_TRAIT_DELTA, delta)))
+    return traits
+
+
+def sync_personality_from_learning() -> dict[str, Any]:
+    """Auto-tune personality traits from agent learning outcomes."""
+    from agent_learning import get_agent_learning
+
+    learned_store = _load_json(PERSONALITIES_LEARNED_FILE) or {
+        "description": "Auto-tuned personality traits from agent learning (system-managed).",
+        "agents": {},
+    }
+    if not isinstance(learned_store.get("agents"), dict):
+        learned_store["agents"] = {}
+
+    from agents.platform_catalog import active_agent_sources
+
+    updated = 0
+    for src in active_agent_sources(check_remote=False):
+        aid = src["id"]
+        if aid in {"data-steward", "records-management"}:
+            continue
+        learning = get_agent_learning(aid)
+        if learning is None:
+            continue
+
+        base = _base_personality(aid)
+        targets = compute_learned_trait_targets(aid, learning)
+        prior = learned_store["agents"].get(aid)
+        if not isinstance(prior, dict):
+            prior = {}
+
+        blended: dict[str, Any] = {"label": base.label, "learned_from": learning.updated_at}
+        changed = False
+        for key in TRAIT_KEYS:
+            prior_val = prior.get(key, getattr(base, key))
+            target = targets[key]
+            new_val = _clamp(prior_val * (1.0 - LEARN_BLEND) + target * LEARN_BLEND)
+            blended[key] = round(new_val, 3)
+            if abs(new_val - getattr(base, key)) >= 0.02:
+                changed = True
+
+        blended["trait_deltas"] = _trait_deltas(base, blended)
+        blended["learning_posture"] = learning.posture
+        blended["accuracy_pct"] = learning.accuracy_pct
+        if changed or aid not in learned_store["agents"]:
+            learned_store["agents"][aid] = blended
+            updated += 1
+
+    from datetime import datetime, timezone
+
+    learned_store["updated_at"] = datetime.now(timezone.utc).isoformat()
+    learned_store["agents_tuned"] = updated
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    PERSONALITIES_LEARNED_FILE.write_text(json.dumps(learned_store, indent=2), encoding="utf-8")
+    return learned_store
+
+
+def personality_is_tuned(agent_id: str) -> bool:
+    learned = _load_json(PERSONALITIES_LEARNED_FILE)
+    if not isinstance(learned, dict):
+        return False
+    entry = (learned.get("agents") or {}).get(agent_id)
+    if not isinstance(entry, dict):
+        return False
+    base = _base_personality(agent_id)
+    deltas = _trait_deltas(base, entry)
+    return any(abs(delta) >= 0.02 for delta in deltas.values())
+
+
+def personality_tune_summary(agent_id: str) -> str:
+    learned = _load_json(PERSONALITIES_LEARNED_FILE)
+    if not isinstance(learned, dict):
+        return ""
+    entry = (learned.get("agents") or {}).get(agent_id)
+    if not isinstance(entry, dict):
+        return ""
+    bits: list[str] = []
+    deltas = entry.get("trait_deltas") if isinstance(entry.get("trait_deltas"), dict) else {}
+    for key in ("risk_appetite", "conviction", "defensive_bias", "patience"):
+        delta = deltas.get(key)
+        if delta is None or abs(float(delta)) < 0.02:
+            continue
+        bits.append(f"{key.replace('_', ' ')} {float(delta):+.2f}")
+    posture = entry.get("learning_posture")
+    if posture:
+        bits.append(str(posture))
+    return ", ".join(bits[:4])
+
+
 def get_agent_personality(agent_id: str) -> PersonalityTraits:
     store = _config_store()
     agents = store.get("agents") if isinstance(store.get("agents"), dict) else {}
@@ -145,7 +311,10 @@ def get_agent_personality(agent_id: str) -> PersonalityTraits:
 
 
 def personality_label(agent_id: str) -> str:
-    return get_agent_personality(agent_id).label
+    label = get_agent_personality(agent_id).label
+    if personality_is_tuned(agent_id):
+        return f"{label} · tuned"
+    return label
 
 
 def personality_summary(agent_id: str) -> str:
@@ -159,6 +328,9 @@ def personality_summary(agent_id: str) -> str:
         bits.append("contrarian")
     if traits.defensive_bias >= 0.6:
         bits.append("defensive")
+    tune = personality_tune_summary(agent_id)
+    if tune:
+        bits.append(f"tuned ({tune})")
     return f"{traits.label} · " + ", ".join(bits)
 
 
@@ -296,6 +468,10 @@ def patch_agent_output_personality(path: Path, agent_id: str) -> bool:
 
     meta["personality"] = traits.as_dict()
     meta["personality"]["temperature"] = temperature_i
+    meta["personality"]["tuned"] = personality_is_tuned(agent_id)
+    tune_summary = personality_tune_summary(agent_id)
+    if tune_summary:
+        meta["personality"]["tune_summary"] = tune_summary
     meta["preferred_horizon"] = personality_horizon_preference(agent_id)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return True

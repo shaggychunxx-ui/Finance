@@ -851,6 +851,12 @@ class FinanceAgentsApp(tk.Frame):
             rebuild_agent_learning()
         except Exception:
             pass
+        try:
+            from agent_personality import sync_personality_from_learning
+
+            sync_personality_from_learning()
+        except Exception:
+            pass
 
     def _apply_learning_patch(self, agent_id: str, output_name: str) -> None:
         try:
@@ -984,6 +990,12 @@ class FinanceAgentsApp(tk.Frame):
                 from agent_learning import rebuild_agent_learning
 
                 rebuild_agent_learning()
+            except Exception:
+                pass
+            try:
+                from agent_personality import sync_personality_from_learning
+
+                sync_personality_from_learning()
             except Exception:
                 pass
             self._schedule_ui(self.refresh_agent_statuses)

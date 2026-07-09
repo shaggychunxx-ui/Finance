@@ -36,6 +36,7 @@ class AgentLearning:
     trust_symbols: frozenset[str]
     bullish_miss_rate: float | None
     bearish_miss_rate: float | None
+    blame_score: float
     updated_at: str
 
     def as_dict(self) -> dict[str, Any]:
@@ -52,6 +53,7 @@ class AgentLearning:
             "trust_symbols": sorted(self.trust_symbols),
             "bullish_miss_rate": self.bullish_miss_rate,
             "bearish_miss_rate": self.bearish_miss_rate,
+            "blame_score": round(self.blame_score, 4),
             "updated_at": self.updated_at,
         }
 
@@ -94,6 +96,7 @@ def _default_learning(agent_id: str) -> AgentLearning:
         trust_symbols=frozenset(),
         bullish_miss_rate=None,
         bearish_miss_rate=None,
+        blame_score=0.0,
         updated_at=_now_iso(),
     )
 
@@ -277,6 +280,7 @@ def _build_learning(
         trust_symbols=trust_symbols,
         bullish_miss_rate=bull_miss,
         bearish_miss_rate=bear_miss,
+        blame_score=round(blame, 4),
         updated_at=_now_iso(),
     )
 
@@ -340,6 +344,12 @@ def rebuild_agent_learning() -> dict[str, Any]:
         "agents": agents_out,
     }
     _write_json(LEARNING_FILE, payload)
+    try:
+        from agent_personality import sync_personality_from_learning
+
+        sync_personality_from_learning()
+    except Exception:
+        pass
     return payload
 
 
@@ -361,6 +371,7 @@ def get_agent_learning(agent_id: str) -> AgentLearning | None:
         trust_symbols=frozenset(row.get("trust_symbols") or []),
         bullish_miss_rate=row.get("bullish_miss_rate"),
         bearish_miss_rate=row.get("bearish_miss_rate"),
+        blame_score=float(row.get("blame_score") or 0.0),
         updated_at=str(row.get("updated_at") or ""),
     )
 
