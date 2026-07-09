@@ -907,19 +907,15 @@ def agent_accuracy_label(agent_id: str) -> str:
             or entry.get("accuracy_pct")
         )
         if pct is not None:
-            if entry.get("accuracy_source") == BENCHMARK_SOURCE:
-                bench_trials = int(entry.get("benchmark_trials") or total or 0)
-                bench_symbols = int(entry.get("benchmark_symbols") or 0)
-                if bench_trials and bench_symbols:
-                    label = f"{pct:.0f}% · {bench_trials:,}t/{bench_symbols}s"
-                else:
-                    label = f"{pct:.0f}% · bench"
+            mag = entry.get("magnitude_accuracy_pct")
+            if (
+                entry.get("accuracy_source") != BENCHMARK_SOURCE
+                and mag is not None
+                and int(entry.get("magnitude_scored") or 0) >= MIN_SAMPLES_FOR_MAGNITUDE
+            ):
+                label = f"{pct:.0f}% (mag {mag:.0f}%)"
             else:
-                mag = entry.get("magnitude_accuracy_pct")
-                if mag is not None and int(entry.get("magnitude_scored") or 0) >= MIN_SAMPLES_FOR_MAGNITUDE:
-                    label = f"{pct:.0f}% (mag {mag:.0f}%)"
-                else:
-                    label = f"{pct:.0f}%"
+                label = f"{pct:.0f}%"
     else:
         pending = pending_prediction_count(agent_id)
         if pending:
