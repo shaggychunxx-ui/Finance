@@ -292,6 +292,7 @@ def _print_accuracy_benchmark(data: dict[str, Any]) -> None:
     print(
         f"  Target trials: {benchmark.get('target_trials', '?')} | "
         f"Recorded: {metrics.get('total_trials')} | "
+        f"Symbols: {benchmark.get('max_symbols', meta.get('universe_size', '?'))} | "
         f"Full mode: {benchmark.get('full_mode', True)}"
     )
     print(
@@ -1093,6 +1094,12 @@ def main() -> int:
         default=1000,
         help="Target walk-forward trials for accuracy-benchmark (default: 1000)",
     )
+    parser.add_argument(
+        "--symbols",
+        type=int,
+        default=40,
+        help="Symbol universe size for accuracy-benchmark (default: 40)",
+    )
     parser.add_argument("--json", action="store_true", help="Print full JSON to stdout")
     args = parser.parse_args()
 
@@ -1101,6 +1108,7 @@ def main() -> int:
             result = run_accuracy_benchmark_cli(
                 output=args.output,
                 target_trials=args.trials,
+                max_symbols=args.symbols,
                 full=True,
             )
         else:

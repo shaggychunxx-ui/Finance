@@ -253,7 +253,15 @@ def _collect_universe(*, max_symbols: int) -> list[str]:
         portfolio=portfolio if isinstance(portfolio, dict) else None,
         predictions=fused if isinstance(fused, dict) else None,
         max_symbols=max_symbols,
+        output_dir=OUTPUT,
+        expand_remote=max_symbols > 80,
     )
+
+
+def _universe_agent_cap(universe: list[str], *, default: int) -> int:
+    if len(universe) <= 40:
+        return default
+    return min(64, max(default, len(universe) // 6))
 
 
 def _agent_symbols(agent_id: str, universe: list[str]) -> list[str]:
@@ -261,15 +269,20 @@ def _agent_symbols(agent_id: str, universe: list[str]) -> list[str]:
 
     if agent_id in SKIP_AGENTS:
         return []
+    domain_cap = _universe_agent_cap(universe, default=12)
+    broad_cap = _universe_agent_cap(universe, default=8)
+    narrow_cap = _universe_agent_cap(universe, default=4)
     matched = [sym for sym in universe if agent_in_domain(agent_id, sym)]
     if matched:
-        return matched[:12]
+        return matched[:domain_cap]
     if agent_id in MOMENTUM_AGENTS or agent_id in MEAN_REVERSION_AGENTS:
-        return universe[:8]
+        return universe[:broad_cap]
     proxy = AGENT_PROXY_ETF.get(agent_id)
     if proxy:
-        return [sym for sym in universe if agent_in_domain(agent_id, sym)][:6] or universe[:4]
-    return universe[:4]
+        proxy_matches = [sym for sym in universe if agent_in_domain(agent_id, sym)]
+        mid_cap = _universe_agent_cap(universe, default=6)
+        return proxy_matches[:mid_cap] or universe[:narrow_cap]
+    return universe[:narrow_cap]
 
 
 def _ensure_proxy_bars(
@@ -629,9 +642,10 @@ def run_historical_simulation(
 
     proxy_syms = set(AGENT_PROXY_ETF.values()) | {"SPY", "QQQ"}
     fetch_list = list(dict.fromkeys(universe + sorted(proxy_syms)))
+    throttle = 0.15 if quick else 0.08 if len(fetch_list) > 120 else 0.0
     for i, sym in enumerate(fetch_list):
-        if quick and i > 0 and i % 4 == 0:
-            time.sleep(0.15)
+        if throttle and i > 0 and i % 4 == 0:
+            time.sleep(throttle)
         bar_cache[sym] = fetch_daily_bars(sym, days=lookback_days, use_cache=True)
 
     _ensure_proxy_bars(proxy_syms, lookback_days=lookback_days, bar_cache=bar_cache)
@@ -823,6 +837,7 @@ def _subsample_trials(trials: list[SimTrial], target: int) -> list[SimTrial]:
 def run_accuracy_benchmark(
     *,
     target_trials: int = DEFAULT_BENCHMARK_TRIALS,
+    max_symbols: int = 40,
     full: bool = True,
     output: Path | None = None,
 ) -> dict[str, Any]:
@@ -836,7 +851,7 @@ def run_accuracy_benchmark(
         if src["id"] not in SKIP_AGENTS
     )
     lookback_days = 504 if full else DEFAULT_LOOKBACK_DAYS
-    max_symbols = 40 if full else 28
+    max_symbols = max(20, int(max_symbols))
     horizons: tuple[str, ...] = ("24h", "1wk", "1mo", "1yr") if full else ("24h", "1wk", "1mo")
 
     estimated = _estimate_walk_forward_trials(
@@ -890,8 +905,9 @@ def run_accuracy_benchmark(
 
     if total < target:
         lookback_days = min(1260, lookback_days + 252)
-        max_symbols = min(64, max_symbols + 16)
-        report = _run_pass(step=1, days=lookback_days, symbols=max_symbols, cap=None)
+        boosted_symbols = min(max(max_symbols, 64), max_symbols + 16)
+        report = _run_pass(step=1, days=lookback_days, symbols=boosted_symbols, cap=None)
+        max_symbols = boosted_symbols
         signal_step = 1
         total = int((report.get("metrics") or {}).get("total_trials") or 0)
         if total > target:
@@ -916,6 +932,7 @@ def run_accuracy_benchmark(
 
     report.setdefault("meta", {})["benchmark"] = {
         "target_trials": target,
+        "max_symbols": max_symbols,
         "full_mode": full,
         "signal_step_bars": signal_step,
         "lookback_days": lookback_days,
@@ -942,10 +959,12 @@ def run_accuracy_benchmark_cli(
     output: Path | None = None,
     *,
     target_trials: int = DEFAULT_BENCHMARK_TRIALS,
+    max_symbols: int = 40,
     full: bool = True,
 ) -> dict[str, Any]:
     return run_accuracy_benchmark(
         target_trials=target_trials,
+        max_symbols=max_symbols,
         full=full,
         output=output or BENCHMARK_FILE,
     )
