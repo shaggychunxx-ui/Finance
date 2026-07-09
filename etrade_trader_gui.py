@@ -2117,11 +2117,10 @@ class ETradeTraderApp(tk.Frame):
         ).pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
         self._holdings_tree = self._make_tree(
             self._tab_holdings,
-            ("symbol", "current_pct", "target_pct", "current_usd", "target_usd", "drift", "rationale"),
+            ("symbol", "current_pct", "target_pct", "current_usd", "target_usd", "drift"),
             {
                 "symbol": ("Symbol", 88), "current_pct": ("Current %", 92), "target_pct": ("Target %", 92),
                 "current_usd": ("Current $", 108), "target_usd": ("Target $", 108), "drift": ("Drift", 80),
-                "rationale": ("Why chosen", 360),
             },
         )
         self._bind_trade_tree_select(self._holdings_tree, "portfolio")
@@ -4062,12 +4061,6 @@ class ETradeTraderApp(tk.Frame):
             cur_pct = cur_usd / total * 100
             tgt_pct = float(tgt.get("weight_pct", 0))
             drift = tgt_pct - cur_pct
-            why = (tgt.get("rationale") or "").strip()
-            if not why:
-                if tgt:
-                    why = "Agent portfolio target"
-                elif cur:
-                    why = "Not in agent portfolio — trim candidate"
             drift_tags = ("drift_high",) if abs(drift) >= 2.0 else ()
             self._tree_insert(
                 self._holdings_tree,
@@ -4078,7 +4071,6 @@ class ETradeTraderApp(tk.Frame):
                     f"${cur_usd:,.0f}",
                     f"${tgt_usd:,.0f}",
                     f"{drift:+.1f}%",
-                    why[:200],
                 ),
                 extra_tags=drift_tags,
             )
