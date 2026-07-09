@@ -834,18 +834,6 @@ class FinanceAgentsApp(tk.Frame):
             sync_benchmark_to_accuracy_store()
         except Exception:
             pass
-        try:
-            from agent_learning import rebuild_agent_learning
-
-            rebuild_agent_learning()
-        except Exception:
-            pass
-        try:
-            from agent_personality import sync_personality_from_learning
-
-            sync_personality_from_learning()
-        except Exception:
-            pass
 
     def _apply_learning_patch(self, agent_id: str, output_name: str) -> None:
         try:
@@ -1085,15 +1073,18 @@ class FinanceAgentsApp(tk.Frame):
         subprocess.Popen(["explorer", str(OUTPUT)])
 
     def _open_market_predictor(self) -> None:
-        launcher = ROOT / "Launch Market Predictor.vbs"
-        gui = ROOT / "market_predictor_gui.py"
-        pyw = ROOT / ".venv" / "Scripts" / "pythonw.exe"
-        if launcher.exists():
-            subprocess.Popen(["wscript.exe", str(launcher)], cwd=str(ROOT))
-        elif pyw.exists() and gui.exists():
-            subprocess.Popen([str(pyw), str(gui)], cwd=str(ROOT))
-        else:
-            messagebox.showwarning("Missing", "Market Predictor launcher not found.")
+        try:
+            from dashboard_server import open_predictions_dashboard
+
+            open_predictions_dashboard(ROOT)
+            self._set_status("Opened Predictions Dashboard", ACCENT2)
+        except Exception as exc:
+            messagebox.showwarning(
+                "Market Predictor",
+                "Predictions dashboard unavailable.\n\n"
+                "Use Full Pipeline to refresh market_predictions.json.\n\n"
+                f"{exc}",
+            )
 
     def _sync_agents(self) -> None:
         if not messagebox.askyesno(

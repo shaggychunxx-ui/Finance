@@ -398,7 +398,7 @@ def record_cycle_predictions(*, cycle_id: str | None = None) -> int:
     return len(pending) - before
 
 
-def score_matured_predictions() -> int:
+def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
     """Resolve predictions whose horizon has elapsed and update accuracy stats."""
     from price_history import clear_yahoo_cache, record_prices, resolve_price_at
 
@@ -516,7 +516,7 @@ def score_matured_predictions() -> int:
     _write_json(PENDING_FILE, store)
 
     if newly_scored:
-        rebuild_accuracy_index()
+        rebuild_accuracy_index(rebuild_learning=rebuild_learning)
     return newly_scored
 
 
@@ -594,7 +594,14 @@ def backfill_scored_magnitude(*, persist: bool = True) -> int:
     return updated
 
 
-def rebuild_accuracy_index() -> dict[str, Any]:
+def _touch_accuracy_pending_count() -> None:
+    accuracy = _accuracy_store()
+    accuracy["pending_count"] = len((_load_json(PENDING_FILE) or {}).get("predictions", []))
+    accuracy["updated_at"] = _now_iso()
+    _write_json(ACCURACY_FILE, accuracy)
+
+
+def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
     """Aggregate per-agent accuracy from scored outcomes."""
     backfill_scored_magnitude()
     accuracy = _accuracy_store()
@@ -766,12 +773,13 @@ def rebuild_accuracy_index() -> dict[str, Any]:
         export_walk_forward_weights()
     except Exception:
         pass
-    try:
-        from agent_learning import rebuild_agent_learning
+    if rebuild_learning:
+        try:
+            from agent_learning import rebuild_agent_learning
 
-        rebuild_agent_learning()
-    except Exception:
-        pass
+            rebuild_agent_learning()
+        except Exception:
+            pass
     return accuracy
 
 
@@ -785,6 +793,7 @@ def sync_benchmark_to_accuracy_store(
     report: dict[str, Any] | None = None,
     *,
     force: bool = False,
+    rebuild_learning: bool = True,
 ) -> dict[str, Any]:
     """Publish walk-forward benchmark results into the shared accuracy store."""
     from historical_simulation import BENCHMARK_FILE, SIM_FILE
@@ -864,12 +873,13 @@ def sync_benchmark_to_accuracy_store(
         export_walk_forward_weights()
     except Exception:
         pass
-    try:
-        from agent_learning import rebuild_agent_learning
+    if rebuild_learning:
+        try:
+            from agent_learning import rebuild_agent_learning
 
-        rebuild_agent_learning()
-    except Exception:
-        pass
+            rebuild_agent_learning()
+        except Exception:
+            pass
     return accuracy
 
 
@@ -973,15 +983,20 @@ def accuracy_leaderboard(*, top_n: int = 10) -> list[dict[str, Any]]:
     return board[:top_n]
 
 
-def run_accuracy_cycle(*, cycle_id: str | None = None, skip_simulation: bool = False) -> dict[str, int]:
+def run_accuracy_cycle(
+    *,
+    cycle_id: str | None = None,
+    skip_simulation: bool = False,
+    rebuild_learning: bool = True,
+) -> dict[str, int]:
     """Record new predictions, score matured ones, rebuild index."""
-    from price_history import record_prices
-
     recorded = record_cycle_predictions(cycle_id=cycle_id)
-    record_prices(_quote_prices())
-    scored = score_matured_predictions()
+    scored = score_matured_predictions(rebuild_learning=rebuild_learning)
     if scored == 0:
-        rebuild_accuracy_index()
+        if recorded:
+            _touch_accuracy_pending_count()
+        else:
+            rebuild_accuracy_index(rebuild_learning=rebuild_learning)
 
     simulated = 0
     if not skip_simulation:
@@ -996,12 +1011,5 @@ def run_accuracy_cycle(*, cycle_id: str | None = None, skip_simulation: bool = F
                 export_walk_forward_weights()
         except Exception:
             pass
-
-    try:
-        from agent_learning import rebuild_agent_learning
-
-        rebuild_agent_learning()
-    except Exception:
-        pass
 
     return {"recorded": recorded, "scored": scored, "simulated": simulated}

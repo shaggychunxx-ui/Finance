@@ -11,10 +11,8 @@ from typing import Any, Callable
 
 from etrade_api.client import ETradeClient
 from etrade_api.config import ETradeConfig, load_config
+from app_paths import OUTPUT, ROOT
 from portfolio_generator import generate_portfolio, save_portfolio
-
-ROOT = Path(__file__).resolve().parent
-OUTPUT = ROOT / "output"
 PORTFOLIO_FILE = OUTPUT / "portfolio.json"
 PLAN_FILE = OUTPUT / "strategy_plan.json"
 
@@ -738,6 +736,27 @@ def _place_swing_protective_orders(client: ETradeClient, plan: StrategyPlan, buy
         pass
 
 
+def _reapply_pipeline_patches(sources: list[dict[str, str]]) -> None:
+    """Apply fresh personality and learning after pipeline memory is finalized."""
+    for src in sources:
+        aid = src["id"]
+        out_path = OUTPUT / src["file"]
+        if not out_path.exists():
+            continue
+        try:
+            from agent_personality import patch_agent_output_personality
+
+            patch_agent_output_personality(out_path, aid)
+        except Exception:
+            pass
+        try:
+            from agent_learning import patch_agent_output_learning
+
+            patch_agent_output_learning(out_path, aid)
+        except Exception:
+            pass
+
+
 def run_agent_pipeline(
     runners: dict[str, Callable[..., Any]] | None = None,
     on_progress: Callable[[str], None] | None = None,
@@ -748,10 +767,9 @@ def run_agent_pipeline(
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
     try:
-        from analysis_history import new_pipeline_cycle_id, write_pipeline_run_context
+        from analysis_history import new_pipeline_cycle_id
 
         cycle_id = new_pipeline_cycle_id()
-        write_pipeline_run_context(cycle_id=cycle_id)
     except Exception:
         cycle_id = None
     log_catalog_changes(on_progress, check_remote=check_remote)
@@ -779,12 +797,6 @@ def run_agent_pipeline(
                 from agent_personality import patch_agent_output_personality
 
                 patch_agent_output_personality(out_path, aid)
-            except Exception:
-                pass
-            try:
-                from agent_learning import patch_agent_output_learning
-
-                patch_agent_output_learning(out_path, aid)
             except Exception:
                 pass
             ok += 1
@@ -838,12 +850,6 @@ def run_agent_pipeline(
         patch_agent_output_personality(predictor_path, "market-predictor")
     except Exception:
         pass
-    try:
-        from agent_learning import patch_agent_output_learning
-
-        patch_agent_output_learning(predictor_path, "market-predictor")
-    except Exception:
-        pass
     if cycle_id is None:
         try:
             from analysis_history import new_pipeline_cycle_id
@@ -855,7 +861,7 @@ def run_agent_pipeline(
         from analysis_history import archive_agent_output, archive_pipeline_cycle
 
         archive_agent_output("market-predictor", predictor_path, cycle_id=cycle_id)
-        archive_pipeline_cycle(cycle_id=cycle_id)
+        archive_pipeline_cycle(cycle_id=cycle_id, refresh_context=False)
         if on_progress and cycle_id:
             on_progress(f"Analysis history saved (cycle {cycle_id}).")
     except Exception:
@@ -864,7 +870,11 @@ def run_agent_pipeline(
     try:
         from prediction_accuracy import run_accuracy_cycle
 
-        stats = run_accuracy_cycle(cycle_id=cycle_id, skip_simulation=True)
+        stats = run_accuracy_cycle(
+            cycle_id=cycle_id,
+            skip_simulation=True,
+            rebuild_learning=False,
+        )
         if on_progress and stats.get("recorded"):
             on_progress(f"Recorded {stats['recorded']} prediction(s) from this pipeline run.")
         if on_progress and stats.get("scored"):
@@ -886,6 +896,7 @@ def run_agent_pipeline(
                 accuracy_stats=stats,
                 benchmark=bench,
             )
+            _reapply_pipeline_patches(sources)
             if on_progress:
                 on_progress("Pipeline memory updated — future runs will use this cycle.")
     except Exception:

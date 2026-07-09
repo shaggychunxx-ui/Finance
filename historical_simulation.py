@@ -842,6 +842,7 @@ def run_accuracy_benchmark(
     max_symbols: int = 40,
     full: bool = True,
     output: Path | None = None,
+    rebuild_learning: bool = True,
 ) -> dict[str, Any]:
     """Run a sized walk-forward backtest for agent accuracy benchmarking."""
     from agents.platform_catalog import active_agent_sources
@@ -950,10 +951,7 @@ def run_accuracy_benchmark(
     try:
         from prediction_accuracy import sync_benchmark_to_accuracy_store
 
-        sync_benchmark_to_accuracy_store(report, force=True)
-        from agent_learning import rebuild_agent_learning
-
-        rebuild_agent_learning()
+        sync_benchmark_to_accuracy_store(report, force=True, rebuild_learning=rebuild_learning)
     except Exception:
         try:
             from agent_fusion import export_walk_forward_weights
@@ -1008,6 +1006,7 @@ def run_pipeline_accuracy_benchmark(
         target_trials=trials,
         max_symbols=symbols,
         full=bool(settings.get("full", True)),
+        rebuild_learning=False,
     )
 
 

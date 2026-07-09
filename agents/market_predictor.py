@@ -302,6 +302,19 @@ def run_market_predictor_analysis(*, output: Path | None = None) -> dict[str, An
         except Exception:
             fusion_meta = {}
 
+    pipeline_memory: dict[str, Any] = {}
+    try:
+        from analysis_history import load_pipeline_run_context
+
+        mem = load_pipeline_run_context()
+        pipeline_memory = {
+            "total_runs": int(mem.get("total_pipeline_runs") or 0),
+            "prior_runs_loaded": len(mem.get("prior_pipeline_runs") or []),
+            "learning_agents": len(mem.get("agent_learning") or {}),
+        }
+    except Exception:
+        pass
+
     result = {
         "meta": {
             "agent": "Market Predictor",
@@ -310,6 +323,7 @@ def run_market_predictor_analysis(*, output: Path | None = None) -> dict[str, An
             "tickers_scored": len(scores),
             "horizons": list(predictions.keys()),
             "fusion": fusion_meta,
+            "pipeline_memory": pipeline_memory,
         },
         "predictions": predictions,
         "recommendations": [

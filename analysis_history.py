@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent
-OUTPUT = ROOT / "output"
+from app_paths import OUTPUT, ROOT
+
 HISTORY_ROOT = OUTPUT / "history"
 SNAPSHOTS_DIR = HISTORY_ROOT / "snapshots"
 TICKER_DIR = HISTORY_ROOT / "tickers"
@@ -130,7 +130,11 @@ def archive_agent_output(agent_id: str, output_path: Path, *, cycle_id: str | No
         _write_json(path, series)
 
 
-def archive_pipeline_cycle(*, cycle_id: str | None = None) -> str:
+def archive_pipeline_cycle(
+    *,
+    cycle_id: str | None = None,
+    refresh_context: bool = True,
+) -> str:
     """Snapshot current output artifacts after a full agent pipeline run."""
     from agents.platform_catalog import active_agent_sources
 
@@ -166,7 +170,8 @@ def archive_pipeline_cycle(*, cycle_id: str | None = None) -> str:
     index["snapshots"] = snapshots[-MAX_SNAPSHOTS:]
     _save_index(index)
 
-    build_agent_context(lookback_cycles=DEFAULT_LOOKBACK_CYCLES)
+    if refresh_context:
+        build_agent_context(lookback_cycles=DEFAULT_LOOKBACK_CYCLES)
     return cycle_id
 
 
