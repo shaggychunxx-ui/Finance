@@ -747,6 +747,13 @@ def run_agent_pipeline(
     from agents.platform_catalog import active_agent_sources, log_catalog_changes, resolve_runner
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    try:
+        from analysis_history import new_pipeline_cycle_id, write_pipeline_run_context
+
+        cycle_id = new_pipeline_cycle_id()
+        write_pipeline_run_context(cycle_id=cycle_id)
+    except Exception:
+        cycle_id = None
     log_catalog_changes(on_progress, check_remote=check_remote)
     sources = active_agent_sources(check_remote=check_remote)
     ok = 0
@@ -784,7 +791,7 @@ def run_agent_pipeline(
             try:
                 from analysis_history import archive_agent_output
 
-                archive_agent_output(aid, out_path)
+                archive_agent_output(aid, out_path, cycle_id=cycle_id)
             except Exception:
                 pass
         except Exception:
@@ -798,6 +805,7 @@ def run_agent_pipeline(
     except Exception as exc:
         if on_progress:
             on_progress(f"E*TRADE enhancement skipped: {exc}")
+    bench: dict[str, Any] | None = None
     try:
         from historical_simulation import run_pipeline_accuracy_benchmark
 
@@ -836,26 +844,50 @@ def run_agent_pipeline(
         patch_agent_output_learning(predictor_path, "market-predictor")
     except Exception:
         pass
-    cycle_id: str | None = None
+    if cycle_id is None:
+        try:
+            from analysis_history import new_pipeline_cycle_id
+
+            cycle_id = new_pipeline_cycle_id()
+        except Exception:
+            cycle_id = None
     try:
         from analysis_history import archive_agent_output, archive_pipeline_cycle
 
-        archive_agent_output("market-predictor", predictor_path)
-        cycle_id = archive_pipeline_cycle()
-        if on_progress:
+        archive_agent_output("market-predictor", predictor_path, cycle_id=cycle_id)
+        archive_pipeline_cycle(cycle_id=cycle_id)
+        if on_progress and cycle_id:
             on_progress(f"Analysis history saved (cycle {cycle_id}).")
     except Exception:
         pass
+    stats: dict[str, int] = {}
     try:
         from prediction_accuracy import run_accuracy_cycle
 
         stats = run_accuracy_cycle(cycle_id=cycle_id, skip_simulation=True)
+        if on_progress and stats.get("recorded"):
+            on_progress(f"Recorded {stats['recorded']} prediction(s) from this pipeline run.")
         if on_progress and stats.get("scored"):
             on_progress(f"Scored {stats['scored']} matured prediction(s) for accuracy tracking.")
         if on_progress and stats.get("simulated"):
             on_progress(
                 f"Historical simulation: {stats['simulated']} walk-forward trial(s) scored."
             )
+    except Exception:
+        pass
+    try:
+        from analysis_history import finalize_pipeline_cycle
+
+        if cycle_id:
+            finalize_pipeline_cycle(
+                cycle_id,
+                agents_ok=ok,
+                agents_total=len(sources),
+                accuracy_stats=stats,
+                benchmark=bench,
+            )
+            if on_progress:
+                on_progress("Pipeline memory updated — future runs will use this cycle.")
     except Exception:
         pass
     return ok

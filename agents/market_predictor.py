@@ -94,6 +94,17 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         )
         if weight <= 0:
             return
+        try:
+            from agent_learning import get_agent_learning
+
+            learning = get_agent_learning(source)
+            if learning is not None:
+                if sym in learning.avoid_symbols:
+                    weight *= 0.82
+                elif sym in learning.trust_symbols:
+                    weight *= 1.08
+        except Exception:
+            pass
         weighted = delta * weight
         row = scores[sym]
         cluster = agent_cluster(source)

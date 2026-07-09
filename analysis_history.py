@@ -15,11 +15,14 @@ SNAPSHOTS_DIR = HISTORY_ROOT / "snapshots"
 TICKER_DIR = HISTORY_ROOT / "tickers"
 INDEX_FILE = HISTORY_ROOT / "index.json"
 ACCOUNT_VALUES_FILE = HISTORY_ROOT / "account_values.json"
+PIPELINE_RUNS_FILE = HISTORY_ROOT / "pipeline_runs.json"
+RUN_CONTEXT_FILE = OUTPUT / "pipeline_run_context.json"
 AGENT_CONTEXT_FILE = OUTPUT / "agent_context.json"
 
 MAX_SNAPSHOTS = 240
 MAX_TICKER_POINTS = 120
 MAX_ACCOUNT_POINTS = 500
+MAX_PIPELINE_RUNS = 500
 DEFAULT_LOOKBACK_CYCLES = 12
 
 BIAS_SCORES = {"BULLISH": 1.0, "NEUTRAL": 0.0, "BEARISH": -1.0}
@@ -165,6 +168,177 @@ def archive_pipeline_cycle(*, cycle_id: str | None = None) -> str:
 
     build_agent_context(lookback_cycles=DEFAULT_LOOKBACK_CYCLES)
     return cycle_id
+
+
+def new_pipeline_cycle_id() -> str:
+    """Stable id shared by every artifact in one pipeline run."""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _load_pipeline_runs_store() -> dict[str, Any]:
+    data = _load_json(PIPELINE_RUNS_FILE)
+    if isinstance(data, dict):
+        data.setdefault("runs", [])
+        return data
+    return {"runs": [], "total_runs": 0, "updated_at": _now_iso()}
+
+
+def _save_pipeline_runs_store(store: dict[str, Any]) -> None:
+    store["updated_at"] = _now_iso()
+    store["total_runs"] = len(store.get("runs") or [])
+    _write_json(PIPELINE_RUNS_FILE, store)
+
+
+def record_pipeline_run(
+    cycle_id: str,
+    *,
+    agents_ok: int = 0,
+    agents_total: int = 0,
+    accuracy_stats: dict[str, int] | None = None,
+    benchmark: dict[str, Any] | None = None,
+    file_count: int = 0,
+) -> dict[str, Any]:
+    """Append one completed pipeline run to durable history."""
+    _ensure_dirs()
+    stats = accuracy_stats or {}
+    bench_board = (benchmark or {}).get("leaderboard") or []
+    bench_top = bench_board[0] if bench_board else {}
+    bench_metrics = (benchmark or {}).get("metrics") or {}
+    entry = {
+        "cycle_id": cycle_id,
+        "at": _now_iso(),
+        "agents_ok": int(agents_ok),
+        "agents_total": int(agents_total),
+        "predictions_recorded": int(stats.get("recorded") or 0),
+        "predictions_scored": int(stats.get("scored") or 0),
+        "benchmark_trials": int(bench_metrics.get("total_trials") or 0),
+        "benchmark_top_agent": bench_top.get("agent_id"),
+        "benchmark_top_pct": bench_top.get("accuracy_pct"),
+        "snapshot_files": int(file_count),
+    }
+    store = _load_pipeline_runs_store()
+    runs: list[dict[str, Any]] = list(store.setdefault("runs", []))
+    if not any(row.get("cycle_id") == cycle_id for row in runs):
+        runs.append(entry)
+    else:
+        for index, row in enumerate(runs):
+            if row.get("cycle_id") == cycle_id:
+                runs[index] = {**row, **entry}
+                break
+    store["runs"] = runs[-MAX_PIPELINE_RUNS:]
+    _save_pipeline_runs_store(store)
+    return entry
+
+
+def load_pipeline_run_context() -> dict[str, Any]:
+    data = _load_json(RUN_CONTEXT_FILE)
+    return data if isinstance(data, dict) else {}
+
+
+def write_pipeline_run_context(*, cycle_id: str | None = None) -> dict[str, Any]:
+    """Publish prior pipeline memory for the next agent cycle."""
+    from agent_learning import get_agent_learning
+
+    index = _load_index()
+    runs_store = _load_pipeline_runs_store()
+    prior_runs = list(runs_store.get("runs") or [])[-8:]
+
+    learning_by_agent: dict[str, Any] = {}
+    try:
+        from agents.platform_catalog import active_agent_sources
+
+        for src in active_agent_sources(check_remote=False):
+            aid = src["id"]
+            row = get_agent_learning(aid)
+            if row is None:
+                continue
+            learning_by_agent[aid] = {
+                "posture": row.posture,
+                "lessons": list(row.lessons),
+                "avoid_symbols": sorted(row.avoid_symbols)[:10],
+                "trust_symbols": sorted(row.trust_symbols)[:10],
+                "bias_drift": row.bias_drift,
+                "fusion_multiplier": row.fusion_multiplier,
+                "preferred_horizon": row.preferred_horizon,
+            }
+    except Exception:
+        pass
+
+    accuracy_board: list[dict[str, Any]] = []
+    try:
+        from prediction_accuracy import accuracy_leaderboard
+
+        accuracy_board = accuracy_leaderboard(top_n=12)
+    except Exception:
+        pass
+
+    regime_history: list[dict[str, Any]] = []
+    for snap in reversed(index.get("snapshots", [])[-DEFAULT_LOOKBACK_CYCLES:]):
+        snap_cycle = snap.get("cycle_id")
+        if not snap_cycle:
+            continue
+        markets_path = SNAPSHOTS_DIR / str(snap_cycle) / "markets.json"
+        markets = _load_json(markets_path)
+        if isinstance(markets, dict):
+            metrics = markets.get("metrics", {})
+            regime_history.append(
+                {
+                    "at": snap.get("at"),
+                    "cycle_id": snap_cycle,
+                    "risk_on_score": metrics.get("risk_on_score"),
+                    "trend_label": metrics.get("trend_label"),
+                }
+            )
+
+    context = {
+        "cycle_id": cycle_id,
+        "generated_at": _now_iso(),
+        "total_pipeline_runs": int(runs_store.get("total_runs") or len(runs_store.get("runs") or [])),
+        "prior_pipeline_runs": prior_runs,
+        "agent_learning": learning_by_agent,
+        "persistent_bullish_tickers": get_persistent_bullish_tickers(top_n=15),
+        "accuracy_leaderboard": accuracy_board,
+        "regime_history": list(reversed(regime_history))[-DEFAULT_LOOKBACK_CYCLES:],
+        "usage": (
+            "Loaded at the start of each pipeline run. Agents and fusion use lessons, "
+            "symbol trust/avoid lists, and prior cycle outcomes to steer future decisions."
+        ),
+    }
+    _write_json(RUN_CONTEXT_FILE, context)
+    return context
+
+
+def finalize_pipeline_cycle(
+    cycle_id: str,
+    *,
+    agents_ok: int = 0,
+    agents_total: int = 0,
+    accuracy_stats: dict[str, int] | None = None,
+    benchmark: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record a completed pipeline run and refresh learning/context for the next cycle."""
+    index = _load_index()
+    snap = next(
+        (row for row in reversed(index.get("snapshots", [])) if row.get("cycle_id") == cycle_id),
+        {},
+    )
+    entry = record_pipeline_run(
+        cycle_id,
+        agents_ok=agents_ok,
+        agents_total=agents_total,
+        accuracy_stats=accuracy_stats,
+        benchmark=benchmark,
+        file_count=int(snap.get("file_count") or 0),
+    )
+    try:
+        from agent_learning import rebuild_agent_learning
+
+        rebuild_agent_learning()
+    except Exception:
+        pass
+    build_agent_context(lookback_cycles=DEFAULT_LOOKBACK_CYCLES)
+    write_pipeline_run_context(cycle_id=cycle_id)
+    return entry
 
 
 def record_account_value(
@@ -390,6 +564,9 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
     except Exception:
         pass
 
+    pipeline_runs_store = _load_pipeline_runs_store()
+    learning_store = _load_json(HISTORY_ROOT / "agent_learning.json") or {}
+
     balance_penalties: dict[str, Any] = {}
     try:
         from account_balance_penalty import rebuild_balance_penalties
@@ -426,9 +603,15 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
         "regime_history": regime_history[-lookback_cycles:],
         "agent_run_counts": index.get("agents", {}),
         "snapshot_count": len(index.get("snapshots", [])),
+        "pipeline_runs": {
+            "total": int(pipeline_runs_store.get("total_runs") or len(pipeline_runs_store.get("runs") or [])),
+            "recent": list(pipeline_runs_store.get("runs") or [])[-lookback_cycles:],
+        },
+        "agent_learning": learning_store.get("agents") if isinstance(learning_store, dict) else {},
         "usage": (
             "Agents and portfolio logic read this file to weight tickers with sustained bullish "
-            "signals, favor high-accuracy agents, and grow total account value."
+            "signals, favor high-accuracy agents, apply lessons from prior pipeline runs, "
+            "and grow total account value."
         ),
     }
     _write_json(AGENT_CONTEXT_FILE, context)
@@ -438,7 +621,7 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
 def record_day_trade_session(state: dict[str, Any]) -> None:
     """Persist intraday P&L for future agent weighting."""
     _ensure_dirs()
-    path = HISTORY_DIR / "day_trade_summary.json"
+    path = HISTORY_ROOT / "day_trade_summary.json"
     data = _load_json(path)
     if not isinstance(data, dict):
         data = {"sessions": [], "objective": "grow_account_value"}

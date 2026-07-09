@@ -997,4 +997,11 @@ def run_accuracy_cycle(*, cycle_id: str | None = None, skip_simulation: bool = F
         except Exception:
             pass
 
+    try:
+        from agent_learning import rebuild_agent_learning
+
+        rebuild_agent_learning()
+    except Exception:
+        pass
+
     return {"recorded": recorded, "scored": scored, "simulated": simulated}
