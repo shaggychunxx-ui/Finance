@@ -366,6 +366,13 @@ def fusion_weight(
     except Exception:
         pass
 
+    try:
+        from agent_learning import learning_fusion_factor
+
+        base *= learning_fusion_factor(aid)
+    except Exception:
+        pass
+
     return max(0.0, min(1.5, base))
 
 
@@ -418,11 +425,20 @@ def export_walk_forward_weights() -> dict[str, Any]:
             bal_benchmark = float(bal_entry.get("benchmark_reward_score") or 0.0)
         personality_label = ""
         personality_fit = 1.0
+        learning_label = ""
+        learning_fit = 1.0
         try:
             from agent_personality import get_agent_personality, personality_fusion_factor
 
             personality_label = get_agent_personality(aid).label
             personality_fit = personality_fusion_factor(aid, regime_posture=posture)
+        except Exception:
+            pass
+        try:
+            from agent_learning import learning_fusion_factor, learning_label as _learning_label
+
+            learning_label = _learning_label(aid)
+            learning_fit = learning_fusion_factor(aid)
         except Exception:
             pass
         agents[aid] = {
@@ -437,6 +453,8 @@ def export_walk_forward_weights() -> dict[str, Any]:
             "daily_benchmark_reward": round(bal_benchmark, 3),
             "personality_label": personality_label,
             "personality_fit": round(personality_fit, 3),
+            "learning_label": learning_label,
+            "learning_fit": round(learning_fit, 3),
         }
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),

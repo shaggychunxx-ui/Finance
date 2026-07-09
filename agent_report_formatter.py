@@ -77,6 +77,14 @@ def format_report_summary(data: dict[str, Any]) -> str:
     except Exception:
         pass
 
+    learning = meta.get("learning")
+    if isinstance(learning, dict) and learning.get("posture"):
+        lessons = learning.get("lessons") or []
+        lesson_text = lessons[0] if lessons else learning.get("posture", "")
+        if lesson_text and not any(line.startswith("Learning:") for line in lines):
+            lines.append(f"Learning: {learning.get('posture', 'active')} — {lesson_text}")
+            lines.append("")
+
     personality = meta.get("personality")
     if isinstance(personality, dict) and personality.get("label"):
         summary_bits = []

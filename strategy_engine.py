@@ -774,6 +774,12 @@ def run_agent_pipeline(
                 patch_agent_output_personality(out_path, aid)
             except Exception:
                 pass
+            try:
+                from agent_learning import patch_agent_output_learning
+
+                patch_agent_output_learning(out_path, aid)
+            except Exception:
+                pass
             ok += 1
             try:
                 from analysis_history import archive_agent_output
@@ -802,6 +808,12 @@ def run_agent_pipeline(
         from agent_personality import patch_agent_output_personality
 
         patch_agent_output_personality(predictor_path, "market-predictor")
+    except Exception:
+        pass
+    try:
+        from agent_learning import patch_agent_output_learning
+
+        patch_agent_output_learning(predictor_path, "market-predictor")
     except Exception:
         pass
     cycle_id: str | None = None

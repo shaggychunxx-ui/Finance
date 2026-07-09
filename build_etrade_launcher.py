@@ -55,6 +55,7 @@ def main() -> int:
         "account_growth_chart",
         "account_balance_penalty",
         "agent_personality",
+        "agent_learning",
         "trade_history",
         "github_sync",
         "strategy_engine",

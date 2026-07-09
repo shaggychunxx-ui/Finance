@@ -766,6 +766,12 @@ def rebuild_accuracy_index() -> dict[str, Any]:
         export_walk_forward_weights()
     except Exception:
         pass
+    try:
+        from agent_learning import rebuild_agent_learning
+
+        rebuild_agent_learning()
+    except Exception:
+        pass
     return accuracy
 
 
@@ -856,6 +862,12 @@ def sync_benchmark_to_accuracy_store(
         from agent_fusion import export_walk_forward_weights
 
         export_walk_forward_weights()
+    except Exception:
+        pass
+    try:
+        from agent_learning import rebuild_agent_learning
+
+        rebuild_agent_learning()
     except Exception:
         pass
     return accuracy

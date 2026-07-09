@@ -122,6 +122,7 @@ class FinanceAgentsApp(tk.Frame):
         self._build_ui()
         self._start_ui_queue_poller()
         self._hydrate_benchmark_accuracy()
+        self._hydrate_agent_learning()
         self._select_default_agent()
 
     def _pad(self) -> int:
@@ -436,7 +437,11 @@ class FinanceAgentsApp(tk.Frame):
         self._personality_chip = tk.Label(
             meta_row, text="", bg=BORDER, fg=MUTED, font=chip_font, padx=chip_pad[0], pady=chip_pad[1]
         )
-        self._personality_chip.pack(side=tk.LEFT)
+        self._personality_chip.pack(side=tk.LEFT, padx=(0, self._m.px(6)))
+        self._learning_chip = tk.Label(
+            meta_row, text="", bg=BORDER, fg=MUTED, font=chip_font, padx=chip_pad[0], pady=chip_pad[1]
+        )
+        self._learning_chip.pack(side=tk.LEFT)
 
         self._desc_label = tk.Label(
             header,
@@ -663,6 +668,7 @@ class FinanceAgentsApp(tk.Frame):
             self._updated_label.configure(text=" No report yet ", bg=BORDER, fg=MUTED)
             self._accuracy_chip.configure(text="", bg="#152238")
             self._personality_chip.configure(text="", bg="#152238")
+            self._learning_chip.configure(text="", bg="#152238")
         else:
             self._updated_label.configure(text=f" Updated {age_label} ", bg=BORDER, fg=TEXT)
             if acc_label not in ("—", ""):
@@ -680,6 +686,17 @@ class FinanceAgentsApp(tk.Frame):
                 self._personality_chip.configure(text=f" {pers_label} ", bg=BORDER, fg=ACCENT)
             else:
                 self._personality_chip.configure(text="", bg="#152238")
+            try:
+                from agent_learning import learning_label
+
+                learn_label = learning_label(agent["id"])
+            except Exception:
+                learn_label = ""
+            if learn_label:
+                learn_color = UP if "Confident" in learn_label else WARN if "Cautious" in learn_label else ACCENT2
+                self._learning_chip.configure(text=f" {learn_label} ", bg=BORDER, fg=learn_color)
+            else:
+                self._learning_chip.configure(text="", bg="#152238")
         self._load_agent_output(agent)
 
     def _trim_report_header(self, text: str) -> str:
@@ -696,6 +713,10 @@ class FinanceAgentsApp(tk.Frame):
                 if start < len(lines) and lines[start].strip() == "":
                     start += 1
             if start < len(lines) and lines[start].startswith("Personality:"):
+                start += 1
+                if start < len(lines) and lines[start].strip() == "":
+                    start += 1
+            if start < len(lines) and lines[start].startswith("Learning:"):
                 start += 1
                 if start < len(lines) and lines[start].strip() == "":
                     start += 1
@@ -722,6 +743,7 @@ class FinanceAgentsApp(tk.Frame):
             "Top movers",
             "Tracked accuracy",
             "Personality",
+            "Learning",
         )
         for section in section_names:
             start = "1.0"
@@ -819,6 +841,22 @@ class FinanceAgentsApp(tk.Frame):
             from prediction_accuracy import sync_benchmark_to_accuracy_store
 
             sync_benchmark_to_accuracy_store()
+        except Exception:
+            pass
+
+    def _hydrate_agent_learning(self) -> None:
+        try:
+            from agent_learning import rebuild_agent_learning
+
+            rebuild_agent_learning()
+        except Exception:
+            pass
+
+    def _apply_learning_patch(self, agent_id: str, output_name: str) -> None:
+        try:
+            from agent_learning import patch_agent_output_learning
+
+            patch_agent_output_learning(OUTPUT / output_name, agent_id)
         except Exception:
             pass
 
@@ -942,6 +980,12 @@ class FinanceAgentsApp(tk.Frame):
             )
             if top:
                 summary += f" · top {top.get('agent_id')} {top.get('accuracy_pct')}%"
+            try:
+                from agent_learning import rebuild_agent_learning
+
+                rebuild_agent_learning()
+            except Exception:
+                pass
             self._schedule_ui(self.refresh_agent_statuses)
             if self._selected_id:
                 self._schedule_ui(self._select_agent, self._selected_id)
@@ -1001,6 +1045,7 @@ class FinanceAgentsApp(tk.Frame):
             OUTPUT.mkdir(parents=True, exist_ok=True)
             runner(output=OUTPUT / agent["output"])
             self._apply_personality_patch(agent["id"], agent["output"])
+            self._apply_learning_patch(agent["id"], agent["output"])
             self._schedule_ui(self._refresh_agent, agent["id"])
             self._schedule_ui(self._set_status, f"Complete — {agent['label']}", UP)
         except Exception as exc:
@@ -1055,6 +1100,7 @@ class FinanceAgentsApp(tk.Frame):
             try:
                 runner(output=OUTPUT / agent["output"])
                 self._apply_personality_patch(agent["id"], agent["output"])
+                self._apply_learning_patch(agent["id"], agent["output"])
                 ok += 1
                 self._schedule_ui(self._refresh_agent, agent["id"])
             except Exception as exc:
@@ -1103,6 +1149,7 @@ class FinanceAgentsApp(tk.Frame):
             try:
                 runner(output=OUTPUT / agent["output"])
                 self._apply_personality_patch(agent["id"], agent["output"])
+                self._apply_learning_patch(agent["id"], agent["output"])
                 ok += 1
                 self._schedule_ui(self._refresh_agent, agent["id"])
             except Exception as exc:
@@ -1114,6 +1161,7 @@ class FinanceAgentsApp(tk.Frame):
 
             run_market_predictor_analysis(output=OUTPUT / "market_predictions.json")
             self._apply_personality_patch("market-predictor", "market_predictions.json")
+            self._apply_learning_patch("market-predictor", "market_predictions.json")
             self._schedule_ui(self._refresh_agent, "market-predictor")
             self._schedule_ui(
                 self._set_status,

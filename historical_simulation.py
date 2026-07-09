@@ -949,6 +949,9 @@ def run_accuracy_benchmark(
         from prediction_accuracy import sync_benchmark_to_accuracy_store
 
         sync_benchmark_to_accuracy_store(report, force=True)
+        from agent_learning import rebuild_agent_learning
+
+        rebuild_agent_learning()
     except Exception:
         try:
             from agent_fusion import export_walk_forward_weights
