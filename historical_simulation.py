@@ -946,11 +946,16 @@ def run_accuracy_benchmark(
     _write_json(SIM_FILE, report)
 
     try:
-        from agent_fusion import export_walk_forward_weights
+        from prediction_accuracy import sync_benchmark_to_accuracy_store
 
-        export_walk_forward_weights()
+        sync_benchmark_to_accuracy_store(report, force=True)
     except Exception:
-        pass
+        try:
+            from agent_fusion import export_walk_forward_weights
+
+            export_walk_forward_weights()
+        except Exception:
+            pass
 
     return report
 

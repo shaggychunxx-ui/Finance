@@ -20,7 +20,9 @@ DEFAULT_HORIZON = "24h"
 MAX_PENDING = 4000
 MAX_SCORED = 2500
 MIN_SAMPLES_FOR_WEIGHT = 25
+MIN_SAMPLES_BENCHMARK = 8
 MIN_SAMPLES_FOR_MAGNITUDE = 8
+BENCHMARK_SOURCE = "walk_forward_benchmark"
 DIRECTION_WEIGHT = 0.6
 MAGNITUDE_WEIGHT = 0.4
 SKIP_SOURCES = frozenset({"etrade", "history", "market-predictor"})
@@ -596,6 +598,11 @@ def rebuild_accuracy_index() -> dict[str, Any]:
     """Aggregate per-agent accuracy from scored outcomes."""
     backfill_scored_magnitude()
     accuracy = _accuracy_store()
+    preserved_benchmark = {
+        aid: dict(row)
+        for aid, row in (accuracy.get("agents") or {}).items()
+        if isinstance(row, dict) and row.get("accuracy_source") == BENCHMARK_SOURCE
+    }
     scored: list[dict[str, Any]] = list(accuracy.get("scored") or [])
     agents: dict[str, dict[str, Any]] = {}
 
@@ -736,6 +743,14 @@ def rebuild_accuracy_index() -> dict[str, Any]:
         if total >= MIN_SAMPLES_FOR_WEIGHT and combined_pct is not None:
             leaderboard.append(entry)
 
+    for aid, row in preserved_benchmark.items():
+        agents[aid] = row
+        total = int(row.get("total_scored") or row.get("total") or 0)
+        combined = row.get("combined_accuracy_pct")
+        if total >= MIN_SAMPLES_BENCHMARK and combined is not None:
+            if not any(entry.get("agent_id") == aid for entry in leaderboard):
+                leaderboard.append(row)
+
     leaderboard.sort(
         key=lambda row: (row.get("combined_accuracy_pct") or 0, row.get("total_scored") or 0),
         reverse=True,
@@ -743,6 +758,98 @@ def rebuild_accuracy_index() -> dict[str, Any]:
     accuracy["agents"] = agents
     accuracy["leaderboard"] = leaderboard[:25]
     accuracy["pending_count"] = len((_load_json(PENDING_FILE) or {}).get("predictions", []))
+    accuracy["updated_at"] = _now_iso()
+    _write_json(ACCURACY_FILE, accuracy)
+    try:
+        from agent_fusion import export_walk_forward_weights
+
+        export_walk_forward_weights()
+    except Exception:
+        pass
+    return accuracy
+
+
+def _min_samples_for_entry(entry: dict[str, Any] | None) -> int:
+    if isinstance(entry, dict) and entry.get("accuracy_source") == BENCHMARK_SOURCE:
+        return MIN_SAMPLES_BENCHMARK
+    return MIN_SAMPLES_FOR_WEIGHT
+
+
+def sync_benchmark_to_accuracy_store(
+    report: dict[str, Any] | None = None,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Publish walk-forward benchmark results into the shared accuracy store."""
+    from historical_simulation import BENCHMARK_FILE, SIM_FILE
+
+    if report is None:
+        report = _load_json(BENCHMARK_FILE) or _load_json(SIM_FILE)
+    if not isinstance(report, dict):
+        return _accuracy_store()
+
+    meta = report.get("meta") if isinstance(report.get("meta"), dict) else {}
+    bench_meta = meta.get("benchmark") if isinstance(meta.get("benchmark"), dict) else {}
+    metrics = report.get("metrics") if isinstance(report.get("metrics"), dict) else {}
+    analyzed_at = str(meta.get("analyzed_at") or _now_iso())
+    target_trials = int(bench_meta.get("target_trials") or metrics.get("total_trials") or 0)
+    max_symbols = int(bench_meta.get("max_symbols") or meta.get("universe_size") or 0)
+
+    accuracy = _accuracy_store()
+    prior_sync = (accuracy.get("benchmark") or {}).get("synced_at")
+    if not force and prior_sync and analyzed_at:
+        prior_dt = _parse_iso(str(prior_sync))
+        bench_dt = _parse_iso(analyzed_at)
+        if prior_dt and bench_dt and bench_dt <= prior_dt:
+            return accuracy
+
+    agents: dict[str, Any] = {}
+    leaderboard: list[dict[str, Any]] = []
+    for aid, row in (report.get("agents") or {}).items():
+        if not isinstance(row, dict):
+            continue
+        total = int(row.get("total_trials") or row.get("total") or 0)
+        hits = int(row.get("hits") or 0)
+        accuracy_pct = row.get("accuracy_pct")
+        if accuracy_pct is None and total:
+            accuracy_pct = round(hits / total * 100, 1)
+        weight_multiplier = row.get("weight_multiplier")
+        if weight_multiplier is None and accuracy_pct is not None and total >= MIN_SAMPLES_BENCHMARK:
+            weight_multiplier = round(max(0.5, min(1.5, 0.5 + float(accuracy_pct) / 100.0)), 3)
+        entry = {
+            "agent_id": aid,
+            "total_scored": total,
+            "total": total,
+            "hits": hits,
+            "accuracy_pct": accuracy_pct,
+            "weighted_accuracy_pct": accuracy_pct,
+            "combined_accuracy_pct": accuracy_pct,
+            "weight_multiplier": weight_multiplier or 1.0,
+            "by_horizon": row.get("by_horizon") or {},
+            "by_source": row.get("by_source") or {},
+            "accuracy_source": BENCHMARK_SOURCE,
+            "benchmark_synced_at": analyzed_at,
+            "benchmark_trials": target_trials,
+            "benchmark_symbols": max_symbols,
+        }
+        agents[aid] = entry
+        if total >= MIN_SAMPLES_BENCHMARK and accuracy_pct is not None:
+            leaderboard.append(entry)
+
+    leaderboard.sort(
+        key=lambda row: (row.get("combined_accuracy_pct") or 0, row.get("total_scored") or 0),
+        reverse=True,
+    )
+    accuracy["agents"] = agents
+    accuracy["leaderboard"] = leaderboard[:25]
+    accuracy["benchmark"] = {
+        "synced_at": analyzed_at,
+        "target_trials": target_trials,
+        "max_symbols": max_symbols,
+        "total_trials": int(metrics.get("total_trials") or target_trials or 0),
+        "summary": meta.get("expert_summary") or "",
+        "source_file": str(BENCHMARK_FILE.name),
+    }
     accuracy["updated_at"] = _now_iso()
     _write_json(ACCURACY_FILE, accuracy)
     try:
@@ -769,19 +876,28 @@ def pending_prediction_count(agent_id: str) -> int:
 def agent_accuracy_label(agent_id: str) -> str:
     entry = get_agent_accuracy(agent_id)
     total = int(entry.get("total_scored") or entry.get("total") or 0) if entry else 0
+    min_samples = _min_samples_for_entry(entry)
     label = "—"
-    if total >= MIN_SAMPLES_FOR_WEIGHT and entry:
+    if total >= min_samples and entry:
         pct = (
             entry.get("combined_accuracy_pct")
             or entry.get("weighted_accuracy_pct")
             or entry.get("accuracy_pct")
         )
         if pct is not None:
-            mag = entry.get("magnitude_accuracy_pct")
-            if mag is not None and int(entry.get("magnitude_scored") or 0) >= MIN_SAMPLES_FOR_MAGNITUDE:
-                label = f"{pct:.0f}% (mag {mag:.0f}%)"
+            if entry.get("accuracy_source") == BENCHMARK_SOURCE:
+                bench_trials = int(entry.get("benchmark_trials") or total or 0)
+                bench_symbols = int(entry.get("benchmark_symbols") or 0)
+                if bench_trials and bench_symbols:
+                    label = f"{pct:.0f}% · {bench_trials:,}t/{bench_symbols}s"
+                else:
+                    label = f"{pct:.0f}% · bench"
             else:
-                label = f"{pct:.0f}%"
+                mag = entry.get("magnitude_accuracy_pct")
+                if mag is not None and int(entry.get("magnitude_scored") or 0) >= MIN_SAMPLES_FOR_MAGNITUDE:
+                    label = f"{pct:.0f}% (mag {mag:.0f}%)"
+                else:
+                    label = f"{pct:.0f}%"
     else:
         pending = pending_prediction_count(agent_id)
         if pending:

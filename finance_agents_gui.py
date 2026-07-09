@@ -104,6 +104,7 @@ class FinanceAgentsApp(tk.Frame):
         self._runners = load_finance_runners()
         self._running = False
         self._batch_running = False
+        self._benchmark_running = False
         self._selected_id: str | None = None
         self._agent_rows: dict[str, str] = {}
         self._ui_queue: queue.Queue[tuple[Callable[..., Any], tuple[Any, ...], dict[str, Any]]] = (
@@ -120,6 +121,7 @@ class FinanceAgentsApp(tk.Frame):
         self._build_styles()
         self._build_ui()
         self._start_ui_queue_poller()
+        self._hydrate_benchmark_accuracy()
         self._select_default_agent()
 
     def _pad(self) -> int:
@@ -223,6 +225,7 @@ class FinanceAgentsApp(tk.Frame):
         tools_menu = tk.Menu(menubar, tearoff=0, bg=PANEL, fg=TEXT, activebackground=ACCENT)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Open Market Predictor App", command=self._open_market_predictor)
+        tools_menu.add_command(label="Run Accuracy Benchmark…", command=self._run_accuracy_benchmark)
         tools_menu.add_command(label="Sync Agents from GitHub", command=self._sync_agents)
         tools_menu.add_command(label="Start Mobile API Server", command=self._start_mobile_server)
 
@@ -248,6 +251,9 @@ class FinanceAgentsApp(tk.Frame):
             self._embedded_summary.pack(side=tk.LEFT)
             tools = tk.Frame(header, bg=PANEL)
             tools.pack(side=tk.RIGHT)
+            self._make_button(
+                tools, "Benchmark", self._run_accuracy_benchmark, variant="ghost", side=tk.LEFT, padx=(0, self._m.px(4))
+            )
             self._make_button(
                 tools, "Sync GitHub", self._sync_agents, variant="ghost", side=tk.LEFT
             )
@@ -453,6 +459,9 @@ class FinanceAgentsApp(tk.Frame):
         if not self._embedded:
             self._make_button(actions, "Import JSON…", self._import_json, variant="secondary", padx=btn_pad)
         self._make_button(actions, "Output Folder", self._open_output_folder, variant="ghost", padx=btn_pad)
+        self._make_button(
+            actions, "Accuracy Benchmark", self._run_accuracy_benchmark, variant="secondary", padx=btn_pad
+        )
         if not self._embedded:
             self._make_button(actions, "Run Agent", self._run_selected, variant="accent", padx=btn_pad)
             self._make_button(actions, "Run All", self._run_all_agents, variant="primary", padx=btn_pad)
@@ -805,8 +814,164 @@ class FinanceAgentsApp(tk.Frame):
             self._progress.stop()
             self._progress.pack_forget()
 
+    def _hydrate_benchmark_accuracy(self) -> None:
+        try:
+            from prediction_accuracy import sync_benchmark_to_accuracy_store
+
+            sync_benchmark_to_accuracy_store()
+        except Exception:
+            pass
+
+    def _benchmark_defaults(self) -> tuple[int, int]:
+        try:
+            from historical_simulation import BENCHMARK_FILE
+
+            data = json.loads(BENCHMARK_FILE.read_text(encoding="utf-8"))
+            bench = (data.get("meta") or {}).get("benchmark") or {}
+            trials = int(bench.get("target_trials") or (data.get("metrics") or {}).get("total_trials") or 1000)
+            symbols = int(bench.get("max_symbols") or (data.get("meta") or {}).get("universe_size") or 400)
+            return max(100, trials), max(20, symbols)
+        except Exception:
+            return 1000, 400
+
+    def _prompt_benchmark_settings(self) -> tuple[int, int] | None:
+        default_trials, default_symbols = self._benchmark_defaults()
+        dialog = tk.Toplevel(self._window)
+        dialog.title("Accuracy Benchmark")
+        dialog.configure(bg=PANEL)
+        dialog.resizable(False, False)
+        dialog.transient(self._window)
+        dialog.grab_set()
+
+        pad = self._m.px(14)
+        body = tk.Frame(dialog, bg=PANEL)
+        body.pack(fill=tk.BOTH, expand=True, padx=pad, pady=pad)
+
+        tk.Label(
+            body,
+            text="Walk-forward backtest across Yahoo price history.\n"
+            "Results update agent accuracy in the sidebar and fusion weights.",
+            bg=PANEL,
+            fg=MUTED,
+            font=self._m.font(10),
+            justify=tk.LEFT,
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, self._m.px(10)))
+
+        tk.Label(body, text="Target trials", bg=PANEL, fg=TEXT, font=self._m.font(10)).grid(
+            row=1, column=0, sticky="w", pady=(0, self._m.px(6))
+        )
+        trials_var = tk.StringVar(value=str(default_trials))
+        trials_entry = tk.Entry(
+            body, textvariable=trials_var, bg="#0d1424", fg=TEXT, insertbackground=TEXT, relief=tk.FLAT, width=12
+        )
+        trials_entry.grid(row=1, column=1, sticky="e", pady=(0, self._m.px(6)))
+
+        tk.Label(body, text="Symbol universe", bg=PANEL, fg=TEXT, font=self._m.font(10)).grid(
+            row=2, column=0, sticky="w", pady=(0, self._m.px(12))
+        )
+        symbols_var = tk.StringVar(value=str(default_symbols))
+        symbols_entry = tk.Entry(
+            body, textvariable=symbols_var, bg="#0d1424", fg=TEXT, insertbackground=TEXT, relief=tk.FLAT, width=12
+        )
+        symbols_entry.grid(row=2, column=1, sticky="e", pady=(0, self._m.px(12)))
+
+        result: dict[str, tuple[int, int] | None] = {"value": None}
+
+        def submit() -> None:
+            try:
+                trials = max(100, int(trials_var.get().strip()))
+                symbols = max(20, int(symbols_var.get().strip()))
+            except ValueError:
+                messagebox.showerror("Accuracy Benchmark", "Trials and symbols must be whole numbers.", parent=dialog)
+                return
+            result["value"] = (trials, symbols)
+            dialog.destroy()
+
+        buttons = tk.Frame(body, bg=PANEL)
+        buttons.grid(row=3, column=0, columnspan=2, sticky="e")
+        tk.Button(
+            buttons, text="Cancel", command=dialog.destroy, bg=BORDER, fg=TEXT, relief=tk.FLAT, padx=12, pady=6
+        ).pack(side=tk.RIGHT, padx=(self._m.px(6), 0))
+        tk.Button(
+            buttons, text="Run Benchmark", command=submit, bg=ACCENT2, fg=BG, relief=tk.FLAT, padx=12, pady=6
+        ).pack(side=tk.RIGHT)
+
+        dialog.update_idletasks()
+        x = self._window.winfo_rootx() + max(20, (self._window.winfo_width() - dialog.winfo_width()) // 2)
+        y = self._window.winfo_rooty() + max(20, (self._window.winfo_height() - dialog.winfo_height()) // 2)
+        dialog.geometry(f"+{x}+{y}")
+        trials_entry.focus_set()
+        self._window.wait_window(dialog)
+        return result["value"]
+
+    def _run_accuracy_benchmark(self) -> None:
+        if self._running or self._batch_running or self._benchmark_running:
+            return
+        settings = self._prompt_benchmark_settings()
+        if not settings:
+            return
+        trials, symbols = settings
+        if not messagebox.askyesno(
+            "Accuracy Benchmark",
+            f"Run a walk-forward benchmark with {trials:,} trials across {symbols:,} symbols?\n\n"
+            "This uses Yahoo daily bars and may take several minutes on first run.",
+        ):
+            return
+        self._benchmark_running = True
+        self._set_status(f"Benchmark running — {trials:,} trials / {symbols:,} symbols…", WARN)
+        if not self._embedded:
+            self._progress.pack(side=tk.RIGHT)
+            self._progress.start(12)
+        threading.Thread(
+            target=self._benchmark_thread,
+            args=(trials, symbols),
+            daemon=True,
+        ).start()
+
+    def _benchmark_thread(self, trials: int, symbols: int) -> None:
+        try:
+            from historical_simulation import run_accuracy_benchmark
+
+            report = run_accuracy_benchmark(target_trials=trials, max_symbols=symbols, full=True)
+            metrics = report.get("metrics") or {}
+            board = report.get("leaderboard") or []
+            top = board[0] if board else {}
+            summary = (
+                f"Benchmark complete — {metrics.get('total_trials', trials):,} trials, "
+                f"{(report.get('meta') or {}).get('universe_size', symbols):,} symbols"
+            )
+            if top:
+                summary += f" · top {top.get('agent_id')} {top.get('accuracy_pct')}%"
+            self._schedule_ui(self.refresh_agent_statuses)
+            if self._selected_id:
+                self._schedule_ui(self._select_agent, self._selected_id)
+            self._schedule_ui(self._set_status, summary, UP)
+            preview = "\n".join(
+                f"  • {row.get('agent_id')}: {row.get('accuracy_pct')}% ({row.get('total_trials')} trials)"
+                for row in board[:8]
+            )
+            detail = summary
+            if preview:
+                detail += f"\n\n{preview}"
+            self._schedule_ui(messagebox.showinfo, "Accuracy Benchmark", detail)
+        except Exception as exc:
+            self._schedule_ui(messagebox.showerror, "Benchmark Error", str(exc))
+            self._schedule_ui(self._set_status, f"Benchmark failed: {exc}", DOWN)
+        finally:
+            self._schedule_ui(self._benchmark_done)
+
+    def _benchmark_done(self) -> None:
+        self._benchmark_running = False
+        if self._embedded:
+            self._update_embedded_summary()
+            return
+        self._progress.stop()
+        self._progress.pack_forget()
+
     def _run_selected(self) -> None:
-        if self._running or not self._selected_id:
+        if self._running or self._batch_running or self._benchmark_running:
+            return
+        if not self._selected_id:
             return
         agent = next((a for a in AGENT_CATALOG if a["id"] == self._selected_id), None)
         if not agent:
@@ -858,7 +1023,7 @@ class FinanceAgentsApp(tk.Frame):
         self._update_embedded_summary()
 
     def _run_all_agents(self) -> None:
-        if self._running or self._batch_running:
+        if self._running or self._batch_running or self._benchmark_running:
             return
         if not messagebox.askyesno(
             "Run All Agents",
@@ -910,7 +1075,7 @@ class FinanceAgentsApp(tk.Frame):
         self._progress.pack_forget()
 
     def _run_predictor_pipeline(self) -> None:
-        if self._running or self._batch_running:
+        if self._running or self._batch_running or self._benchmark_running:
             return
         if not messagebox.askyesno(
             "Market Predictor Pipeline",
