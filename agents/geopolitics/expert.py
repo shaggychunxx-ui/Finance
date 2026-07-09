@@ -427,31 +427,44 @@ class GeopoliticsExpert:
         global_risk: float,
         escalation: float,
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal
+
         signals: list[dict[str, Any]] = []
         by_id = {t.theater_id: t for t in theaters}
 
-        if global_risk >= 0.45:
-            signals.append({
-                "sector": "Safe Haven / Gold",
-                "tickers": ["GLD", "IAU", "GDX"],
-                "bias": "BULLISH" if global_risk >= 0.60 else "NEUTRAL",
-                "reason": assessment.safe_haven_signal,
-            })
-            signals.append({
-                "sector": "Long Treasuries",
-                "tickers": ["TLT", "IEF", "SHY"],
-                "bias": "BULLISH" if escalation >= 0.55 else "NEUTRAL",
-                "reason": f"Escalation index {escalation:.2f} — flight-to-quality bid",
-            })
+        if global_risk >= 0.48:
+            signals.append(
+                build_market_signal(
+                    sector="Safe Haven / Gold",
+                    tickers=["GLD", "IAU", "GDX"],
+                    bias="BULLISH" if global_risk >= 0.62 else "NEUTRAL",
+                    reason=assessment.safe_haven_signal,
+                    confidence=min(0.82, 0.45 + global_risk * 0.45),
+                    evidence={"global_risk": round(global_risk, 3), "escalation": round(escalation, 3)},
+                )
+            )
+            if escalation >= 0.5:
+                signals.append(
+                    build_market_signal(
+                        sector="Long Treasuries",
+                        tickers=["TLT", "IEF", "SHY"],
+                        bias="BULLISH" if escalation >= 0.58 else "NEUTRAL",
+                        reason=f"Escalation index {escalation:.2f} — flight-to-quality bid",
+                        confidence=min(0.78, 0.42 + escalation * 0.5),
+                    )
+                )
 
         ukraine = by_id.get("ukraine_russia")
-        if ukraine and ukraine.risk_score >= 0.40:
-            signals.append({
-                "sector": "Defense",
-                "tickers": ["LMT", "RTX", "NOC", "GD"],
-                "bias": "BULLISH" if ukraine.risk_score >= 0.60 else "NEUTRAL",
-                "reason": assessment.defense_spending_signal,
-            })
+        if ukraine and ukraine.risk_score >= 0.45 and ukraine.article_count >= 2:
+            signals.append(
+                build_market_signal(
+                    sector="Defense",
+                    tickers=["LMT", "RTX", "NOC", "GD"],
+                    bias="BULLISH" if ukraine.risk_score >= 0.62 else "NEUTRAL",
+                    reason=assessment.defense_spending_signal,
+                    confidence=min(0.8, 0.4 + ukraine.risk_score * 0.55),
+                )
+            )
             signals.append({
                 "sector": "European Equities",
                 "tickers": ["FEZ", "EWG", "VGK"],

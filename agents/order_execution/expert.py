@@ -173,8 +173,13 @@ class OrderExecutionReport:
 class OrderExecutionExpert(BaseExpert):
     """Expert market analyst — order types, microstructure, and execution cost."""
 
-    def __init__(self, delay_seconds: float = 0.35) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        delay_seconds: float = 0.35,
+        *,
+        pipeline_context: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="order-execution")
         self.delay_seconds = delay_seconds
 
     def _fetch_ohlcv(self, symbol: str) -> dict[str, list[float]]:
@@ -396,7 +401,11 @@ class OrderExecutionExpert(BaseExpert):
 
     def _market_signals(self, symbols: list[SymbolMicrostructure]) -> list[dict[str, Any]]:
         signals: list[dict[str, Any]] = []
-        thin = [s.symbol for s in symbols if s.liquidity_tier == "Thin"]
+
+        def _keep(symbol: str) -> bool:
+            return not self.pipeline_should_skip_symbol(symbol)
+
+        thin = [s.symbol for s in symbols if s.liquidity_tier == "Thin" and _keep(s.symbol)]
         if thin:
             signals.append(
                 {
@@ -406,7 +415,11 @@ class OrderExecutionExpert(BaseExpert):
                     "reason": "Thin order books — prefer limit orders over market orders to avoid slippage.",
                 }
             )
-        gap_prone = [s.symbol for s in symbols if s.max_overnight_gap_pct >= GAP_RISK_THRESHOLD_PCT]
+        gap_prone = [
+            s.symbol
+            for s in symbols
+            if s.max_overnight_gap_pct >= GAP_RISK_THRESHOLD_PCT and _keep(s.symbol)
+        ]
         if gap_prone:
             signals.append(
                 {
@@ -416,7 +429,7 @@ class OrderExecutionExpert(BaseExpert):
                     "reason": "Elevated overnight gap risk — use stop-limit rather than stop-market orders.",
                 }
             )
-        deep = [s.symbol for s in symbols if s.liquidity_tier == "Deep"]
+        deep = [s.symbol for s in symbols if s.liquidity_tier == "Deep" and _keep(s.symbol)]
         if deep:
             signals.append(
                 {
@@ -484,6 +497,11 @@ class OrderExecutionExpert(BaseExpert):
                 "expert_summary": report.expert_summary,
                 "temperature": self.temperature,
                 "vix_level": report.vix_level,
+                "pipeline_memory": {
+                    "posture": self.pipeline_context.get("posture"),
+                    "lessons": self.pipeline_memory_notes(),
+                    "preferred_horizon": self.pipeline_context.get("preferred_horizon"),
+                },
             },
             "order_type_playbook": ORDER_TYPE_PLAYBOOK,
             "microstructure_comparison": MICROSTRUCTURE_COMPARISON,
@@ -519,7 +537,7 @@ class OrderExecutionExpert(BaseExpert):
                 "price_risk_score": report.price_risk_score,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -535,5 +553,8 @@ class OrderExecutionExpert(BaseExpert):
         return result
 
 
-def run_order_execution_analysis(output: Path | None = None) -> dict[str, Any]:
-    return OrderExecutionExpert().run(output=output)
+def run_order_execution_analysis(
+    output: Path | None = None,
+    pipeline_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return OrderExecutionExpert(pipeline_context=pipeline_context).run(output=output)

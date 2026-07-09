@@ -68,7 +68,8 @@ def agent_accuracy_pct(agent: dict[str, str]) -> float | None:
         if not entry:
             return None
         pct = (
-            entry.get("combined_accuracy_pct")
+            entry.get("measurement_primary_pct")
+            or entry.get("combined_accuracy_pct")
             or entry.get("weighted_accuracy_pct")
             or entry.get("accuracy_pct")
         )

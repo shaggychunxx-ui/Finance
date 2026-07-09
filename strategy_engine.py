@@ -148,13 +148,52 @@ def load_strategy_settings(config_path: Path | None = None) -> dict[str, Any]:
         "min_buy_return_pct": 0.05,
         "min_sell_return_pct": -0.10,
         "max_deploy_pct": 0.94,
+        "trading_gate": {},
+        "domain_constraints": {},
+        "temperature_control": {},
     }
     if not path.exists():
+        try:
+            from trading_gate import load_trading_gate_settings
+
+            settings["trading_gate"] = load_trading_gate_settings(path)
+        except Exception:
+            pass
+        try:
+            from agent_constraints import load_domain_constraint_settings
+
+            settings["domain_constraints"] = load_domain_constraint_settings(path)
+        except Exception:
+            pass
+        try:
+            from agent_temperature import load_temperature_settings
+
+            settings["temperature_control"] = load_temperature_settings(path)
+        except Exception:
+            pass
         return settings
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         user = raw.get("strategy", {})
         settings.update({k: user[k] for k in settings if k in user})
+        try:
+            from trading_gate import load_trading_gate_settings
+
+            settings["trading_gate"] = load_trading_gate_settings(path)
+        except Exception:
+            pass
+        try:
+            from agent_constraints import load_domain_constraint_settings
+
+            settings["domain_constraints"] = load_domain_constraint_settings(path)
+        except Exception:
+            pass
+        try:
+            from agent_temperature import load_temperature_settings
+
+            settings["temperature_control"] = load_temperature_settings(path)
+        except Exception:
+            pass
         if user.get("agent_controlled"):
             settings["optimize_profit_horizons"] = False
     except (json.JSONDecodeError, OSError):
@@ -475,6 +514,12 @@ def build_strategy_plan(
         meta=plan_meta,
     )
     try:
+        from trading_gate import apply_trading_gates_to_plan, load_trading_gate_settings
+
+        apply_trading_gates_to_plan(plan, settings=load_trading_gate_settings())
+    except Exception:
+        pass
+    try:
         from trade_guards import apply_trade_guards_to_plan
 
         apply_trade_guards_to_plan(plan, balance)
@@ -767,12 +812,25 @@ def run_agent_pipeline(
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
     try:
+        from agents.pipeline_memory import begin_pipeline_memory_session, end_pipeline_memory_session
+
+        begin_pipeline_memory_session()
+    except Exception:
+        pass
+    try:
         from analysis_history import new_pipeline_cycle_id
 
         cycle_id = new_pipeline_cycle_id()
     except Exception:
         cycle_id = None
     log_catalog_changes(on_progress, check_remote=check_remote)
+    try:
+        from etrade_market_enhancer import run_proactive_etrade_enhancement
+
+        run_proactive_etrade_enhancement(on_progress=on_progress)
+    except Exception as exc:
+        if on_progress:
+            on_progress(f"Proactive E*TRADE enhancement skipped: {exc}")
     sources = active_agent_sources(check_remote=check_remote)
     ok = 0
     skipped = 0
@@ -786,7 +844,12 @@ def run_agent_pipeline(
             continue
         try:
             out_path = OUTPUT / src["file"]
-            runner(output=out_path)
+            try:
+                from agents.pipeline_memory import invoke_agent_runner
+
+                invoke_agent_runner(runner, agent_id=aid, output=out_path)
+            except Exception:
+                runner(output=out_path)
             try:
                 from agents.enhancement import patch_agent_output_enhance_symbols
 
@@ -843,7 +906,16 @@ def run_agent_pipeline(
     from agents.market_predictor import run_market_predictor_analysis
 
     predictor_path = OUTPUT / "market_predictions.json"
-    run_market_predictor_analysis(output=predictor_path)
+    try:
+        from agents.pipeline_memory import invoke_agent_runner
+
+        invoke_agent_runner(
+            run_market_predictor_analysis,
+            agent_id="market-predictor",
+            output=predictor_path,
+        )
+    except Exception:
+        run_market_predictor_analysis(output=predictor_path)
     try:
         from agent_personality import patch_agent_output_personality
 
@@ -899,6 +971,12 @@ def run_agent_pipeline(
             _reapply_pipeline_patches(sources)
             if on_progress:
                 on_progress("Pipeline memory updated — future runs will use this cycle.")
+    except Exception:
+        pass
+    try:
+        from agents.pipeline_memory import end_pipeline_memory_session
+
+        end_pipeline_memory_session()
     except Exception:
         pass
     return ok

@@ -405,73 +405,105 @@ class MarketAnalystExpert:
         breadth: float | None,
         risk_on: float,
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import breadth_risk_signal_confidence, build_market_signal
+
         signals: list[dict[str, Any]] = []
 
-        if breadth is not None:
+        if breadth is not None and abs(breadth) >= 0.2:
             bias = "BULLISH" if breadth > 0.3 else ("BEARISH" if breadth < -0.3 else "NEUTRAL")
-            signals.append({
-                "sector": "US Broad Market",
-                "tickers": ["SPY", "QQQ", "IWM"],
-                "bias": bias,
-                "reason": f"Index breadth {breadth:+.2f}%",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="US Broad Market",
+                    tickers=["SPY", "QQQ", "IWM"],
+                    bias=bias,
+                    reason=f"Index breadth {breadth:+.2f}%",
+                    confidence=breadth_risk_signal_confidence(breadth, risk_on),
+                    evidence={"breadth_pct": round(breadth, 3), "risk_on": round(risk_on, 3)},
+                )
+            )
 
         if risk_on >= 0.60:
-            signals.append({
-                "sector": "Growth / Tech",
-                "tickers": ["QQQ", "XLK", "NVDA", "MSFT"],
-                "bias": "BULLISH",
-                "reason": f"Risk-on score {risk_on:.2f}",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Growth / Tech",
+                    tickers=["QQQ", "XLK", "NVDA", "MSFT"],
+                    bias="BULLISH",
+                    reason=f"Risk-on score {risk_on:.2f}",
+                    confidence=breadth_risk_signal_confidence(breadth, risk_on),
+                )
+            )
         elif risk_on <= 0.40:
-            signals.append({
-                "sector": "Defensives",
-                "tickers": ["XLU", "XLP", "GLD", "TLT"],
-                "bias": "BULLISH",
-                "reason": f"Risk-off score {risk_on:.2f}",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Defensives",
+                    tickers=["XLU", "XLP", "GLD", "TLT"],
+                    bias="BULLISH",
+                    reason=f"Risk-off score {risk_on:.2f}",
+                    confidence=breadth_risk_signal_confidence(breadth, risk_on),
+                )
+            )
 
         if sectors:
             leader = sectors[0]
-            signals.append({
-                "sector": f"Leading — {leader.sector}",
-                "tickers": [leader.etf],
-                "bias": "BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL",
-                "reason": f"{leader.etf} {leader.day_chg_pct:+.2f}% today",
-            })
+            if (leader.day_chg_pct or 0) > 0.4:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Leading — {leader.sector}",
+                        tickers=[leader.etf],
+                        bias="BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL",
+                        reason=f"{leader.etf} {leader.day_chg_pct:+.2f}% today",
+                        confidence=breadth_risk_signal_confidence(
+                            leader.day_chg_pct,
+                            risk_on,
+                            momentum=0.55 + min((leader.day_chg_pct or 0) / 5.0, 0.2),
+                        ),
+                    )
+                )
             laggard = sectors[-1]
             if (laggard.day_chg_pct or 0) < -0.5:
-                signals.append({
-                    "sector": f"Lagging — {laggard.sector}",
-                    "tickers": [laggard.etf],
-                    "bias": "BEARISH",
-                    "reason": f"{laggard.etf} {laggard.day_chg_pct:+.2f}% today",
-                })
+                signals.append(
+                    build_market_signal(
+                        sector=f"Lagging — {laggard.sector}",
+                        tickers=[laggard.etf],
+                        bias="BEARISH",
+                        reason=f"{laggard.etf} {laggard.day_chg_pct:+.2f}% today",
+                        confidence=breadth_risk_signal_confidence(laggard.day_chg_pct, risk_on),
+                    )
+                )
 
         xle = by_sym.get("XLE")
-        if xle and xle.day_chg_pct is not None and abs(xle.day_chg_pct) > 0.5:
-            signals.append({
-                "sector": "Energy",
-                "tickers": ["XLE", "USO", "XOM"],
-                "bias": "BULLISH" if xle.day_chg_pct > 0 else "BEARISH",
-                "reason": f"Energy {xle.day_chg_pct:+.2f}%",
-            })
+        if xle and xle.day_chg_pct is not None and abs(xle.day_chg_pct) > 0.75:
+            signals.append(
+                build_market_signal(
+                    sector="Energy",
+                    tickers=["XLE", "USO", "XOM"],
+                    bias="BULLISH" if xle.day_chg_pct > 0 else "BEARISH",
+                    reason=f"Energy {xle.day_chg_pct:+.2f}%",
+                    confidence=breadth_risk_signal_confidence(xle.day_chg_pct, risk_on),
+                )
+            )
 
-        if gainers:
-            signals.append({
-                "sector": "Top Movers",
-                "tickers": [g.symbol for g in gainers[:5]],
-                "bias": "BULLISH",
-                "reason": f"Leader {gainers[0].symbol} {gainers[0].day_chg_pct:+.2f}%",
-            })
+        if gainers and (gainers[0].day_chg_pct or 0) >= 2.0:
+            signals.append(
+                build_market_signal(
+                    sector="Top Movers",
+                    tickers=[g.symbol for g in gainers[:5]],
+                    bias="BULLISH",
+                    reason=f"Leader {gainers[0].symbol} {gainers[0].day_chg_pct:+.2f}%",
+                    confidence=breadth_risk_signal_confidence(gainers[0].day_chg_pct, risk_on),
+                )
+            )
 
         if not signals:
-            signals.append({
-                "sector": "Broad Market",
-                "tickers": ["SPY"],
-                "bias": "NEUTRAL",
-                "reason": "No strong directional tilt on tape",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Broad Market",
+                    tickers=["SPY"],
+                    bias="NEUTRAL",
+                    reason="No strong directional tilt on tape",
+                    confidence=0.42,
+                )
+            )
         return signals
 
     @staticmethod

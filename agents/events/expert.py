@@ -237,43 +237,77 @@ class WorldEventsTracker:
         )
 
     def _market_signals(self, events: list[WorldEvent]) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal, weighted_event_score
+
         signals: list[dict[str, Any]] = []
+        event_rows = [
+            {
+                "impact": e.impact,
+                "date": e.date,
+                "category": e.category,
+            }
+            for e in events
+        ]
+        stress_score = weighted_event_score(event_rows)
+
         critical = [e for e in events if e.impact == "critical"]
         high = [e for e in events if e.impact == "high"]
 
-        if critical or len(high) >= 3:
-            signals.append({
-                "sector": "Safe Haven",
-                "tickers": ["GLD", "TLT", "XLU"],
-                "bias": "BULLISH",
-                "reason": f"{len(critical)} critical + {len(high)} high-impact events tracked",
-            })
+        if stress_score >= 1.2 or len(critical) >= 1:
+            signals.append(
+                build_market_signal(
+                    sector="Safe Haven",
+                    tickers=["GLD", "TLT", "XLU"],
+                    bias="BULLISH" if stress_score >= 1.8 else "NEUTRAL",
+                    reason=(
+                        f"Recency-weighted stress {stress_score:.2f} "
+                        f"({len(critical)} critical, {len(high)} high-impact)"
+                    ),
+                    confidence=min(0.85, 0.5 + stress_score * 0.15),
+                )
+            )
 
         geo = [e for e in events if e.category == "geopolitical" and e.impact in ("critical", "high")]
-        if geo:
-            signals.append({
-                "sector": "Defense / Geopolitical",
-                "tickers": ["LMT", "RTX", "NOC"],
-                "bias": "BULLISH",
-                "reason": f"{len(geo)} high-impact geopolitical headlines",
-            })
+        geo_score = weighted_event_score(
+            [{"impact": e.impact, "date": e.date} for e in geo],
+        )
+        if geo_score >= 0.85:
+            signals.append(
+                build_market_signal(
+                    sector="Defense / Geopolitical",
+                    tickers=["LMT", "RTX", "NOC"],
+                    bias="BULLISH" if geo_score >= 1.2 else "NEUTRAL",
+                    reason=f"Geopolitical stress {geo_score:.2f} from {len(geo)} recent headlines",
+                    confidence=min(0.8, 0.48 + geo_score * 0.18),
+                )
+            )
 
         energy = [e for e in events if e.category == "energy"]
-        if energy:
-            signals.append({
-                "sector": "Energy",
-                "tickers": ["XLE", "USO"],
-                "bias": "NEUTRAL",
-                "reason": f"{len(energy)} energy-related world events",
-            })
+        energy_score = weighted_event_score(
+            [{"impact": e.impact, "date": e.date} for e in energy],
+        )
+        if energy_score >= 0.65:
+            bias = "BULLISH" if energy_score >= 1.0 else "NEUTRAL"
+            signals.append(
+                build_market_signal(
+                    sector="Energy",
+                    tickers=["XLE", "USO"],
+                    bias=bias,
+                    reason=f"Energy event score {energy_score:.2f} ({len(energy)} headlines)",
+                    confidence=min(0.75, 0.45 + energy_score * 0.2),
+                )
+            )
 
         if not signals:
-            signals.append({
-                "sector": "Broad Market",
-                "tickers": ["SPY"],
-                "bias": "NEUTRAL",
-                "reason": "No acute world events detected in current feed",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Broad Market",
+                    tickers=["SPY"],
+                    bias="NEUTRAL",
+                    reason="No acute, recent world events detected",
+                    confidence=0.4,
+                )
+            )
         return signals
 
     def analyze(self) -> EventsReport:

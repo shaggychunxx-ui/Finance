@@ -270,10 +270,12 @@ def write_pipeline_run_context(*, cycle_id: str | None = None) -> dict[str, Any]
         pass
 
     accuracy_board: list[dict[str, Any]] = []
+    accuracy_board_direction: list[dict[str, Any]] = []
     try:
         from prediction_accuracy import accuracy_leaderboard
 
-        accuracy_board = accuracy_leaderboard(top_n=12)
+        accuracy_board = accuracy_leaderboard(top_n=12, kind="combined")
+        accuracy_board_direction = accuracy_leaderboard(top_n=12, kind="direction")
     except Exception:
         pass
 
@@ -303,6 +305,7 @@ def write_pipeline_run_context(*, cycle_id: str | None = None) -> dict[str, Any]
         "agent_learning": learning_by_agent,
         "persistent_bullish_tickers": get_persistent_bullish_tickers(top_n=15),
         "accuracy_leaderboard": accuracy_board,
+        "accuracy_leaderboard_direction": accuracy_board_direction,
         "regime_history": list(reversed(regime_history))[-DEFAULT_LOOKBACK_CYCLES:],
         "usage": (
             "Loaded at the start of each pipeline run. Agents and fusion use lessons, "

@@ -665,65 +665,100 @@ class YahooFinanceStatisticalAnalyst:
         indices: list[SeriesStats],
         statistical_score: float,
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal, cross_section_confidence
+
         signals: list[dict[str, Any]] = []
 
-        bias = (
-            "BULLISH" if statistical_score >= 0.6 else
-            "BEARISH" if statistical_score <= 0.4 else
-            "NEUTRAL"
-        )
-        signals.append({
-            "sector": "Cross-Sectional Breadth",
-            "tickers": ["SPY", "RSP", "IWM"],
-            "bias": bias,
-            "reason": (
-                f"μ={cs.mean_return_pct:+.2f}%, {cs.breadth_pct_positive:.0f}% sectors up, "
-                f"A/D {cs.advance_decline_ratio:.1f}x"
-            ),
-        })
+        if statistical_score >= 0.55 or statistical_score <= 0.45:
+            bias = (
+                "BULLISH" if statistical_score >= 0.6 else
+                "BEARISH" if statistical_score <= 0.4 else
+                "NEUTRAL"
+            )
+            signals.append(
+                build_market_signal(
+                    sector="Cross-Sectional Breadth",
+                    tickers=["SPY", "RSP", "IWM"],
+                    bias=bias,
+                    reason=(
+                        f"μ={cs.mean_return_pct:+.2f}%, {cs.breadth_pct_positive:.0f}% sectors up, "
+                        f"A/D {cs.advance_decline_ratio:.1f}x"
+                    ),
+                    confidence=cross_section_confidence(
+                        statistical_score,
+                        breadth_pct=cs.breadth_pct_positive,
+                    ),
+                    evidence={"statistical_score": round(statistical_score, 3)},
+                )
+            )
 
         if sectors:
             z_leader = max(sectors, key=lambda s: s.cross_section_z or -999)
-            if z_leader.cross_section_z and z_leader.cross_section_z >= 1.5:
-                signals.append({
-                    "sector": f"Statistical Outperformer — {z_leader.name}",
-                    "tickers": [z_leader.symbol],
-                    "bias": "BULLISH",
-                    "reason": f"Cross-section z={z_leader.cross_section_z:+.2f} vs sector peers",
-                })
+            if z_leader.cross_section_z and z_leader.cross_section_z >= 1.6:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Statistical Outperformer — {z_leader.name}",
+                        tickers=[z_leader.symbol],
+                        bias="BULLISH",
+                        reason=f"Cross-section z={z_leader.cross_section_z:+.2f} vs sector peers",
+                        confidence=cross_section_confidence(
+                            statistical_score,
+                            z_score=z_leader.cross_section_z,
+                        ),
+                    )
+                )
             z_laggard = min(sectors, key=lambda s: s.cross_section_z or 999)
-            if z_laggard.cross_section_z and z_laggard.cross_section_z <= -1.5:
-                signals.append({
-                    "sector": f"Statistical Laggard — {z_laggard.name}",
-                    "tickers": [z_laggard.symbol],
-                    "bias": "BEARISH",
-                    "reason": f"Cross-section z={z_laggard.cross_section_z:+.2f} — relative weakness",
-                })
+            if z_laggard.cross_section_z and z_laggard.cross_section_z <= -1.6:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Statistical Laggard — {z_laggard.name}",
+                        tickers=[z_laggard.symbol],
+                        bias="BEARISH",
+                        reason=f"Cross-section z={z_laggard.cross_section_z:+.2f} — relative weakness",
+                        confidence=cross_section_confidence(
+                            statistical_score,
+                            z_score=z_laggard.cross_section_z,
+                        ),
+                    )
+                )
 
         for o in outliers[:2]:
-            signals.append({
-                "sector": f"Mover Outlier ({o.direction})",
-                "tickers": [o.symbol],
-                "bias": "BULLISH" if o.day_chg_pct > 0 else "BEARISH",
-                "reason": f"{o.symbol} mover z={o.z_score_mover:+.2f} ({o.day_chg_pct:+.2f}%)",
-            })
+            if abs(o.z_score_mover) >= 1.8:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Mover Outlier ({o.direction})",
+                        tickers=[o.symbol],
+                        bias="BULLISH" if o.day_chg_pct > 0 else "BEARISH",
+                        reason=f"{o.symbol} mover z={o.z_score_mover:+.2f} ({o.day_chg_pct:+.2f}%)",
+                        confidence=cross_section_confidence(
+                            statistical_score,
+                            z_score=o.z_score_mover,
+                        ),
+                    )
+                )
 
         vix = next((i for i in indices if i.symbol == "^VIX"), None)
-        if vix and vix.z_score_20d is not None and vix.z_score_20d >= 1.2:
-            signals.append({
-                "sector": "Volatility Hedge",
-                "tickers": ["VIXY", "UVXY", "GLD"],
-                "bias": "BULLISH",
-                "reason": f"VIX z-score {vix.z_score_20d:+.2f} — fear elevated vs 20d",
-            })
+        if vix and vix.z_score_20d is not None and vix.z_score_20d >= 1.4:
+            signals.append(
+                build_market_signal(
+                    sector="Volatility Hedge",
+                    tickers=["VIXY", "UVXY", "GLD"],
+                    bias="BULLISH",
+                    reason=f"VIX z-score {vix.z_score_20d:+.2f} — fear elevated vs 20d",
+                    confidence=cross_section_confidence(statistical_score, z_score=vix.z_score_20d),
+                )
+            )
 
         if not signals:
-            signals.append({
-                "sector": "Statistical Neutral",
-                "tickers": ["SPY"],
-                "bias": "NEUTRAL",
-                "reason": "No significant statistical edge detected",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Statistical Neutral",
+                    tickers=["SPY"],
+                    bias="NEUTRAL",
+                    reason="No significant statistical edge detected",
+                    confidence=0.42,
+                )
+            )
         return signals
 
     @staticmethod

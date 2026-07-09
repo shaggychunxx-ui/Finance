@@ -308,7 +308,24 @@ def fusion_weight(
         return 0.0
 
     if not agent_in_domain(aid, symbol, sector_hint=sector_hint):
+        if for_trading:
+            try:
+                from agent_constraints import strict_domain_for_trading
+
+                if strict_domain_for_trading():
+                    return 0.0
+            except Exception:
+                pass
         return OUT_OF_DOMAIN_FACTOR
+
+    if for_trading:
+        try:
+            from trading_gate import agent_trading_eligibility
+
+            if not agent_trading_eligibility(aid).get("eligible"):
+                return 0.0
+        except Exception:
+            pass
 
     exclude_pct = TRADING_ACCURACY_EXCLUDE_PCT if for_trading else ACCURACY_EXCLUDE_PCT
     floor_pct = TRADING_ACCURACY_FLOOR_PCT if for_trading else ACCURACY_FLOOR_PCT
@@ -317,27 +334,50 @@ def fusion_weight(
     base = 1.0
     if entry:
         total = int(entry.get("total_scored") or entry.get("total") or 0)
-        combined = entry.get("combined_accuracy_pct")
-        if total >= MIN_SAMPLES_FLOOR and combined is not None:
+        live_scored = int(entry.get("live_scored") or 0)
+        source = str(entry.get("accuracy_source") or "")
+        sample_total = live_scored if source in {"live_scored", "live_benchmark_blend"} else total
+        combined = entry.get("fusion_accuracy_pct") or entry.get("combined_accuracy_pct")
+        if sample_total >= MIN_SAMPLES_FLOOR and combined is not None:
             if float(combined) < exclude_pct:
                 return 0.0
             if float(combined) < floor_pct:
                 base = ACCURACY_FLOOR_WEIGHT
             else:
                 base = float(entry.get("weight_multiplier") or 1.0)
-        elif total >= MIN_SAMPLES_FOR_WEIGHT:
+        elif sample_total >= MIN_SAMPLES_FOR_WEIGHT or (
+            source == "walk_forward_benchmark"
+            and total >= MIN_SAMPLES_FOR_WEIGHT
+        ):
             base = float(entry.get("weight_multiplier") or 1.0)
 
+        fusion_horizon = horizon
+        if entry.get("prefer_preferred_horizon_for_fusion") and entry.get("preferred_horizon"):
+            fusion_horizon = str(entry.get("preferred_horizon"))
         by_horizon = entry.get("by_horizon") or {}
-        hb = by_horizon.get(horizon) if isinstance(by_horizon, dict) else None
+        hb = by_horizon.get(fusion_horizon) if isinstance(by_horizon, dict) else None
         if isinstance(hb, dict) and int(hb.get("total", 0)) >= MIN_SAMPLES_HORIZON:
             hacc = float(hb.get("accuracy_pct") or 50.0)
             base *= 0.55 + hacc / 200.0
 
         posture = regime_posture or current_regime().get("posture", "neutral")
-        by_regime = entry.get("by_regime") or {}
-        rb = by_regime.get(posture) if isinstance(by_regime, dict) else None
-        if isinstance(rb, dict) and int(rb.get("total", 0)) >= MIN_SAMPLES_REGIME:
+        by_regime_bucket = entry.get("by_regime_bucket") or {}
+        try:
+            from accuracy_measurement import load_accuracy_measurement_settings, regime_bucket
+
+            min_regime = int(
+                load_accuracy_measurement_settings().get("min_regime_bucket_samples", MIN_SAMPLES_REGIME)
+            )
+            bucket_key = regime_bucket(posture, event_day=is_event_day())
+            rb = by_regime_bucket.get(bucket_key) if isinstance(by_regime_bucket, dict) else None
+        except Exception:
+            min_regime = MIN_SAMPLES_REGIME
+            rb = None
+        if not isinstance(rb, dict) or int(rb.get("total", 0)) < min_regime:
+            by_regime = entry.get("by_regime") or {}
+            rb = by_regime.get(posture) if isinstance(by_regime, dict) else None
+            min_regime = MIN_SAMPLES_REGIME
+        if isinstance(rb, dict) and int(rb.get("total", 0)) >= min_regime:
             racc = float(rb.get("accuracy_pct") or 50.0)
             base *= 0.55 + racc / 200.0
 
@@ -372,6 +412,14 @@ def fusion_weight(
         base *= learning_fusion_factor(aid)
     except Exception:
         pass
+
+    if for_trading:
+        try:
+            from agent_constraints import horizon_match_multiplier
+
+            base *= horizon_match_multiplier(aid, horizon)
+        except Exception:
+            pass
 
     return max(0.0, min(1.5, base))
 
@@ -447,6 +495,20 @@ def export_walk_forward_weights() -> dict[str, Any]:
             learning_fit = learning_fusion_factor(aid)
         except Exception:
             pass
+        accuracy_meta: dict[str, Any] = {}
+        try:
+            from prediction_accuracy import get_agent_accuracy
+
+            acc_row = get_agent_accuracy(aid)
+            if isinstance(acc_row, dict):
+                accuracy_meta = {
+                    "accuracy_source": acc_row.get("accuracy_source"),
+                    "combined_accuracy_pct": acc_row.get("combined_accuracy_pct"),
+                    "live_scored": acc_row.get("live_scored"),
+                    "live_weight": acc_row.get("live_weight"),
+                }
+        except Exception:
+            pass
         agents[aid] = {
             "cluster": agent_cluster(aid),
             "weight_24h": round(fusion_weight(aid, horizon="24h", regime_posture=posture), 3),
@@ -462,6 +524,7 @@ def export_walk_forward_weights() -> dict[str, Any]:
             "personality_tuned": personality_tuned,
             "learning_label": learning_label,
             "learning_fit": round(learning_fit, 3),
+            **accuracy_meta,
         }
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),

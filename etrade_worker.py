@@ -44,6 +44,7 @@ DEFAULT_WORKER = {
     "dry_run": False,
     "paused": False,
     "pipeline_interval_minutes": 5,
+    "accuracy_interval_minutes": 15,
     "plan_interval_minutes": 30,
     "execute_min_interval_minutes": 15,
     "day_trading_interval_minutes": 5,
@@ -111,6 +112,7 @@ def _next_service_sleep_seconds(config_path: Path = CONFIG_PATH) -> float:
     waits: list[float] = [30.0]
     for last_key, interval_key, default_min in (
         ("last_pipeline_at", "pipeline_interval_minutes", 5),
+        ("last_accuracy_at", "accuracy_interval_minutes", 15),
         ("last_plan_at", "plan_interval_minutes", 30),
         ("last_execute_at", "execute_min_interval_minutes", 15),
         ("last_day_trade_at", "day_trading_interval_minutes", 5),
@@ -310,6 +312,46 @@ def _resolve_account(client: ETradeClient, config_path: Path = CONFIG_PATH) -> d
 
     _log(f"Saved account {key} not found at E*TRADE - confirm an account in the GUI.")
     return None
+
+
+def _run_live_scoring(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bool:
+    """Score matured predictions between full pipeline runs."""
+    settings = worker_settings(config_path)
+    try:
+        from live_accuracy import load_live_accuracy_settings
+
+        live_settings = load_live_accuracy_settings(config_path)
+        interval = int(
+            live_settings.get(
+                "accuracy_interval_minutes",
+                settings.get("accuracy_interval_minutes", 15),
+            )
+        )
+    except Exception:
+        interval = int(settings.get("accuracy_interval_minutes", 15))
+
+    state = load_worker_state()
+    if not _interval_due(state.get("last_accuracy_at"), interval, force=force):
+        return False
+
+    try:
+        from prediction_accuracy import run_live_scoring_cycle
+
+        stats = run_live_scoring_cycle(rebuild_learning=True)
+        state["last_accuracy_at"] = time.time()
+        state["live_scoring"] = stats
+        save_worker_state(state)
+        _log(
+            "Live scoring — "
+            f"{stats.get('scored', 0)} matured, "
+            f"{stats.get('pending', 0)} pending, "
+            f"{stats.get('live_primary_agents', 0)} agents on live weights, "
+            f"{stats.get('blended_agents', 0)} blended."
+        )
+        return True
+    except Exception as exc:
+        _log(f"Live scoring skipped: {exc}")
+        return False
 
 
 def _run_pipeline(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bool:
@@ -673,6 +715,7 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
                 client_refreshed_at = time.time()
 
             _run_pipeline(config_path=config_path)
+            _run_live_scoring(config_path=config_path)
 
             if client:
                 _run_plan_build(client, config_path=config_path)

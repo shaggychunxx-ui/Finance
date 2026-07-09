@@ -633,36 +633,61 @@ class EmpiricalProbabilityExpert:
         conditionals: list[FrequencyEstimate],
         rolling: list[RollingWinRate],
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import (
+            bias_from_edge,
+            build_market_signal,
+            confidence_from_edge,
+            wilson_edge_valid,
+        )
+
         signals: list[dict[str, Any]] = []
         spy = next((f for f in frequencies if f.symbol == BENCHMARK), None)
 
-        if spy:
-            bias = (
-                "BULLISH" if spy.empirical_prob >= 0.55 else
-                "BEARISH" if spy.empirical_prob <= 0.45 else
-                "NEUTRAL"
+        if spy and wilson_edge_valid(
+            spy.empirical_prob,
+            ci_low=spy.wilson_ci_low,
+            ci_high=spy.wilson_ci_high,
+            samples=spy.trials,
+            min_samples=40,
+            min_edge=0.04,
+        ):
+            bias = bias_from_edge(spy.empirical_prob, bullish_threshold=0.54, bearish_threshold=0.46)
+            signals.append(
+                build_market_signal(
+                    sector="Empirical Daily Frequency",
+                    tickers=["SPY", "VOO", "IVV"],
+                    bias=bias,
+                    reason=(
+                        f"P(up)={spy.empirical_prob:.0%} over {spy.trials} days "
+                        f"[{spy.wilson_ci_low:.0%}, {spy.wilson_ci_high:.0%}]"
+                    ),
+                    confidence=confidence_from_edge(spy.empirical_prob, samples=spy.trials, min_samples=40),
+                    evidence={"wilson_ci": [spy.wilson_ci_low, spy.wilson_ci_high], "trials": spy.trials},
+                )
             )
-            signals.append({
-                "sector": "Empirical Daily Frequency",
-                "tickers": ["SPY", "VOO", "IVV"],
-                "bias": bias,
-                "reason": (
-                    f"P(up)={spy.empirical_prob:.0%} over {spy.trials} days "
-                    f"[{spy.wilson_ci_low:.0%}, {spy.wilson_ci_high:.0%}]"
-                ),
-            })
 
         for exp in experiments:
-            if exp.stable and exp.out_of_sample_win_rate >= 0.55:
-                signals.append({
-                    "sector": f"Validated Experiment — {exp.rule_id}",
-                    "tickers": [exp.symbol],
-                    "bias": "BULLISH",
-                    "reason": (
-                        f"OOS win rate {exp.out_of_sample_win_rate:.0%} "
-                        f"({exp.out_of_sample_trials} trials)"
-                    ),
-                })
+            if (
+                exp.stable
+                and exp.out_of_sample_win_rate >= 0.58
+                and exp.out_of_sample_trials >= 25
+            ):
+                signals.append(
+                    build_market_signal(
+                        sector=f"Validated Experiment — {exp.rule_id}",
+                        tickers=[exp.symbol],
+                        bias="BULLISH",
+                        reason=(
+                            f"OOS win rate {exp.out_of_sample_win_rate:.0%} "
+                            f"({exp.out_of_sample_trials} trials)"
+                        ),
+                        confidence=confidence_from_edge(
+                            exp.out_of_sample_win_rate,
+                            samples=exp.out_of_sample_trials,
+                            min_samples=25,
+                        ),
+                    )
+                )
 
         rev = next(
             (c for c in conditionals if c.symbol == BENCHMARK and "2 down" in c.event),

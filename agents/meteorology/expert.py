@@ -488,21 +488,31 @@ class MeteorologyExpert:
     ) -> list[dict[str, Any]]:
         signals: list[dict[str, Any]] = []
 
-        if heat >= 0.45:
-            signals.append({
-                "sector": "Power / Cooling Demand",
-                "tickers": ["CEG", "VST", "XLU", "NRG"],
-                "bias": "BULLISH" if heat >= 0.65 else "NEUTRAL",
-                "reason": f"Heat stress {heat:.2f} — {alerts.heat_alerts} heat alerts",
-            })
+        from agent_signal_logic import build_market_signal
 
-        if energy >= 0.50:
-            signals.append({
-                "sector": "Natural Gas / Energy",
-                "tickers": ["XLE", "UNG", "AR", "EQT"],
-                "bias": "BULLISH" if energy >= 0.70 else "NEUTRAL",
-                "reason": f"Weather-driven energy demand score {energy:.2f}",
-            })
+        if heat >= 0.52:
+            signals.append(
+                build_market_signal(
+                    sector="Power / Cooling Demand",
+                    tickers=["CEG", "VST", "XLU", "NRG"],
+                    bias="BULLISH" if heat >= 0.68 else "NEUTRAL",
+                    reason=f"Heat stress {heat:.2f} — {alerts.heat_alerts} heat alerts",
+                    confidence=min(0.85, 0.45 + heat * 0.55),
+                    evidence={"heat_stress": round(heat, 3), "heat_alerts": alerts.heat_alerts},
+                )
+            )
+
+        if energy >= 0.55:
+            signals.append(
+                build_market_signal(
+                    sector="Natural Gas / Energy",
+                    tickers=["XLE", "UNG", "AR", "EQT"],
+                    bias="BULLISH" if energy >= 0.72 else "NEUTRAL",
+                    reason=f"Weather-driven energy demand score {energy:.2f}",
+                    confidence=min(0.82, 0.42 + energy * 0.5),
+                    evidence={"weather_energy_score": round(energy, 3)},
+                )
+            )
 
         if cold >= 0.45:
             signals.append({

@@ -173,9 +173,16 @@ def _append_prediction(
     recorded_at: str,
     regime_posture: str = "",
     event_day: bool = False,
+    regime_bucket: str = "",
     sector_hint: str = "",
     return_source: str = "explicit",
 ) -> None:
+    try:
+        from accuracy_measurement import regime_bucket as _regime_bucket
+
+        bucket = regime_bucket or _regime_bucket(regime_posture, event_day=event_day)
+    except Exception:
+        bucket = regime_bucket or str(regime_posture or "neutral")
     from agent_fusion import agent_in_domain, score_symbol_allowed
 
     sym = str(symbol or "").strip().upper()
@@ -211,6 +218,7 @@ def _append_prediction(
             "cycle_id": cycle_id,
             "regime_posture": regime_posture or "neutral",
             "event_day": bool(event_day),
+            "regime_bucket": bucket,
             "return_source": "explicit" if predicted_return_pct is not None else "estimated",
         }
     )
@@ -227,7 +235,7 @@ def _extract_from_agent_file(
     regime_posture: str = "neutral",
     event_day: bool = False,
 ) -> None:
-    from agent_fusion import agent_default_horizon
+    from agent_constraints import agent_preferred_horizon
     preds = data.get("predictions", {})
     if isinstance(preds, dict):
         for horizon, rows in preds.items():
@@ -269,7 +277,7 @@ def _extract_from_agent_file(
                 pending,
                 agent_id=agent_id,
                 symbol=sym,
-                horizon=agent_default_horizon(agent_id),
+                horizon=agent_preferred_horizon(agent_id),
                 predicted_direction=direction,
                 confidence=conf,
                 predicted_return_pct=None,
@@ -295,7 +303,7 @@ def _extract_from_agent_file(
                 pending,
                 agent_id=agent_id,
                 symbol=sym,
-                horizon=agent_default_horizon(agent_id),
+                horizon=agent_preferred_horizon(agent_id),
                 predicted_direction=direction,
                 confidence=conf,
                 predicted_return_pct=explicit_ret,
@@ -320,7 +328,7 @@ def _extract_from_agent_file(
                 pending,
                 agent_id=agent_id,
                 symbol=sym,
-                horizon=agent_default_horizon(agent_id),
+                horizon=agent_preferred_horizon(agent_id),
                 predicted_direction="up",
                 confidence=conf,
                 predicted_return_pct=explicit_ret,
@@ -501,6 +509,7 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
                 "brier_term": round((conf - outcome) ** 2, 4),
                 "regime_posture": pred.get("regime_posture", "neutral"),
                 "event_day": bool(pred.get("event_day")),
+                "regime_bucket": pred.get("regime_bucket"),
                 "return_source": return_source,
                 "scored_at": _now_iso(),
                 "recorded_at": pred.get("recorded_at"),
@@ -541,6 +550,17 @@ def _backfill_scored_row(row: dict[str, Any]) -> bool:
 
     row.setdefault("regime_posture", "neutral")
     row.setdefault("event_day", False)
+    if not row.get("regime_bucket"):
+        try:
+            from accuracy_measurement import regime_bucket as _regime_bucket
+
+            row["regime_bucket"] = _regime_bucket(
+                str(row.get("regime_posture") or "neutral"),
+                event_day=bool(row.get("event_day")),
+            )
+        except Exception:
+            row["regime_bucket"] = str(row.get("regime_posture") or "neutral")
+        updated = True
 
     if row.get("return_source") != "explicit":
         if row.get("magnitude_hit") is not None or row.get("magnitude_error_pct") is not None:
@@ -605,19 +625,14 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
     """Aggregate per-agent accuracy from scored outcomes."""
     backfill_scored_magnitude()
     accuracy = _accuracy_store()
-    preserved_benchmark = {
-        aid: dict(row)
-        for aid, row in (accuracy.get("agents") or {}).items()
-        if isinstance(row, dict) and row.get("accuracy_source") == BENCHMARK_SOURCE
-    }
     scored: list[dict[str, Any]] = list(accuracy.get("scored") or [])
-    agents: dict[str, dict[str, Any]] = {}
+    live_agents: dict[str, dict[str, Any]] = {}
 
     for row in scored:
         aid = str(row.get("agent_id") or "")
         if not aid:
             continue
-        bucket = agents.setdefault(
+        bucket = live_agents.setdefault(
             aid,
             {
                 "total": 0,
@@ -630,6 +645,7 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
                 "brier_sum": 0.0,
                 "by_horizon": {},
                 "by_regime": {},
+                "by_regime_bucket": {},
                 "event_day_total": 0,
                 "event_day_hits": 0,
             },
@@ -672,8 +688,12 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
         rb["total"] += 1
         rb["hits"] += 1 if hit else 0
 
-    leaderboard: list[dict[str, Any]] = []
-    for aid, bucket in agents.items():
+        bucket_key = str(row.get("regime_bucket") or regime)
+        rbb = bucket["by_regime_bucket"].setdefault(bucket_key, {"total": 0, "hits": 0})
+        rbb["total"] += 1
+        rbb["hits"] += 1 if hit else 0
+
+    for aid, bucket in live_agents.items():
         total = int(bucket["total"])
         hits = int(bucket["hits"])
         w_total = float(bucket["weighted_total"])
@@ -703,6 +723,15 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
             rt = int(rb.get("total", 0))
             rh = int(rb.get("hits", 0))
             by_regime[regime] = {
+                "total": rt,
+                "hits": rh,
+                "accuracy_pct": round(rh / rt * 100, 1) if rt else None,
+            }
+        by_regime_bucket = {}
+        for bucket_key, rb in bucket.get("by_regime_bucket", {}).items():
+            rt = int(rb.get("total", 0))
+            rh = int(rb.get("hits", 0))
+            by_regime_bucket[bucket_key] = {
                 "total": rt,
                 "hits": rh,
                 "accuracy_pct": round(rh / rt * 100, 1) if rt else None,
@@ -744,26 +773,50 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
                 for h, v in bucket.get("by_horizon", {}).items()
             },
             "by_regime": by_regime,
+            "by_regime_bucket": by_regime_bucket,
+            "direction_accuracy_pct": accuracy_pct,
         }
+        entry["accuracy_source"] = "live_scored"
+        entry["live_scored"] = total
         bucket.update(entry)
-        agents[aid] = bucket
-        if total >= MIN_SAMPLES_FOR_WEIGHT and combined_pct is not None:
-            leaderboard.append(entry)
+        live_agents[aid] = bucket
 
-    for aid, row in preserved_benchmark.items():
-        agents[aid] = row
-        total = int(row.get("total_scored") or row.get("total") or 0)
-        combined = row.get("combined_accuracy_pct")
-        if total >= MIN_SAMPLES_BENCHMARK and combined is not None:
-            if not any(entry.get("agent_id") == aid for entry in leaderboard):
-                leaderboard.append(row)
+    try:
+        from accuracy_measurement import enrich_agent_accuracy_entry, load_accuracy_measurement_settings
 
-    leaderboard.sort(
-        key=lambda row: (row.get("combined_accuracy_pct") or 0, row.get("total_scored") or 0),
-        reverse=True,
-    )
-    accuracy["agents"] = agents
-    accuracy["leaderboard"] = leaderboard[:25]
+        measure_settings = load_accuracy_measurement_settings()
+        for aid, row in list(live_agents.items()):
+            if isinstance(row, dict):
+                live_agents[aid] = enrich_agent_accuracy_entry(row, aid, settings=measure_settings)
+    except Exception:
+        pass
+
+    accuracy["live_agents"] = live_agents
+    try:
+        from live_accuracy import refresh_merged_agent_accuracy
+
+        accuracy = refresh_merged_agent_accuracy(accuracy)
+    except Exception:
+        accuracy["agents"] = live_agents
+        leaderboard = [
+            row
+            for row in live_agents.values()
+            if int(row.get("total_scored") or 0) >= MIN_SAMPLES_FOR_WEIGHT
+            and row.get("combined_accuracy_pct") is not None
+        ]
+        leaderboard.sort(
+            key=lambda row: (row.get("combined_accuracy_pct") or 0, row.get("total_scored") or 0),
+            reverse=True,
+        )
+        accuracy["leaderboard"] = leaderboard[:25]
+        try:
+            from accuracy_measurement import build_accuracy_leaderboards
+
+            boards = build_accuracy_leaderboards(live_agents, top_n=25, min_samples=MIN_SAMPLES_BENCHMARK)
+            accuracy["leaderboard_direction"] = boards.get("direction") or []
+            accuracy["leaderboard_preferred_horizon"] = boards.get("preferred_horizon") or []
+        except Exception:
+            pass
     accuracy["pending_count"] = len((_load_json(PENDING_FILE) or {}).get("predictions", []))
     accuracy["updated_at"] = _now_iso()
     _write_json(ACCURACY_FILE, accuracy)
@@ -784,8 +837,18 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
 
 
 def _min_samples_for_entry(entry: dict[str, Any] | None) -> int:
-    if isinstance(entry, dict) and entry.get("accuracy_source") == BENCHMARK_SOURCE:
+    if not isinstance(entry, dict):
+        return MIN_SAMPLES_FOR_WEIGHT
+    source = str(entry.get("accuracy_source") or "")
+    if source == BENCHMARK_SOURCE:
         return MIN_SAMPLES_BENCHMARK
+    if source == "live_benchmark_blend":
+        try:
+            from live_accuracy import min_blend_threshold
+
+            return min_blend_threshold()
+        except Exception:
+            return MIN_SAMPLES_BENCHMARK
     return MIN_SAMPLES_FOR_WEIGHT
 
 
@@ -855,8 +918,7 @@ def sync_benchmark_to_accuracy_store(
         key=lambda row: (row.get("combined_accuracy_pct") or 0, row.get("total_scored") or 0),
         reverse=True,
     )
-    accuracy["agents"] = agents
-    accuracy["leaderboard"] = leaderboard[:25]
+    accuracy["benchmark_agents"] = agents
     accuracy["benchmark"] = {
         "synced_at": analyzed_at,
         "target_trials": target_trials,
@@ -867,6 +929,13 @@ def sync_benchmark_to_accuracy_store(
     }
     accuracy["updated_at"] = _now_iso()
     _write_json(ACCURACY_FILE, accuracy)
+    try:
+        from live_accuracy import refresh_merged_agent_accuracy
+
+        accuracy = refresh_merged_agent_accuracy(accuracy)
+        _write_json(ACCURACY_FILE, accuracy)
+    except Exception:
+        pass
     try:
         from agent_fusion import export_walk_forward_weights
 
@@ -883,10 +952,42 @@ def sync_benchmark_to_accuracy_store(
     return accuracy
 
 
+def run_live_scoring_cycle(*, rebuild_learning: bool = True) -> dict[str, int]:
+    """Score matured pending predictions without recording new ones (worker interval task)."""
+    scored = score_matured_predictions(rebuild_learning=rebuild_learning)
+    if scored == 0:
+        rebuild_accuracy_index(rebuild_learning=rebuild_learning)
+    accuracy = _accuracy_store()
+    try:
+        from live_accuracy import live_scoring_summary
+
+        summary = live_scoring_summary(accuracy)
+    except Exception:
+        summary = {"pending": int(accuracy.get("pending_count") or 0)}
+    return {
+        "scored": scored,
+        "pending": int(summary.get("pending") or accuracy.get("pending_count") or 0),
+        "live_primary_agents": int(summary.get("live_primary_agents") or 0),
+        "blended_agents": int(summary.get("blended_agents") or 0),
+        "benchmark_primary_agents": int(summary.get("benchmark_primary_agents") or 0),
+    }
+
+
 def get_agent_accuracy(agent_id: str) -> dict[str, Any] | None:
     data = _accuracy_store()
     entry = (data.get("agents") or {}).get(agent_id)
-    return entry if isinstance(entry, dict) else None
+    if not isinstance(entry, dict):
+        return None
+    try:
+        from accuracy_measurement import enrich_agent_accuracy_entry, load_accuracy_measurement_settings
+
+        return enrich_agent_accuracy_entry(
+            entry,
+            agent_id,
+            settings=load_accuracy_measurement_settings(),
+        )
+    except Exception:
+        return entry
 
 
 def pending_prediction_count(agent_id: str) -> int:
@@ -899,26 +1000,22 @@ def agent_accuracy_label(agent_id: str) -> str:
     entry = get_agent_accuracy(agent_id)
     total = int(entry.get("total_scored") or entry.get("total") or 0) if entry else 0
     min_samples = _min_samples_for_entry(entry)
-    label = "—"
-    if total >= min_samples and entry:
-        pct = (
-            entry.get("combined_accuracy_pct")
-            or entry.get("weighted_accuracy_pct")
-            or entry.get("accuracy_pct")
-        )
-        if pct is not None:
-            mag = entry.get("magnitude_accuracy_pct")
-            if (
-                entry.get("accuracy_source") != BENCHMARK_SOURCE
-                and mag is not None
-                and int(entry.get("magnitude_scored") or 0) >= MIN_SAMPLES_FOR_MAGNITUDE
-            ):
-                label = f"{pct:.0f}% (mag {mag:.0f}%)"
-            else:
+    pending = pending_prediction_count(agent_id)
+    try:
+        from accuracy_measurement import format_accuracy_label
+
+        label = format_accuracy_label(entry, pending=pending, min_samples=min_samples)
+    except Exception:
+        label = "—"
+        if total >= min_samples and entry:
+            pct = (
+                entry.get("combined_accuracy_pct")
+                or entry.get("weighted_accuracy_pct")
+                or entry.get("accuracy_pct")
+            )
+            if pct is not None:
                 label = f"{pct:.0f}%"
-    else:
-        pending = pending_prediction_count(agent_id)
-        if pending:
+        elif pending:
             label = f"{pending} tracking"
         elif total:
             label = f"{total} scored"
@@ -973,9 +1070,16 @@ def agent_accuracy_weight(
         return max(0.5, min(1.5, 0.5 + float(pct) / 100.0))
 
 
-def accuracy_leaderboard(*, top_n: int = 10) -> list[dict[str, Any]]:
+def accuracy_leaderboard(*, top_n: int = 10, kind: str = "combined") -> list[dict[str, Any]]:
     data = _accuracy_store()
-    board = list(data.get("leaderboard") or [])
+    key_map = {
+        "combined": "leaderboard",
+        "direction": "leaderboard_direction",
+        "preferred_horizon": "leaderboard_preferred_horizon",
+        "preferred": "leaderboard_preferred_horizon",
+    }
+    store_key = key_map.get(kind, "leaderboard")
+    board = list(data.get(store_key) or data.get("leaderboard") or [])
     return board[:top_n]
 
 
@@ -1008,4 +1112,17 @@ def run_accuracy_cycle(
         except Exception:
             pass
 
-    return {"recorded": recorded, "scored": scored, "simulated": simulated}
+    try:
+        from live_accuracy import live_scoring_summary
+
+        summary = live_scoring_summary()
+    except Exception:
+        summary = {}
+    return {
+        "recorded": recorded,
+        "scored": scored,
+        "simulated": simulated,
+        "live_primary_agents": int(summary.get("live_primary_agents") or 0),
+        "blended_agents": int(summary.get("blended_agents") or 0),
+        "pending": int(summary.get("pending") or 0),
+    }

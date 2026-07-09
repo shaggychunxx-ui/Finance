@@ -931,7 +931,22 @@ class FinanceAgentsApp(tk.Frame):
             if runner is None:
                 raise KeyError(f"No runner registered for {agent['id']}")
             OUTPUT.mkdir(parents=True, exist_ok=True)
-            runner(output=OUTPUT / agent["output"])
+            try:
+                from agents.pipeline_memory import (
+                    begin_pipeline_memory_session,
+                    end_pipeline_memory_session,
+                    invoke_agent_runner,
+                )
+
+                begin_pipeline_memory_session()
+                invoke_agent_runner(
+                    runner,
+                    agent_id=agent["id"],
+                    output=OUTPUT / agent["output"],
+                )
+                end_pipeline_memory_session()
+            except Exception:
+                runner(output=OUTPUT / agent["output"])
             self._apply_personality_patch(agent["id"], agent["output"])
             self._apply_learning_patch(agent["id"], agent["output"])
             self._schedule_ui(self._refresh_agent, agent["id"])
@@ -975,6 +990,21 @@ class FinanceAgentsApp(tk.Frame):
         OUTPUT.mkdir(parents=True, exist_ok=True)
         runnable = [a for a in AGENT_CATALOG if a["id"] != "market-predictor"]
         total = len(runnable)
+        try:
+            from agents.pipeline_memory import begin_pipeline_memory_session, end_pipeline_memory_session
+
+            begin_pipeline_memory_session()
+        except Exception:
+            pass
+        try:
+            from etrade_market_enhancer import run_proactive_etrade_enhancement
+
+            def _proactive_progress(msg: str) -> None:
+                self._schedule_ui(self._set_status, msg, WARN)
+
+            run_proactive_etrade_enhancement(on_progress=_proactive_progress)
+        except Exception:
+            pass
         for index, agent in enumerate(runnable, start=1):
             self._schedule_ui(
                 self._set_status,
@@ -986,13 +1016,54 @@ class FinanceAgentsApp(tk.Frame):
                 failures.append(f"{agent['label']}: no runner")
                 continue
             try:
-                runner(output=OUTPUT / agent["output"])
+                try:
+                    from agents.pipeline_memory import invoke_agent_runner
+
+                    invoke_agent_runner(
+                        runner,
+                        agent_id=agent["id"],
+                        output=OUTPUT / agent["output"],
+                    )
+                except Exception:
+                    runner(output=OUTPUT / agent["output"])
                 self._apply_personality_patch(agent["id"], agent["output"])
                 self._apply_learning_patch(agent["id"], agent["output"])
                 ok += 1
                 self._schedule_ui(self._refresh_agent, agent["id"])
             except Exception as exc:
                 failures.append(f"{agent['label']}: {exc}")
+
+        try:
+            from agents.pipeline_memory import end_pipeline_memory_session
+
+            end_pipeline_memory_session()
+        except Exception:
+            pass
+
+        try:
+            from analysis_history import finalize_pipeline_cycle, new_pipeline_cycle_id
+            from prediction_accuracy import run_accuracy_cycle
+
+            cycle_id = new_pipeline_cycle_id()
+            stats = run_accuracy_cycle(
+                cycle_id=cycle_id,
+                skip_simulation=True,
+                rebuild_learning=True,
+            )
+            finalize_pipeline_cycle(
+                cycle_id,
+                agents_ok=ok,
+                agents_total=total,
+                accuracy_stats=stats,
+            )
+            self._schedule_ui(
+                self._set_status,
+                f"Batch {ok}/{total} — recorded {stats.get('recorded', 0)} predictions, "
+                f"scored {stats.get('scored', 0)}",
+                WARN,
+            )
+        except Exception:
+            pass
 
         msg = f"Batch complete — {ok}/{total} agents succeeded"
         if failures:

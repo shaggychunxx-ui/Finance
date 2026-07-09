@@ -11,6 +11,7 @@ from agents.enhancement import (
     ENHANCED_QUOTES_FILE,
     apply_enhancements_to_agent_files,
     collect_enhancement_candidates,
+    collect_proactive_enhancement_candidates,
     select_symbols,
 )
 
@@ -24,6 +25,12 @@ DEFAULT_SETTINGS = {
     "min_priority": 0.4,
     "detail_flag": "ALL",
     "require_production": True,
+    "proactive_enabled": True,
+    "proactive_max_symbols": 30,
+    "proactive_min_priority": 0.55,
+    "fused_pick_limit": 15,
+    "portfolio_holdings_limit": 12,
+    "merge_existing_quotes": True,
 }
 
 
@@ -108,11 +115,158 @@ def fetch_etrade_quotes(
     return quotes
 
 
+def _load_quotes_payload(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _merge_quote_maps(
+    existing: dict[str, dict[str, Any]],
+    fresh: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    merged = dict(existing)
+    merged.update(fresh)
+    return merged
+
+
+def _write_quotes_payload(
+    out: Path,
+    *,
+    quotes: dict[str, dict[str, Any]],
+    requested: list[str],
+    candidates: list[dict[str, Any]],
+    phase: str,
+    prior: dict[str, Any] | None = None,
+) -> None:
+    prior = prior or {}
+    prior_meta = prior.get("meta") if isinstance(prior.get("meta"), dict) else {}
+    payload = {
+        "meta": {
+            "source": "etrade",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "phase": phase,
+            "symbol_count": len(quotes),
+            "requested": requested,
+            "proactive_symbols": prior_meta.get("proactive_symbols") or prior_meta.get("requested"),
+            "candidates": [
+                {
+                    "symbol": c["symbol"],
+                    "priority": c["priority"],
+                    "reasons": c.get("reasons", [])[:3],
+                    "sources": c.get("sources", []),
+                }
+                for c in candidates[: min(30, len(candidates))]
+            ],
+        },
+        "quotes": quotes,
+    }
+    (out / ENHANCED_QUOTES_FILE).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _connect_etrade_client(
+    config_path: Path,
+    *,
+    say: Callable[[str], None],
+) -> Any | None:
+    try:
+        from etrade_worker import _connect_client
+    except ImportError:
+        say("E*TRADE enhancement skipped — worker module unavailable.")
+        return None
+    client = _connect_client(config_path)
+    if client is None:
+        say("E*TRADE enhancement skipped — connect in the app first.")
+        return None
+    return client
+
+
+def run_proactive_etrade_enhancement(
+    *,
+    config_path: Path = CONFIG_PATH,
+    output_dir: Path | None = None,
+    on_progress: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Pre-fetch E*TRADE quotes for prior fused picks and portfolio before agents run."""
+    settings = enhancement_settings(config_path)
+    out = output_dir or OUTPUT
+    out.mkdir(parents=True, exist_ok=True)
+
+    def say(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
+    if not settings.get("enabled", True) or not settings.get("proactive_enabled", True):
+        return {"skipped": True, "reason": "disabled"}
+
+    candidates = collect_proactive_enhancement_candidates(
+        out,
+        fused_limit=int(settings.get("fused_pick_limit", 15)),
+        portfolio_limit=int(settings.get("portfolio_holdings_limit", 12)),
+    )
+    symbols = select_symbols(
+        candidates,
+        max_symbols=int(settings.get("proactive_max_symbols", 30)),
+        min_priority=float(settings.get("proactive_min_priority", 0.55)),
+    )
+    if not symbols:
+        say("E*TRADE proactive enhancement: no prior-cycle symbols to refresh.")
+        return {"skipped": True, "reason": "no_symbols", "candidates": len(candidates)}
+
+    say(f"E*TRADE proactive enhancement: refreshing {len(symbols)} prior-cycle symbol(s)…")
+
+    client = _connect_etrade_client(config_path, say=say)
+    if client is None:
+        return {"skipped": True, "reason": "not_connected", "symbols_requested": symbols}
+
+    if settings.get("require_production", True) and client.config.sandbox:
+        say("E*TRADE proactive enhancement skipped — production account required for market data.")
+        return {"skipped": True, "reason": "sandbox", "symbols_requested": symbols}
+
+    quotes = fetch_etrade_quotes(
+        client,
+        symbols,
+        detail_flag=str(settings.get("detail_flag", "ALL")),
+    )
+    if not quotes:
+        say("E*TRADE proactive enhancement: quote fetch returned no data.")
+        return {"skipped": True, "reason": "no_quotes", "symbols_requested": symbols}
+
+    quotes_path = out / ENHANCED_QUOTES_FILE
+    prior = _load_quotes_payload(quotes_path) if settings.get("merge_existing_quotes", True) else {}
+    merged_quotes = _merge_quote_maps(
+        prior.get("quotes") if isinstance(prior.get("quotes"), dict) else {},
+        quotes,
+    )
+    _write_quotes_payload(
+        out,
+        quotes=merged_quotes,
+        requested=symbols,
+        candidates=candidates,
+        phase="proactive",
+        prior=prior,
+    )
+    say(f"E*TRADE proactive enhancement: cached {len(quotes)} live quote(s) for agent run.")
+    return {
+        "skipped": False,
+        "phase": "proactive",
+        "symbols_requested": len(symbols),
+        "quotes": len(quotes),
+        "quotes_cached": len(merged_quotes),
+        "agent_files_updated": 0,
+    }
+
+
 def run_etrade_enhancement(
     *,
     config_path: Path = CONFIG_PATH,
     output_dir: Path | None = None,
     on_progress: Callable[[str], None] | None = None,
+    apply_to_agents: bool = True,
 ) -> dict[str, Any]:
     settings = enhancement_settings(config_path)
     out = output_dir or OUTPUT
@@ -125,7 +279,7 @@ def run_etrade_enhancement(
     if not settings.get("enabled", True):
         return {"skipped": True, "reason": "disabled"}
 
-    candidates = collect_enhancement_candidates(out)
+    candidates = collect_enhancement_candidates(out, include_proactive=True)
     symbols = select_symbols(
         candidates,
         max_symbols=int(settings.get("max_symbols", 50)),
@@ -137,15 +291,8 @@ def run_etrade_enhancement(
 
     say(f"E*TRADE enhancement: {len(symbols)} symbol(s) requested by agents…")
 
-    try:
-        from etrade_worker import _connect_client
-    except ImportError:
-        say("E*TRADE enhancement skipped — worker module unavailable.")
-        return {"skipped": True, "reason": "import_error"}
-
-    client = _connect_client(config_path)
+    client = _connect_etrade_client(config_path, say=say)
     if client is None:
-        say("E*TRADE enhancement skipped — connect in the app first.")
         return {"skipped": True, "reason": "not_connected", "symbols_requested": symbols}
 
     if settings.get("require_production", True) and client.config.sandbox:
@@ -161,30 +308,27 @@ def run_etrade_enhancement(
         say("E*TRADE enhancement: quote fetch returned no data.")
         return {"skipped": True, "reason": "no_quotes", "symbols_requested": symbols}
 
-    payload = {
-        "meta": {
-            "source": "etrade",
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "symbol_count": len(quotes),
-            "requested": symbols,
-            "candidates": [
-                {
-                    "symbol": c["symbol"],
-                    "priority": c["priority"],
-                    "reasons": c.get("reasons", [])[:3],
-                    "sources": c.get("sources", []),
-                }
-                for c in candidates[: min(30, len(candidates))]
-            ],
-        },
-        "quotes": quotes,
-    }
-    (out / ENHANCED_QUOTES_FILE).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    updated = apply_enhancements_to_agent_files(quotes, out)
+    quotes_path = out / ENHANCED_QUOTES_FILE
+    prior = _load_quotes_payload(quotes_path) if settings.get("merge_existing_quotes", True) else {}
+    merged_quotes = _merge_quote_maps(
+        prior.get("quotes") if isinstance(prior.get("quotes"), dict) else {},
+        quotes,
+    )
+    _write_quotes_payload(
+        out,
+        quotes=merged_quotes,
+        requested=symbols,
+        candidates=candidates,
+        phase="post_agent",
+        prior=prior,
+    )
+    updated = apply_enhancements_to_agent_files(merged_quotes, out) if apply_to_agents else 0
     say(f"E*TRADE enhancement: updated {len(quotes)} quotes, {updated} agent file(s).")
     return {
         "skipped": False,
+        "phase": "post_agent",
         "symbols_requested": len(symbols),
         "quotes": len(quotes),
+        "quotes_cached": len(merged_quotes),
         "agent_files_updated": updated,
     }

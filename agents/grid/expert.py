@@ -409,42 +409,61 @@ class ElectricalGridAnalyst:
         hub_prices: list[HubPrice],
         demands: list[IsoDemand],
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal, grid_power_confidence, meteorology_energy_score
+
         signals: list[dict[str, Any]] = []
         avg_renewable = sum(f.renewable_pct for f in fuels) / len(fuels) if fuels else 0.0
+        weather_stress = meteorology_energy_score()
 
-        if avg_renewable >= 35:
-            signals.append({
-                "sector": "Renewables",
-                "tickers": ["TAN", "ENPH", "FSLR", "NEE"],
-                "bias": "BULLISH",
-                "reason": f"High renewable penetration across live ISO feeds ({avg_renewable:.0f}% avg)",
-            })
-        else:
-            signals.append({
-                "sector": "Renewables",
-                "tickers": ["TAN", "ICLN"],
-                "bias": "NEUTRAL",
-                "reason": f"Renewable share {avg_renewable:.0f}% — moderate clean-energy mix",
-            })
+        if avg_renewable >= 38:
+            signals.append(
+                build_market_signal(
+                    sector="Renewables",
+                    tickers=["TAN", "ENPH", "FSLR", "NEE"],
+                    bias="BULLISH",
+                    reason=f"High renewable penetration across live ISO feeds ({avg_renewable:.0f}% avg)",
+                    confidence=grid_power_confidence(renewable_pct=avg_renewable, grid_stress=weather_stress and weather_stress * 100),
+                    evidence={"renewable_pct": round(avg_renewable, 1)},
+                )
+            )
+        elif avg_renewable >= 25:
+            signals.append(
+                build_market_signal(
+                    sector="Renewables",
+                    tickers=["TAN", "ICLN"],
+                    bias="NEUTRAL",
+                    reason=f"Renewable share {avg_renewable:.0f}% — moderate clean-energy mix",
+                    confidence=grid_power_confidence(renewable_pct=avg_renewable),
+                )
+            )
 
         ercot = next((f for f in fuels if f.market == "ERCOT"), None)
-        if ercot and ercot.gas_pct >= 40:
-            signals.append({
-                "sector": "Natural Gas / Power",
-                "tickers": ["UNG", "XLE", "XLU"],
-                "bias": "BULLISH",
-                "reason": f"Gas-heavy ERCOT stack ({ercot.gas_pct:.0f}% gas generation)",
-            })
+        if ercot and ercot.gas_pct >= 45:
+            signals.append(
+                build_market_signal(
+                    sector="Natural Gas / Power",
+                    tickers=["UNG", "XLE", "XLU"],
+                    bias="BULLISH",
+                    reason=f"Gas-heavy ERCOT stack ({ercot.gas_pct:.0f}% gas generation)",
+                    confidence=grid_power_confidence(gas_pct=ercot.gas_pct, grid_stress=weather_stress and weather_stress * 100),
+                    evidence={"gas_pct": ercot.gas_pct, "weather_energy": weather_stress},
+                )
+            )
 
         if hub_prices:
             avg_lmp = sum(p.lmp for p in hub_prices) / len(hub_prices)
-            bias = "BULLISH" if avg_lmp >= 50 else "BEARISH" if avg_lmp <= 20 else "NEUTRAL"
-            signals.append({
-                "sector": "Merchant Power / Utilities",
-                "tickers": ["VST", "NRG", "XLU", "CEG"],
-                "bias": bias,
-                "reason": f"ERCOT hub LMP average ${avg_lmp:.2f}/MWh",
-            })
+            bias = "BULLISH" if avg_lmp >= 55 else "BEARISH" if avg_lmp <= 22 else "NEUTRAL"
+            if bias != "NEUTRAL":
+                signals.append(
+                    build_market_signal(
+                        sector="Merchant Power / Utilities",
+                        tickers=["VST", "NRG", "XLU", "CEG"],
+                        bias=bias,
+                        reason=f"ERCOT hub LMP average ${avg_lmp:.2f}/MWh",
+                        confidence=grid_power_confidence(lmp=avg_lmp, gas_pct=ercot.gas_pct if ercot else None),
+                        evidence={"avg_lmp": round(avg_lmp, 2)},
+                    )
+                )
         else:
             tex = next((d for d in demands if d.iso == "TEX"), None)
             if tex and tex.demand_mw > 75000:
@@ -455,13 +474,27 @@ class ElectricalGridAnalyst:
                     "reason": f"ERCOT-area load {tex.demand_mw:,.0f} MW per EIA",
                 })
 
-        if ercot and ercot.storage_mw >= 2500:
-            signals.append({
-                "sector": "Grid Storage",
-                "tickers": ["TSLA", "STEM", "XLU"],
-                "bias": "NEUTRAL",
-                "reason": f"Battery dispatch {ercot.storage_mw:,.0f} MW on ERCOT",
-            })
+        if ercot and ercot.storage_mw >= 3500:
+            signals.append(
+                build_market_signal(
+                    sector="Grid Storage",
+                    tickers=["TSLA", "STEM", "XLU"],
+                    bias="NEUTRAL",
+                    reason=f"Battery dispatch {ercot.storage_mw:,.0f} MW on ERCOT",
+                    confidence=grid_power_confidence(grid_stress=weather_stress and weather_stress * 100),
+                )
+            )
+
+        if not signals:
+            signals.append(
+                build_market_signal(
+                    sector="Power Grid Baseline",
+                    tickers=["XLU", "NEE"],
+                    bias="NEUTRAL",
+                    reason="ISO feeds show no strong fuel-mix or price tilt",
+                    confidence=0.42,
+                )
+            )
 
         return signals
 

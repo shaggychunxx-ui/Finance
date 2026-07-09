@@ -85,12 +85,19 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         sym = _normalize_symbol(symbol)
         if not sym:
             return
+        try:
+            from agent_constraints import agent_preferred_horizon
+
+            fusion_horizon = agent_preferred_horizon(source)
+        except Exception:
+            fusion_horizon = "24h"
         weight = fusion_weight(
             source,
-            horizon="24h",
+            horizon=fusion_horizon,
             symbol=sym,
             sector_hint=sector_hint,
             regime_posture=posture,
+            for_trading=True,
         )
         if weight <= 0:
             return
@@ -149,7 +156,10 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
             sector = str(sig.get("sector", ""))
             reason = sig.get("reason", "")
             note = f"{sector}: {reason}" if sector else reason
-            confidence = 0.55 if bias == "BULLISH" else 0.45 if bias == "BEARISH" else 0.35
+            try:
+                confidence = float(sig.get("confidence"))
+            except (TypeError, ValueError):
+                confidence = 0.55 if bias == "BULLISH" else 0.45 if bias == "BEARISH" else 0.35
             for ticker in sig.get("tickers", []):
                 bump(
                     ticker,
@@ -269,7 +279,11 @@ def _build_horizon_rows(
     return rows
 
 
-def run_market_predictor_analysis(*, output: Path | None = None) -> dict[str, Any]:
+def run_market_predictor_analysis(
+    *,
+    output: Path | None = None,
+    pipeline_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     root = Path(__file__).resolve().parent.parent
     output_dir = root / "output"
     output_path = output or (output_dir / "market_predictions.json")
@@ -304,14 +318,12 @@ def run_market_predictor_analysis(*, output: Path | None = None) -> dict[str, An
 
     pipeline_memory: dict[str, Any] = {}
     try:
-        from analysis_history import load_pipeline_run_context
+        if pipeline_context:
+            pipeline_memory = dict(pipeline_context)
+        else:
+            from agents.pipeline_memory import memory_bundle_for_agent
 
-        mem = load_pipeline_run_context()
-        pipeline_memory = {
-            "total_runs": int(mem.get("total_pipeline_runs") or 0),
-            "prior_runs_loaded": len(mem.get("prior_pipeline_runs") or []),
-            "learning_agents": len(mem.get("agent_learning") or {}),
-        }
+            pipeline_memory = memory_bundle_for_agent("market-predictor")
     except Exception:
         pass
 

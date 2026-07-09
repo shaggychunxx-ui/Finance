@@ -428,51 +428,74 @@ class GoogleFinanceAnalyst:
         opps: list[TradingOpportunity],
         risk_reward: float,
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal, sector_rotation_confidence
+
         signals: list[dict[str, Any]] = []
 
         if sectors:
             leader = max(sectors, key=lambda s: s.day_chg_pct or -999)
             cfg = GOOGLE_SECTORS.get(leader.google_symbol, {})
             etf = cfg.get("etf", leader.yahoo_symbol)
-            signals.append({
-                "sector": f"Leading — {leader.name}",
-                "tickers": [etf],
-                "bias": "BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL",
-                "reason": f"Google Finance sector {leader.google_symbol} {leader.day_chg_pct:+.2f}%",
-            })
+            if (leader.day_chg_pct or 0) > 0.35:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Leading — {leader.name}",
+                        tickers=[etf],
+                        bias="BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL",
+                        reason=f"Google Finance sector {leader.google_symbol} {leader.day_chg_pct:+.2f}%",
+                        confidence=sector_rotation_confidence(
+                            leader.day_chg_pct,
+                            week_chg_pct=leader.week_chg_pct,
+                            risk_reward=risk_reward,
+                        ),
+                    )
+                )
             laggard = min(sectors, key=lambda s: s.day_chg_pct or 999)
             cfg_l = GOOGLE_SECTORS.get(laggard.google_symbol, {})
-            if (laggard.day_chg_pct or 0) < -0.5:
-                signals.append({
-                    "sector": f"Lagging — {laggard.name}",
-                    "tickers": [cfg_l.get("etf", laggard.yahoo_symbol)],
-                    "bias": "BEARISH",
-                    "reason": f"{laggard.google_symbol} {laggard.day_chg_pct:+.2f}% on beta dashboard",
-                })
+            if (laggard.day_chg_pct or 0) < -0.6:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Lagging — {laggard.name}",
+                        tickers=[cfg_l.get("etf", laggard.yahoo_symbol)],
+                        bias="BEARISH",
+                        reason=f"{laggard.google_symbol} {laggard.day_chg_pct:+.2f}% on beta dashboard",
+                        confidence=sector_rotation_confidence(laggard.day_chg_pct, week_chg_pct=laggard.week_chg_pct),
+                    )
+                )
 
         nasdaq = next((i for i in indices if i.google_symbol == ".IXIC"), None)
-        if nasdaq and nasdaq.day_chg_pct is not None and nasdaq.day_chg_pct < -0.5:
-            signals.append({
-                "sector": "Technology / Growth",
-                "tickers": ["QQQ", "XLK", "NVDA", "MSFT"],
-                "bias": "BEARISH",
-                "reason": f"Nasdaq {nasdaq.day_chg_pct:+.2f}% — tech selloff on Google Finance beta",
-            })
+        if nasdaq and nasdaq.day_chg_pct is not None and nasdaq.day_chg_pct < -0.75:
+            signals.append(
+                build_market_signal(
+                    sector="Technology / Growth",
+                    tickers=["QQQ", "XLK", "NVDA", "MSFT"],
+                    bias="BEARISH",
+                    reason=f"Nasdaq {nasdaq.day_chg_pct:+.2f}% — tech selloff on Google Finance beta",
+                    confidence=sector_rotation_confidence(nasdaq.day_chg_pct, week_chg_pct=nasdaq.week_chg_pct),
+                )
+            )
 
-        if risk_reward >= 0.60:
-            signals.append({
-                "sector": "Trading Opportunities",
-                "tickers": [o.symbol for o in opps[:5]],
-                "bias": "BULLISH",
-                "reason": f"Risk/reward score {risk_reward:.2f} — ranked setups from beta movers",
-            })
+        if risk_reward >= 0.62 and opps:
+            signals.append(
+                build_market_signal(
+                    sector="Trading Opportunities",
+                    tickers=[o.symbol for o in opps[:5]],
+                    bias="BULLISH",
+                    reason=f"Risk/reward score {risk_reward:.2f} — ranked setups from beta movers",
+                    confidence=sector_rotation_confidence(opps[0].day_chg_pct, risk_reward=risk_reward),
+                )
+            )
 
-        signals.append({
-            "sector": "Broad Market",
-            "tickers": ["SPY", "DIA", "IWM"],
-            "bias": "NEUTRAL",
-            "reason": "Google Finance beta US market summary baseline exposure",
-        })
+        if not signals:
+            signals.append(
+                build_market_signal(
+                    sector="Broad Market",
+                    tickers=["SPY", "DIA", "IWM"],
+                    bias="NEUTRAL",
+                    reason="Google Finance beta US market summary baseline exposure",
+                    confidence=0.42,
+                )
+            )
         return signals
 
     def analyze(self) -> FinanceReport:

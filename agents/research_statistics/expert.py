@@ -747,62 +747,100 @@ class ResearchStatisticsExpert:
         tests: list[HypothesisTest],
         autocorrs: list[AutocorrelationResult],
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal, hypothesis_test_confidence
+
         signals: list[dict[str, Any]] = []
 
         spy_test = next(
             (t for t in tests if t.symbol == BENCHMARK and t.test_id == "one_sample_ttest"),
             None,
         )
-        if spy_test:
+        if spy_test and spy_test.significant:
             bias = (
-                "BULLISH" if spy_test.significant and spy_test.statistic > 0 else
-                "BEARISH" if spy_test.significant and spy_test.statistic < 0 else
+                "BULLISH" if spy_test.statistic > 0 else
+                "BEARISH" if spy_test.statistic < 0 else
                 "NEUTRAL"
             )
-            signals.append({
-                "sector": "Drift Hypothesis Test",
-                "tickers": ["SPY", "VOO"],
-                "bias": bias,
-                "reason": f"H₀: μ=0, t={spy_test.statistic:.2f}, p={spy_test.p_value:.3f}",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Drift Hypothesis Test",
+                    tickers=["SPY", "VOO"],
+                    bias=bias,
+                    reason=f"H₀: μ=0, t={spy_test.statistic:.2f}, p={spy_test.p_value:.3f}",
+                    confidence=hypothesis_test_confidence(
+                        p_value=spy_test.p_value,
+                        significant=spy_test.significant,
+                        statistic=spy_test.statistic,
+                    ),
+                    evidence={"p_value": spy_test.p_value, "t_stat": spy_test.statistic},
+                )
+            )
 
         for f in findings[:3]:
+            if f.p_value >= 0.05:
+                continue
             bias = "BULLISH" if "outperform" in f.practical_implication or "positive" in f.practical_implication.lower() or "momentum" in f.practical_implication.lower() else (
                 "BEARISH" if "underperform" in f.practical_implication or "negative" in f.practical_implication.lower() or "fat tail" in f.practical_implication.lower() else
                 "NEUTRAL"
             )
-            signals.append({
-                "sector": f"Research Finding — {f.title}",
-                "tickers": f.symbols,
-                "bias": bias,
-                "reason": f"{f.method}: stat={f.statistic:.3f}, p={f.p_value:.3f}",
-            })
+            if bias == "NEUTRAL":
+                continue
+            signals.append(
+                build_market_signal(
+                    sector=f"Research Finding — {f.title}",
+                    tickers=f.symbols,
+                    bias=bias,
+                    reason=f"{f.method}: stat={f.statistic:.3f}, p={f.p_value:.3f}",
+                    confidence=hypothesis_test_confidence(
+                        p_value=f.p_value,
+                        significant=True,
+                        statistic=f.statistic,
+                    ),
+                )
+            )
 
         for r in regressions:
-            if r.significant_beta and r.beta > 1.15:
-                signals.append({
-                    "sector": f"High Beta — {r.symbol}",
-                    "tickers": [r.symbol],
-                    "bias": "BULLISH",
-                    "reason": f"β={r.beta:.2f}, R²={r.r_squared:.2f}, p={r.slope_p_value:.3f}",
-                })
+            if r.significant_beta and r.beta > 1.15 and r.slope_p_value < 0.05:
+                signals.append(
+                    build_market_signal(
+                        sector=f"High Beta — {r.symbol}",
+                        tickers=[r.symbol],
+                        bias="BULLISH",
+                        reason=f"β={r.beta:.2f}, R²={r.r_squared:.2f}, p={r.slope_p_value:.3f}",
+                        confidence=hypothesis_test_confidence(
+                            p_value=r.slope_p_value,
+                            significant=r.significant_beta,
+                            statistic=r.beta,
+                        ),
+                    )
+                )
 
         for a in autocorrs:
-            if a.significant and a.autocorr < -0.05:
-                signals.append({
-                    "sector": f"Mean Reversion — {a.symbol}",
-                    "tickers": [a.symbol],
-                    "bias": "BULLISH",
-                    "reason": f"ρ₁={a.autocorr:.3f}, p={a.p_value:.3f}",
-                })
+            if a.significant and a.autocorr < -0.08 and a.p_value < 0.05:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Mean Reversion — {a.symbol}",
+                        tickers=[a.symbol],
+                        bias="BULLISH",
+                        reason=f"ρ₁={a.autocorr:.3f}, p={a.p_value:.3f}",
+                        confidence=hypothesis_test_confidence(
+                            p_value=a.p_value,
+                            significant=a.significant,
+                            statistic=a.autocorr,
+                        ),
+                    )
+                )
 
         if not signals:
-            signals.append({
-                "sector": "Research Neutral",
-                "tickers": ["SPY"],
-                "bias": "NEUTRAL",
-                "reason": "No significant findings at α=0.05",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Research Neutral",
+                    tickers=["SPY"],
+                    bias="NEUTRAL",
+                    reason="No significant findings at α=0.05",
+                    confidence=0.42,
+                )
+            )
         return signals
 
     @staticmethod

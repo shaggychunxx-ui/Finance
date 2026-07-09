@@ -360,53 +360,114 @@ class SalesAnalyticsBIExpert:
         assessment: BIAssessment,
         strength: float,
     ) -> list[dict[str, Any]]:
-        signals: list[dict[str, Any]] = []
-        bias = (
-            "BULLISH" if strength >= 0.6 else
-            "BEARISH" if strength <= 0.4 else
-            "NEUTRAL"
+        from agent_signal_logic import build_market_signal, retail_signal_confidence
+
+        non_etf = [r for r in retailers if r.category != "sector_etf"]
+        breadth = (
+            round(sum(1 for r in non_etf if (r.return_20d_pct or 0) > 0) / len(non_etf) * 100, 1)
+            if non_etf
+            else 50.0
         )
-        signals.append({
-            "sector": "Consumer / Retail",
-            "tickers": ["XLY", "XLP", "WMT"],
-            "bias": bias,
-            "reason": f"Consumer strength {strength:.2f} — {assessment.consumer_demand}",
-        })
+        signals: list[dict[str, Any]] = []
+
+        sector_bias = (
+            "BULLISH"
+            if strength >= 0.62 and breadth >= 55
+            else "BEARISH"
+            if strength <= 0.38 and breadth <= 45
+            else "NEUTRAL"
+        )
+        sector_conf = retail_signal_confidence(
+            momentum=strength,
+            return_20d_pct=None,
+            breadth_pct=breadth,
+            consumer_strength=strength,
+        )
+        if sector_bias != "NEUTRAL" or strength >= 0.5:
+            signals.append(
+                build_market_signal(
+                    sector="Consumer / Retail",
+                    tickers=["XLY", "XLP", "WMT"],
+                    bias=sector_bias,
+                    reason=f"Consumer strength {strength:.2f}, breadth {breadth:.0f}% — {assessment.consumer_demand}",
+                    confidence=sector_conf,
+                    evidence={"consumer_strength": round(strength, 3), "breadth_pct": breadth},
+                )
+            )
 
         if categories:
             leader = categories[0]
-            signals.append({
-                "sector": f"Category Leader — {leader.label}",
-                "tickers": [r.symbol for r in retailers if r.category == leader.category][:3],
-                "bias": "BULLISH" if leader.avg_return_20d_pct > 0 else "NEUTRAL",
-                "reason": f"Avg 20d {leader.avg_return_20d_pct:+.2f}%, breadth {leader.breadth_pct:.0f}%",
-            })
+            leader_tickers = [
+                r.symbol
+                for r in retailers
+                if r.category == leader.category and r.symbol in RETAIL_UNIVERSE
+            ][:3]
+            if leader_tickers and leader.avg_return_20d_pct > 1.5 and leader.breadth_pct >= 50:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Category Leader — {leader.label}",
+                        tickers=leader_tickers,
+                        bias="BULLISH",
+                        reason=f"Avg 20d {leader.avg_return_20d_pct:+.2f}%, breadth {leader.breadth_pct:.0f}%",
+                        confidence=retail_signal_confidence(
+                            momentum=leader.avg_momentum,
+                            return_20d_pct=leader.avg_return_20d_pct,
+                            breadth_pct=leader.breadth_pct,
+                            consumer_strength=strength,
+                        ),
+                    )
+                )
 
-        top = sorted(retailers, key=lambda r: -r.momentum_score)[:1]
+        top = sorted(
+            [r for r in non_etf if r.symbol in RETAIL_UNIVERSE],
+            key=lambda r: -r.momentum_score,
+        )[:1]
         if top:
-            signals.append({
-                "sector": f"Top Retail Proxy — {top[0].name}",
-                "tickers": [top[0].symbol],
-                "bias": "BULLISH",
-                "reason": f"Momentum {top[0].momentum_score:.2f}, 20d {top[0].return_20d_pct:+.2f}%",
-            })
+            pick = top[0]
+            if pick.momentum_score >= 0.58 and (pick.return_20d_pct or 0) >= 1.5:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Top Retail Proxy — {pick.name}",
+                        tickers=[pick.symbol],
+                        bias="BULLISH",
+                        reason=f"Momentum {pick.momentum_score:.2f}, 20d {pick.return_20d_pct:+.2f}%",
+                        confidence=retail_signal_confidence(
+                            momentum=pick.momentum_score,
+                            return_20d_pct=pick.return_20d_pct,
+                            breadth_pct=breadth,
+                            consumer_strength=strength,
+                        ),
+                    )
+                )
 
-        ecom = [r for r in retailers if r.category == "e_commerce" and (r.return_20d_pct or 0) < -5]
+        ecom = [
+            r
+            for r in retailers
+            if r.category == "e_commerce"
+            and (r.return_20d_pct or 0) < -5
+            and r.momentum_score < 0.45
+        ]
         if ecom:
-            signals.append({
-                "sector": "E-Commerce Weakness",
-                "tickers": [r.symbol for r in ecom],
-                "bias": "BEARISH",
-                "reason": f"{ecom[0].symbol} 20d {ecom[0].return_20d_pct:+.2f}%",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="E-Commerce Weakness",
+                    tickers=[r.symbol for r in ecom[:2]],
+                    bias="BEARISH",
+                    reason=f"{ecom[0].symbol} 20d {ecom[0].return_20d_pct:+.2f}%",
+                    confidence=0.58,
+                )
+            )
 
         if not signals:
-            signals.append({
-                "sector": "Retail Neutral",
-                "tickers": ["XLY"],
-                "bias": "NEUTRAL",
-                "reason": "No dominant sales analytics signal",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Retail Neutral",
+                    tickers=["XLY"],
+                    bias="NEUTRAL",
+                    reason="No statistically strong retail sales signal",
+                    confidence=0.42,
+                )
+            )
         return signals
 
     @staticmethod

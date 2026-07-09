@@ -81,10 +81,123 @@ def _add_candidate(
     row["sources"].add(source)
 
 
-def collect_enhancement_candidates(output_dir: Path | None = None) -> list[dict[str, Any]]:
+def load_enhanced_quotes(output_dir: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Return symbol → quote map from the latest E*TRADE enhancement file."""
+    out = output_dir or OUTPUT
+    data = _load_json(out / ENHANCED_QUOTES_FILE)
+    if not isinstance(data, dict):
+        return {}
+    quotes = data.get("quotes")
+    return quotes if isinstance(quotes, dict) else {}
+
+
+def collect_proactive_enhancement_candidates(
+    output_dir: Path | None = None,
+    *,
+    fused_horizons: tuple[str, ...] = ("24h", "1wk"),
+    fused_limit: int = 15,
+    portfolio_limit: int = 12,
+    persistent_limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Symbols from prior-cycle fused picks, portfolio holdings, and persistent bullish tickers."""
+    out = output_dir or OUTPUT
+    bucket: dict[str, dict[str, Any]] = {}
+
+    fused = _load_json(out / "market_predictions.json")
+    if fused:
+        predictions = fused.get("predictions") if isinstance(fused.get("predictions"), dict) else {}
+        seen_fused: set[str] = set()
+        for horizon in fused_horizons:
+            rows = predictions.get(horizon)
+            if not isinstance(rows, list):
+                continue
+            for row in rows[:fused_limit]:
+                if not isinstance(row, dict):
+                    continue
+                sym = str(row.get("symbol", "")).upper()
+                if not sym or sym in seen_fused:
+                    continue
+                seen_fused.add(sym)
+                rank = int(row.get("rank") or len(seen_fused))
+                conf = float(row.get("confidence", 0.55) or 0.55)
+                _add_candidate(
+                    bucket,
+                    sym,
+                    priority=min(0.94, 0.9 - (rank - 1) * 0.025 + conf * 0.04),
+                    reason=f"Fused pick #{rank} ({horizon})",
+                    source="market_predictions",
+                )
+
+    portfolio = _load_json(out / "portfolio.json")
+    if portfolio:
+        holdings = portfolio.get("holdings") if isinstance(portfolio.get("holdings"), list) else []
+        for index, row in enumerate(holdings[:portfolio_limit], start=1):
+            if not isinstance(row, dict):
+                continue
+            conf = float(row.get("confidence", 0.6) or 0.6)
+            _add_candidate(
+                bucket,
+                str(row.get("symbol", "")),
+                priority=min(0.96, 0.9 + conf * 0.05 - (index - 1) * 0.01),
+                reason=row.get("rationale", "Portfolio holding"),
+                source="portfolio",
+            )
+
+    try:
+        from analysis_history import get_persistent_bullish_tickers
+
+        for row in get_persistent_bullish_tickers(top_n=persistent_limit):
+            if not isinstance(row, dict):
+                continue
+            composite = float(row.get("composite", 0.0) or 0.0)
+            _add_candidate(
+                bucket,
+                str(row.get("symbol", "")),
+                priority=min(0.86, 0.68 + composite * 0.12),
+                reason=f"Persistent bullish ({int(row.get('bullish_hits', 0))} cycles)",
+                source="history",
+            )
+    except Exception:
+        pass
+
+    ctx = _load_json(out / "pipeline_run_context.json")
+    if ctx:
+        for item in (ctx.get("persistent_bullish_tickers") or [])[:persistent_limit]:
+            if isinstance(item, dict):
+                sym = str(item.get("symbol", ""))
+                composite = float(item.get("composite", 0.0) or 0.0)
+                priority = min(0.84, 0.66 + composite * 0.12)
+                reason = "Pipeline memory bullish"
+            else:
+                sym = str(item)
+                priority = 0.72
+                reason = "Pipeline memory bullish"
+            _add_candidate(bucket, sym, priority=priority, reason=reason, source="pipeline_memory")
+
+    ranked = sorted(bucket.values(), key=lambda r: r["priority"], reverse=True)
+    for row in ranked:
+        row["sources"] = sorted(row["sources"])
+    return ranked
+
+
+def collect_enhancement_candidates(
+    output_dir: Path | None = None,
+    *,
+    include_proactive: bool = True,
+) -> list[dict[str, Any]]:
     """Read agent outputs and build a ranked list of symbols for E*TRADE quotes."""
     out = output_dir or OUTPUT
     bucket: dict[str, dict[str, Any]] = {}
+
+    if include_proactive:
+        for row in collect_proactive_enhancement_candidates(out):
+            _add_candidate(
+                bucket,
+                row["symbol"],
+                priority=float(row.get("priority", 0.7)),
+                reason=", ".join(row.get("reasons", [])[:2]) or "Proactive",
+                source=", ".join(row.get("sources", ["proactive"])),
+            )
 
     for src in active_agent_sources(check_remote=False):
         data = _load_json(out / src["file"])

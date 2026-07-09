@@ -387,80 +387,125 @@ class DataScienceExpert:
         stress: float,
         opportunity: float,
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal, quant_signal_confidence
+
         signals: list[dict[str, Any]] = []
         by_sym = {t.symbol: t for t in tickers}
         spy = by_sym.get("SPY")
 
         if spy:
             if spy.momentum_score >= 0.65 and spy.mc_prob_up_5d >= 0.55:
-                signals.append({
-                    "sector": "Momentum — Broad Market",
-                    "tickers": ["SPY", "QQQ"],
-                    "bias": "BULLISH",
-                    "reason": (
-                        f"SPY momentum {spy.momentum_score:.2f}, "
-                        f"MC P(up) {spy.mc_prob_up_5d:.0%}"
-                    ),
-                })
-            elif spy.momentum_score <= 0.4 and stress >= 0.4:
-                signals.append({
-                    "sector": "Defensive Hedge",
-                    "tickers": ["TLT", "GLD", "XLU"],
-                    "bias": "BULLISH",
-                    "reason": f"Quant stress {stress:.2f} — defensive factors favored",
-                })
+                signals.append(
+                    build_market_signal(
+                        sector="Momentum — Broad Market",
+                        tickers=["SPY", "QQQ"],
+                        bias="BULLISH",
+                        reason=(
+                            f"SPY momentum {spy.momentum_score:.2f}, "
+                            f"MC P(up) {spy.mc_prob_up_5d:.0%}"
+                        ),
+                        confidence=quant_signal_confidence(
+                            momentum=spy.momentum_score,
+                            mc_prob_up=spy.mc_prob_up_5d,
+                            stress=stress,
+                        ),
+                        evidence={"mc_prob_up_5d": spy.mc_prob_up_5d, "stress": round(stress, 3)},
+                    )
+                )
+            elif spy.momentum_score <= 0.4 and stress >= 0.45:
+                signals.append(
+                    build_market_signal(
+                        sector="Defensive Hedge",
+                        tickers=["TLT", "GLD", "XLU"],
+                        bias="BULLISH",
+                        reason=f"Quant stress {stress:.2f} — defensive factors favored",
+                        confidence=quant_signal_confidence(
+                            momentum=spy.momentum_score,
+                            stress=stress,
+                        ),
+                    )
+                )
 
         oversold = sorted(
-            [t for t in tickers if t.z_score_20d <= -1.2],
+            [t for t in tickers if t.z_score_20d <= -1.4 and t.mc_prob_up_5d >= 0.52],
             key=lambda t: t.z_score_20d,
         )
         if oversold:
             t = oversold[0]
-            signals.append({
-                "sector": "Mean Reversion",
-                "tickers": [t.symbol],
-                "bias": "BULLISH",
-                "reason": (
-                    f"{t.symbol} z-score {t.z_score_20d:+.2f}, "
-                    f"MC P(up) {t.mc_prob_up_5d:.0%}"
-                ),
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Mean Reversion",
+                    tickers=[t.symbol],
+                    bias="BULLISH",
+                    reason=(
+                        f"{t.symbol} z-score {t.z_score_20d:+.2f}, "
+                        f"MC P(up) {t.mc_prob_up_5d:.0%}"
+                    ),
+                    confidence=quant_signal_confidence(
+                        momentum=t.momentum_score,
+                        mc_prob_up=t.mc_prob_up_5d,
+                        z_score=t.z_score_20d,
+                    ),
+                )
+            )
 
-        overbought = [t for t in tickers if t.z_score_20d >= 1.5]
+        overbought = [t for t in tickers if t.z_score_20d >= 1.8]
         if overbought:
             t = overbought[0]
-            signals.append({
-                "sector": "Overbought Caution",
-                "tickers": [t.symbol],
-                "bias": "BEARISH",
-                "reason": f"{t.symbol} z-score {t.z_score_20d:+.2f} — stretched vs 20d mean",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Overbought Caution",
+                    tickers=[t.symbol],
+                    bias="BEARISH",
+                    reason=f"{t.symbol} z-score {t.z_score_20d:+.2f} — stretched vs 20d mean",
+                    confidence=quant_signal_confidence(
+                        momentum=t.momentum_score,
+                        z_score=t.z_score_20d,
+                    ),
+                )
+            )
 
         leader = max(tickers, key=lambda t: t.momentum_score)
-        if leader.momentum_score >= 0.6 and leader.symbol not in ("SPY",):
-            signals.append({
-                "sector": f"Factor Leader — {leader.name}",
-                "tickers": [leader.symbol],
-                "bias": "BULLISH",
-                "reason": f"Top momentum score {leader.momentum_score:.2f}, 20d {leader.return_20d_pct:+.2f}%",
-            })
+        if leader.momentum_score >= 0.62 and leader.symbol not in ("SPY",) and leader.return_20d_pct >= 2.0:
+            signals.append(
+                build_market_signal(
+                    sector=f"Factor Leader — {leader.name}",
+                    tickers=[leader.symbol],
+                    bias="BULLISH",
+                    reason=f"Top momentum score {leader.momentum_score:.2f}, 20d {leader.return_20d_pct:+.2f}%",
+                    confidence=quant_signal_confidence(
+                        momentum=leader.momentum_score,
+                        mc_prob_up=leader.mc_prob_up_5d,
+                    ),
+                )
+            )
 
         hyg = by_sym.get("HYG")
-        if hyg and hyg.return_20d_pct < -1.5:
-            signals.append({
-                "sector": "Credit Stress",
-                "tickers": ["HYG", "LQD", "JNK"],
-                "bias": "BEARISH",
-                "reason": f"HYG 20d return {hyg.return_20d_pct:+.2f}% — credit risk rising",
-            })
+        if hyg and hyg.return_20d_pct < -2.0:
+            signals.append(
+                build_market_signal(
+                    sector="Credit Stress",
+                    tickers=["HYG", "LQD", "JNK"],
+                    bias="BEARISH",
+                    reason=f"HYG 20d return {hyg.return_20d_pct:+.2f}% — credit risk rising",
+                    confidence=quant_signal_confidence(
+                        momentum=hyg.momentum_score,
+                        z_score=hyg.z_score_20d,
+                        stress=stress,
+                    ),
+                )
+            )
 
         if not signals:
-            signals.append({
-                "sector": "Quant Neutral",
-                "tickers": ["SPY"],
-                "bias": "NEUTRAL",
-                "reason": "No strong statistical edge detected",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Quant Neutral",
+                    tickers=["SPY"],
+                    bias="NEUTRAL",
+                    reason="No strong statistical edge detected",
+                    confidence=0.42,
+                )
+            )
         return signals
 
     @staticmethod

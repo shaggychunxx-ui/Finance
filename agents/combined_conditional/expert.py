@@ -742,60 +742,83 @@ class CombinedConditionalExpert:
         scenarios: list[CombinedScenario],
         independence: list[IndependenceTest],
     ) -> list[dict[str, Any]]:
+        from agent_signal_logic import build_market_signal, conditional_prob_confidence
+
         signals: list[dict[str, Any]] = []
 
         if joints:
             top = max(joints, key=lambda j: j.joint_prob)
-            signals.append({
-                "sector": "Joint Probability",
-                "tickers": [top.symbol_a, top.symbol_b],
-                "bias": "BULLISH" if "up" in top.event_a else "NEUTRAL",
-                "reason": f"P({top.event_a}∩{top.event_b})={top.joint_prob:.0%}",
-            })
+            if top.joint_prob >= 0.35 and "up" in top.event_a:
+                signals.append(
+                    build_market_signal(
+                        sector="Joint Probability",
+                        tickers=[top.symbol_a, top.symbol_b],
+                        bias="BULLISH",
+                        reason=f"P({top.event_a}∩{top.event_b})={top.joint_prob:.0%}",
+                        confidence=conditional_prob_confidence(top.joint_prob, sample_size=252),
+                        evidence={"joint_prob": top.joint_prob},
+                    )
+                )
 
         for c in sorted(conditionals, key=lambda x: -x.conditional_prob)[:2]:
-            if c.conditional_prob >= 0.65:
-                signals.append({
-                    "sector": f"Conditional — {c.event}",
-                    "tickers": [c.symbol],
-                    "bias": "BULLISH" if c.conditional_prob >= 0.5 else "BEARISH",
-                    "reason": f"P({c.event}|{c.condition})={c.conditional_prob:.0%}",
-                })
+            if c.conditional_prob >= 0.68 or c.conditional_prob <= 0.32:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Conditional — {c.event}",
+                        tickers=[c.symbol],
+                        bias="BULLISH" if c.conditional_prob >= 0.5 else "BEARISH",
+                        reason=f"P({c.event}|{c.condition})={c.conditional_prob:.0%}",
+                        confidence=conditional_prob_confidence(c.conditional_prob, sample_size=252),
+                    )
+                )
 
         for m in multi[:1]:
-            if m.conditional_prob >= 0.60:
-                signals.append({
-                    "sector": f"Multi-Condition — {m.event}",
-                    "tickers": ["SPY", "QQQ", "XLK"],
-                    "bias": "BULLISH",
-                    "reason": f"P({m.event}|{m.conditions})={m.conditional_prob:.0%}",
-                })
+            if m.conditional_prob >= 0.65:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Multi-Condition — {m.event}",
+                        tickers=["SPY", "QQQ", "XLK"],
+                        bias="BULLISH",
+                        reason=f"P({m.event}|{m.conditions})={m.conditional_prob:.0%}",
+                        confidence=conditional_prob_confidence(m.conditional_prob, sample_size=252),
+                    )
+                )
 
         for t in independence:
-            if t.independence_ratio >= 1.3:
-                signals.append({
-                    "sector": f"Positive Dependence — {t.event_a}",
-                    "tickers": ["SPY", "QQQ"],
-                    "bias": "BULLISH",
-                    "reason": f"joint/independent ratio={t.independence_ratio:.2f}",
-                })
+            if t.independence_ratio >= 1.4:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Positive Dependence — {t.event_a}",
+                        tickers=["SPY", "QQQ"],
+                        bias="BULLISH",
+                        reason=f"joint/independent ratio={t.independence_ratio:.2f}",
+                        confidence=conditional_prob_confidence(min(0.9, 0.5 + (t.independence_ratio - 1.0) * 0.2)),
+                    )
+                )
 
         if scenarios:
             s = scenarios[0]
-            signals.append({
-                "sector": f"Combined Scenario — {s.strategy}",
-                "tickers": s.tickers,
-                "bias": "BULLISH",
-                "reason": f"'{s.name}' P={s.combined_prob:.0%}",
-            })
+            if s.combined_prob >= 0.55:
+                signals.append(
+                    build_market_signal(
+                        sector=f"Combined Scenario — {s.strategy}",
+                        tickers=s.tickers,
+                        bias="BULLISH",
+                        reason=f"'{s.name}' P={s.combined_prob:.0%}",
+                        confidence=conditional_prob_confidence(s.combined_prob, sample_size=252),
+                    )
+                )
 
         if not signals:
-            signals.append({
-                "sector": "Combined Neutral",
-                "tickers": ["SPY"],
-                "bias": "NEUTRAL",
-                "reason": "No dominant combined/conditional edge",
-            })
+            signals.append(
+                build_market_signal(
+                    sector="Combined Neutral",
+                    tickers=["SPY"],
+                    bias="NEUTRAL",
+                    reason="No dominant combined/conditional edge",
+                    confidence=0.42,
+                )
+            )
         return signals
 
     @staticmethod

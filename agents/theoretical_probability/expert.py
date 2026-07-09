@@ -715,36 +715,49 @@ class TheoreticalProbabilityExpert:
         dom = bayesian.dominant_regime
         post_p = bayesian.posterior[dom]
 
+        from agent_signal_logic import build_market_signal, confidence_from_edge
+
         bias = (
-            "BULLISH" if dom == "bull" and post_p >= 0.5 else
-            "BEARISH" if dom == "bear" and post_p >= 0.5 else
+            "BULLISH" if dom == "bull" and post_p >= 0.58 else
+            "BEARISH" if dom == "bear" and post_p >= 0.58 else
             "NEUTRAL"
         )
-        signals.append({
-            "sector": "Bayesian Regime",
-            "tickers": ["SPY", "QQQ", "IWM"],
-            "bias": bias,
-            "reason": f"Posterior P({dom})={post_p:.0%} — {bayesian.evidence}",
-        })
+        if bias != "NEUTRAL":
+            signals.append(
+                build_market_signal(
+                    sector="Bayesian Regime",
+                    tickers=["SPY", "QQQ", "IWM"],
+                    bias=bias,
+                    reason=f"Posterior P({dom})={post_p:.0%} — {bayesian.evidence}",
+                    confidence=confidence_from_edge(post_p, samples=120, min_samples=60),
+                )
+            )
 
         bull_f = markov.one_step_forecast.get("bull", 0)
-        if bull_f >= 0.45:
-            signals.append({
-                "sector": "Markov Transition",
-                "tickers": ["SPY", "DIA"],
-                "bias": "BULLISH",
-                "reason": f"P(bull tomorrow | {markov.current_state})={bull_f:.0%}",
-            })
-        elif markov.one_step_forecast.get("bear", 0) >= 0.45:
-            signals.append({
-                "sector": "Markov Transition",
-                "tickers": ["SH", "TLT", "GLD"],
-                "bias": "BEARISH",
-                "reason": f"P(bear tomorrow | {markov.current_state})={markov.one_step_forecast['bear']:.0%}",
-            })
+        if bull_f >= 0.52:
+            signals.append(
+                build_market_signal(
+                    sector="Markov Transition",
+                    tickers=["SPY", "DIA"],
+                    bias="BULLISH",
+                    reason=f"P(bull tomorrow | {markov.current_state})={bull_f:.0%}",
+                    confidence=confidence_from_edge(bull_f, samples=80, min_samples=40),
+                )
+            )
+        elif markov.one_step_forecast.get("bear", 0) >= 0.52:
+            bear_f = markov.one_step_forecast["bear"]
+            signals.append(
+                build_market_signal(
+                    sector="Markov Transition",
+                    tickers=["SH", "TLT", "GLD"],
+                    bias="BEARISH",
+                    reason=f"P(bear tomorrow | {markov.current_state})={bear_f:.0%}",
+                    confidence=confidence_from_edge(1.0 - bear_f, samples=80, min_samples=40),
+                )
+            )
 
         for c in conditionals[:2]:
-            if c.probability >= 0.65:
+            if c.probability >= 0.68:
                 tickers = ["XLK"] if "Technology" in c.event else ["XLU", "GLD"]
                 signals.append({
                     "sector": f"Conditional — {c.event}",

@@ -48,6 +48,8 @@ class TickerScore:
     projected_return_pct: float | None = None
     confidence: float | None = None
     role: str = "equity"
+    by_cluster: dict[str, float] = field(default_factory=dict)
+    trading_gate: dict[str, Any] = field(default_factory=dict)
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -78,6 +80,7 @@ def _add_score(
     confidence: float | None = None,
     role: str = "equity",
     horizon: str | None = None,
+    sector_hint: str = "",
 ) -> None:
     sym = _normalize_symbol(symbol)
     if not sym or sym.startswith("^") and sym not in {"^GSPC"}:
@@ -85,17 +88,49 @@ def _add_score(
             return
     if len(sym) > 6 and not sym.endswith("-USD"):
         return
+    agent_id = str(source or "").replace("_", "-")
+    try:
+        from agent_constraints import domain_allows_symbol, horizon_match_multiplier, load_domain_constraint_settings
+
+        gate = load_domain_constraint_settings()
+        if not domain_allows_symbol(agent_id, sym, sector_hint=sector_hint, settings=gate):
+            return
+    except Exception:
+        pass
+
+    weighted_delta = delta
     try:
         from prediction_accuracy import agent_accuracy_weight
 
-        delta *= agent_accuracy_weight(
+        weight = agent_accuracy_weight(
             source, symbol=sym, horizon=horizon or "24h", for_trading=True
         )
+        if weight <= 0:
+            return
+        weighted_delta = delta * weight
+        try:
+            from agent_constraints import horizon_match_multiplier, load_domain_constraint_settings
+
+            weighted_delta *= horizon_match_multiplier(
+                agent_id,
+                horizon or "24h",
+                settings=load_domain_constraint_settings(),
+            )
+        except Exception:
+            pass
     except Exception:
         pass
     entry = scores.setdefault(sym, TickerScore(symbol=sym))
-    entry.score += delta
+    entry.score += weighted_delta
     entry.sources.add(source)
+    try:
+        from agent_fusion import agent_cluster
+        from trading_gate import _source_agent_id
+
+        cluster = agent_cluster(_source_agent_id(source))
+        entry.by_cluster[cluster] = entry.by_cluster.get(cluster, 0.0) + weighted_delta
+    except Exception:
+        pass
     if note and note not in entry.notes:
         entry.notes.append(note)
     if price is not None:
@@ -144,8 +179,25 @@ def _ingest_signals(data: dict[str, Any], scores: dict[str, TickerScore], source
             t in {"SPY", "QQQ", "IWM", "GLD", "TLT", "HYG", "XLE", "XLK", "XLV", "XLF", "XLU", "XLP", "XLY"}
             for t in sig.get("tickers", [])
         ) else "equity"
+        signal_horizon = str(sig.get("preferred_horizon") or "")
+        if signal_horizon not in HORIZON_WEIGHTS:
+            try:
+                from agent_constraints import agent_preferred_horizon
+
+                signal_horizon = agent_preferred_horizon(source)
+            except Exception:
+                signal_horizon = "24h"
         for ticker in sig.get("tickers", []):
-            _add_score(scores, ticker, delta, source, note, role=role, horizon="24h")
+            _add_score(
+                scores,
+                ticker,
+                delta,
+                source,
+                note,
+                role=role,
+                horizon=signal_horizon,
+                sector_hint=str(sector),
+            )
 
 
 def _ingest_finance_opportunities(data: dict[str, Any], scores: dict[str, TickerScore]) -> None:
@@ -567,6 +619,13 @@ def generate_portfolio(
     ranked = sorted(scores.values(), key=lambda t: t.score, reverse=True)
     if agent_controlled:
         positive = [t for t in ranked if t.score > 0 and _is_agent_pick(t, small=small_account)]
+        try:
+            from trading_gate import filter_tickers_for_trading, load_trading_gate_settings
+
+            gate_settings = load_trading_gate_settings()
+            positive = filter_tickers_for_trading(positive, settings=gate_settings)
+        except Exception:
+            pass
     else:
         positive = [t for t in ranked if t.score > 0]
     selected = _select_holdings(positive, holdings=holdings, small=small_account)
@@ -597,6 +656,10 @@ def generate_portfolio(
             row["projected_return_pct"] = round(ticker.projected_return_pct, 2)
         if ticker.confidence is not None:
             row["confidence"] = round(ticker.confidence, 3)
+        if ticker.by_cluster:
+            row["by_cluster"] = {k: round(v, 4) for k, v in ticker.by_cluster.items()}
+        if getattr(ticker, "trading_gate", None):
+            row["trading_gate"] = ticker.trading_gate
         if notional_usd:
             row["allocation_usd"] = round(notional_usd * weight / 100, 2)
         try:
@@ -665,6 +728,18 @@ def generate_portfolio(
     elif regime["posture"] == "risk-on":
         recommendations.append("Risk-on tilt — growth and momentum sleeves overweighted")
 
+    trading_gate_meta: dict[str, Any] = {}
+    if agent_controlled:
+        try:
+            from trading_gate import load_trading_gate_settings
+
+            trading_gate_meta = load_trading_gate_settings()
+            trading_gate_meta["holdings_passed"] = sum(
+                1 for h in holdings_out if (h.get("trading_gate") or {}).get("passes")
+            )
+        except Exception:
+            pass
+
     return {
         "meta": {
             "generator": "Finance Portfolio Generator",
@@ -677,6 +752,7 @@ def generate_portfolio(
             "agent_controlled": agent_controlled,
             "small_account": small_account,
             "account_growth": growth,
+            "trading_gate": trading_gate_meta,
         },
         "regime": regime,
         "allocation_summary": {
