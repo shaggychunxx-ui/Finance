@@ -336,6 +336,59 @@ def test_accuracy_measurement_horizon_and_regime() -> None:
     assert boards["combined"][0]["agent_id"] == "sales-analytics"
 
 
+def test_validate_agent_output_freshness() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from app_paths import OUTPUT
+    from strategy_engine import validate_agent_output
+
+    started = datetime(2026, 7, 9, 16, 0, 0, tzinfo=timezone.utc)
+    fresh = {
+        "meta": {"analyzed_at": (started + timedelta(seconds=30)).isoformat()},
+        "market_signals": [],
+    }
+    stale = {
+        "meta": {"analyzed_at": (started - timedelta(hours=1)).isoformat()},
+        "market_signals": [],
+    }
+    path = OUTPUT / "_smoke_agent_output.json"
+    try:
+        path.write_text(json.dumps(fresh), encoding="utf-8")
+        assert validate_agent_output(path, started_at=started) is None
+
+        path.write_text(json.dumps(stale), encoding="utf-8")
+        assert validate_agent_output(path, started_at=started) is not None
+
+        path.write_text("{not json", encoding="utf-8")
+        assert validate_agent_output(path, started_at=started) is not None
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_record_pipeline_agent_errors_roundtrip() -> None:
+    from analysis_history import PIPELINE_ERRORS_FILE, record_pipeline_agent_errors
+
+    backup = PIPELINE_ERRORS_FILE.read_text(encoding="utf-8") if PIPELINE_ERRORS_FILE.exists() else None
+    cycle_id = "test00000000T000001Z"
+    try:
+        entry = record_pipeline_agent_errors(
+            cycle_id,
+            failures=[{"agent_id": "order-execution", "label": "Order Execution", "error": "boom"}],
+            degraded=[{"agent_id": "markets", "label": "Markets", "error": "fallback"}],
+            predictor_failure={"agent_id": "market-predictor", "error": "fuse failed"},
+        )
+        assert entry["cycle_id"] == cycle_id
+        assert len(entry["failures"]) == 1
+        store = json.loads(PIPELINE_ERRORS_FILE.read_text(encoding="utf-8"))
+        saved = next(row for row in store["cycles"] if row.get("cycle_id") == cycle_id)
+        assert saved["predictor_failure"]["error"] == "fuse failed"
+    finally:
+        if backup is None:
+            PIPELINE_ERRORS_FILE.unlink(missing_ok=True)
+        else:
+            PIPELINE_ERRORS_FILE.write_text(backup, encoding="utf-8")
+
+
 def test_trading_gate_cluster_and_eligibility() -> None:
     from trading_gate import (
         agent_trading_eligibility,
@@ -446,6 +499,8 @@ def _run_all() -> None:
         test_agent_domain_and_horizon_constraints,
         test_accuracy_measurement_horizon_and_regime,
         test_proactive_enhancement_candidates,
+        test_validate_agent_output_freshness,
+        test_record_pipeline_agent_errors_roundtrip,
         test_trading_gate_cluster_and_eligibility,
     ]
     for test in tests:

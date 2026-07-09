@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import json
+import traceback
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -781,6 +782,177 @@ def _place_swing_protective_orders(client: ETradeClient, plan: StrategyPlan, buy
         pass
 
 
+def _parse_analyzed_at(data: dict[str, Any]) -> datetime | None:
+    meta = data.get("meta") or {}
+    raw = meta.get("analyzed_at") or data.get("analyzed_at")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def validate_agent_output(out_path: Path, *, started_at: datetime) -> str | None:
+    """Return an error message when agent output is missing or stale; else None."""
+    if not out_path.exists():
+        return "output file missing"
+    try:
+        data = json.loads(out_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"invalid JSON: {exc}"
+    if not isinstance(data, dict):
+        return "output is not a JSON object"
+    if not data:
+        return "output is empty"
+    analyzed = _parse_analyzed_at(data)
+    if analyzed is None:
+        return "missing analyzed_at timestamp"
+    slack = started_at - timedelta(seconds=5)
+    if analyzed < slack:
+        return f"stale output (analyzed_at {analyzed.isoformat()} before pipeline start)"
+    return None
+
+
+def _format_pipeline_exception(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _run_platform_agent(
+    *,
+    runner: Callable[..., Any],
+    agent_id: str,
+    label: str,
+    out_path: Path,
+    started_at: datetime,
+    cycle_id: str | None,
+    on_progress: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """Execute one platform agent with validation and non-silent error reporting."""
+    result: dict[str, Any] = {
+        "agent_id": agent_id,
+        "label": label,
+        "ok": False,
+        "degraded": False,
+        "error": "",
+        "traceback": "",
+    }
+    invoke_error: BaseException | None = None
+    try:
+        try:
+            from agents.pipeline_memory import invoke_agent_runner
+
+            invoke_agent_runner(runner, agent_id=agent_id, output=out_path)
+        except Exception as exc:
+            invoke_error = exc
+            runner(output=out_path)
+            result["degraded"] = True
+
+        try:
+            from agents.enhancement import patch_agent_output_enhance_symbols
+
+            patch_agent_output_enhance_symbols(out_path)
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Enhancement patch skipped for {label}: {exc}")
+
+        try:
+            from agent_personality import patch_agent_output_personality
+
+            patch_agent_output_personality(out_path, agent_id)
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Personality patch skipped for {label}: {exc}")
+
+        validation_error = validate_agent_output(out_path, started_at=started_at)
+        if validation_error:
+            raise RuntimeError(validation_error)
+
+        result["ok"] = True
+        if result["degraded"] and on_progress:
+            invoke_msg = _format_pipeline_exception(invoke_error) if invoke_error else "memory steering unavailable"
+            on_progress(f"Agent degraded: {label} — {invoke_msg}")
+
+        try:
+            from analysis_history import archive_agent_output
+
+            archive_agent_output(agent_id, out_path, cycle_id=cycle_id)
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Archive skipped for {label}: {exc}")
+    except Exception as exc:
+        result["error"] = _format_pipeline_exception(exc)
+        result["traceback"] = traceback.format_exc()
+        if on_progress:
+            on_progress(f"Agent failed: {label} — {result['error']}")
+    return result
+
+
+def _run_market_predictor(
+    *,
+    started_at: datetime,
+    cycle_id: str | None,
+    on_progress: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """Fuse market predictor output with validation and error reporting."""
+    from agents.market_predictor import run_market_predictor_analysis
+
+    predictor_path = OUTPUT / "market_predictions.json"
+    result: dict[str, Any] = {
+        "agent_id": "market-predictor",
+        "label": "Market Predictor",
+        "ok": False,
+        "degraded": False,
+        "error": "",
+        "traceback": "",
+    }
+    invoke_error: BaseException | None = None
+    try:
+        try:
+            from agents.pipeline_memory import invoke_agent_runner
+
+            invoke_agent_runner(
+                run_market_predictor_analysis,
+                agent_id="market-predictor",
+                output=predictor_path,
+            )
+        except Exception as exc:
+            invoke_error = exc
+            run_market_predictor_analysis(output=predictor_path)
+            result["degraded"] = True
+
+        try:
+            from agent_personality import patch_agent_output_personality
+
+            patch_agent_output_personality(predictor_path, "market-predictor")
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Personality patch skipped for Market Predictor: {exc}")
+
+        validation_error = validate_agent_output(predictor_path, started_at=started_at)
+        if validation_error:
+            raise RuntimeError(validation_error)
+
+        result["ok"] = True
+        if result["degraded"] and on_progress:
+            invoke_msg = _format_pipeline_exception(invoke_error) if invoke_error else "memory steering unavailable"
+            on_progress(f"Market Predictor degraded — {invoke_msg}")
+
+        try:
+            from analysis_history import archive_agent_output
+
+            archive_agent_output("market-predictor", predictor_path, cycle_id=cycle_id)
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Archive skipped for Market Predictor: {exc}")
+    except Exception as exc:
+        result["error"] = _format_pipeline_exception(exc)
+        result["traceback"] = traceback.format_exc()
+        if on_progress:
+            on_progress(f"Market Predictor failed — {result['error']}")
+    return result
+
+
 def _reapply_pipeline_patches(sources: list[dict[str, str]]) -> None:
     """Apply fresh personality and learning after pipeline memory is finalized."""
     for src in sources:
@@ -832,47 +1004,62 @@ def run_agent_pipeline(
         if on_progress:
             on_progress(f"Proactive E*TRADE enhancement skipped: {exc}")
     sources = active_agent_sources(check_remote=check_remote)
+    pipeline_started_at = datetime.now(timezone.utc)
     ok = 0
     skipped = 0
+    agent_failures: list[dict[str, Any]] = []
+    agent_degraded: list[dict[str, Any]] = []
     for index, src in enumerate(sources, start=1):
         aid = src["id"]
+        label = str(src.get("label") or aid)
         if on_progress:
-            on_progress(f"Agent {index}/{len(sources)}: {src.get('label', aid)}")
+            on_progress(f"Agent {index}/{len(sources)}: {label}")
         runner = resolve_runner(aid, runners)
         if runner is None:
             skipped += 1
+            if on_progress:
+                on_progress(f"Agent skipped: {label} — no runner")
             continue
-        try:
-            out_path = OUTPUT / src["file"]
-            try:
-                from agents.pipeline_memory import invoke_agent_runner
-
-                invoke_agent_runner(runner, agent_id=aid, output=out_path)
-            except Exception:
-                runner(output=out_path)
-            try:
-                from agents.enhancement import patch_agent_output_enhance_symbols
-
-                patch_agent_output_enhance_symbols(out_path)
-            except Exception:
-                pass
-            try:
-                from agent_personality import patch_agent_output_personality
-
-                patch_agent_output_personality(out_path, aid)
-            except Exception:
-                pass
+        out_path = OUTPUT / src["file"]
+        outcome = _run_platform_agent(
+            runner=runner,
+            agent_id=aid,
+            label=label,
+            out_path=out_path,
+            started_at=pipeline_started_at,
+            cycle_id=cycle_id,
+            on_progress=on_progress,
+        )
+        if outcome.get("ok"):
             ok += 1
-            try:
-                from analysis_history import archive_agent_output
-
-                archive_agent_output(aid, out_path, cycle_id=cycle_id)
-            except Exception:
-                pass
-        except Exception:
-            pass
+            if outcome.get("degraded"):
+                agent_degraded.append(
+                    {
+                        "agent_id": aid,
+                        "label": label,
+                        "error": outcome.get("error") or "memory steering fallback",
+                    }
+                )
+            continue
+        agent_failures.append(
+            {
+                "agent_id": aid,
+                "label": label,
+                "error": outcome.get("error") or "unknown error",
+                "traceback": str(outcome.get("traceback") or "")[-2000:],
+            }
+        )
     if skipped and on_progress:
         on_progress(f"Skipped {skipped} agent(s) without runners.")
+    if agent_failures and on_progress:
+        preview = "; ".join(
+            f"{row.get('label') or row.get('agent_id')}: {row.get('error')}"
+            for row in agent_failures[:4]
+        )
+        extra = len(agent_failures) - 4
+        if extra > 0:
+            preview += f"; and {extra} more"
+        on_progress(f"Pipeline agent failures ({len(agent_failures)}): {preview}")
     try:
         from etrade_market_enhancer import run_etrade_enhancement
 
@@ -903,25 +1090,28 @@ def run_agent_pipeline(
             on_progress(f"Pipeline backtest skipped: {exc}")
     if on_progress:
         on_progress("Fusing Market Predictor…")
-    from agents.market_predictor import run_market_predictor_analysis
-
-    predictor_path = OUTPUT / "market_predictions.json"
-    try:
-        from agents.pipeline_memory import invoke_agent_runner
-
-        invoke_agent_runner(
-            run_market_predictor_analysis,
-            agent_id="market-predictor",
-            output=predictor_path,
+    predictor_outcome = _run_market_predictor(
+        started_at=pipeline_started_at,
+        cycle_id=cycle_id,
+        on_progress=on_progress,
+    )
+    predictor_ok = bool(predictor_outcome.get("ok"))
+    predictor_failure: dict[str, Any] | None = None
+    if not predictor_ok:
+        predictor_failure = {
+            "agent_id": "market-predictor",
+            "label": "Market Predictor",
+            "error": predictor_outcome.get("error") or "unknown error",
+            "traceback": str(predictor_outcome.get("traceback") or "")[-2000:],
+        }
+    elif predictor_outcome.get("degraded"):
+        agent_degraded.append(
+            {
+                "agent_id": "market-predictor",
+                "label": "Market Predictor",
+                "error": "memory steering fallback",
+            }
         )
-    except Exception:
-        run_market_predictor_analysis(output=predictor_path)
-    try:
-        from agent_personality import patch_agent_output_personality
-
-        patch_agent_output_personality(predictor_path, "market-predictor")
-    except Exception:
-        pass
     if cycle_id is None:
         try:
             from analysis_history import new_pipeline_cycle_id
@@ -930,14 +1120,14 @@ def run_agent_pipeline(
         except Exception:
             cycle_id = None
     try:
-        from analysis_history import archive_agent_output, archive_pipeline_cycle
+        from analysis_history import archive_pipeline_cycle
 
-        archive_agent_output("market-predictor", predictor_path, cycle_id=cycle_id)
         archive_pipeline_cycle(cycle_id=cycle_id, refresh_context=False)
         if on_progress and cycle_id:
             on_progress(f"Analysis history saved (cycle {cycle_id}).")
-    except Exception:
-        pass
+    except Exception as exc:
+        if on_progress:
+            on_progress(f"Analysis history skipped: {exc}")
     stats: dict[str, int] = {}
     try:
         from prediction_accuracy import run_accuracy_cycle
@@ -958,19 +1148,34 @@ def run_agent_pipeline(
     except Exception:
         pass
     try:
-        from analysis_history import finalize_pipeline_cycle
+        from analysis_history import finalize_pipeline_cycle, record_pipeline_agent_errors
 
         if cycle_id:
+            if agent_failures or agent_degraded or predictor_failure:
+                record_pipeline_agent_errors(
+                    cycle_id,
+                    failures=agent_failures,
+                    degraded=agent_degraded,
+                    predictor_failure=predictor_failure,
+                )
             finalize_pipeline_cycle(
                 cycle_id,
                 agents_ok=ok,
                 agents_total=len(sources),
+                agents_failed=len(agent_failures),
+                agent_failures=agent_failures,
+                predictor_ok=predictor_ok,
                 accuracy_stats=stats,
                 benchmark=bench,
             )
             _reapply_pipeline_patches(sources)
             if on_progress:
                 on_progress("Pipeline memory updated — future runs will use this cycle.")
+                if agent_failures or not predictor_ok:
+                    on_progress(
+                        f"Pipeline finished with issues — agents {ok}/{len(sources)}, "
+                        f"predictor {'ok' if predictor_ok else 'failed'}"
+                    )
     except Exception:
         pass
     try:

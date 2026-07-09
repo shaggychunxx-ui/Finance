@@ -16,6 +16,7 @@ TICKER_DIR = HISTORY_ROOT / "tickers"
 INDEX_FILE = HISTORY_ROOT / "index.json"
 ACCOUNT_VALUES_FILE = HISTORY_ROOT / "account_values.json"
 PIPELINE_RUNS_FILE = HISTORY_ROOT / "pipeline_runs.json"
+PIPELINE_ERRORS_FILE = HISTORY_ROOT / "pipeline_errors.json"
 RUN_CONTEXT_FILE = OUTPUT / "pipeline_run_context.json"
 AGENT_CONTEXT_FILE = OUTPUT / "agent_context.json"
 
@@ -194,11 +195,48 @@ def _save_pipeline_runs_store(store: dict[str, Any]) -> None:
     _write_json(PIPELINE_RUNS_FILE, store)
 
 
+def record_pipeline_agent_errors(
+    cycle_id: str,
+    *,
+    failures: list[dict[str, Any]] | None = None,
+    degraded: list[dict[str, Any]] | None = None,
+    predictor_failure: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Persist per-cycle agent failures for debugging and GUI/worker visibility."""
+    _ensure_dirs()
+    entry = {
+        "cycle_id": cycle_id,
+        "at": _now_iso(),
+        "failures": list(failures or [])[:40],
+        "degraded": list(degraded or [])[:40],
+        "predictor_failure": predictor_failure,
+    }
+    store = _load_json(PIPELINE_ERRORS_FILE)
+    if not isinstance(store, dict):
+        store = {"cycles": []}
+    cycles: list[dict[str, Any]] = list(store.setdefault("cycles", []))
+    replaced = False
+    for index, row in enumerate(cycles):
+        if row.get("cycle_id") == cycle_id:
+            cycles[index] = {**row, **entry}
+            replaced = True
+            break
+    if not replaced:
+        cycles.append(entry)
+    store["cycles"] = cycles[-MAX_PIPELINE_RUNS:]
+    store["updated_at"] = _now_iso()
+    _write_json(PIPELINE_ERRORS_FILE, store)
+    return entry
+
+
 def record_pipeline_run(
     cycle_id: str,
     *,
     agents_ok: int = 0,
     agents_total: int = 0,
+    agents_failed: int = 0,
+    agent_failures: list[dict[str, Any]] | None = None,
+    predictor_ok: bool | None = None,
     accuracy_stats: dict[str, int] | None = None,
     benchmark: dict[str, Any] | None = None,
     file_count: int = 0,
@@ -214,6 +252,9 @@ def record_pipeline_run(
         "at": _now_iso(),
         "agents_ok": int(agents_ok),
         "agents_total": int(agents_total),
+        "agents_failed": int(agents_failed),
+        "agent_failures": list(agent_failures or [])[:20],
+        "predictor_ok": predictor_ok,
         "predictions_recorded": int(stats.get("recorded") or 0),
         "predictions_scored": int(stats.get("scored") or 0),
         "benchmark_trials": int(bench_metrics.get("total_trials") or 0),
@@ -321,6 +362,9 @@ def finalize_pipeline_cycle(
     *,
     agents_ok: int = 0,
     agents_total: int = 0,
+    agents_failed: int = 0,
+    agent_failures: list[dict[str, Any]] | None = None,
+    predictor_ok: bool | None = None,
     accuracy_stats: dict[str, int] | None = None,
     benchmark: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -334,6 +378,9 @@ def finalize_pipeline_cycle(
         cycle_id,
         agents_ok=agents_ok,
         agents_total=agents_total,
+        agents_failed=agents_failed,
+        agent_failures=agent_failures,
+        predictor_ok=predictor_ok,
         accuracy_stats=accuracy_stats,
         benchmark=benchmark,
         file_count=int(snap.get("file_count") or 0),
