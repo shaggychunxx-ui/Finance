@@ -8,6 +8,10 @@ repo-wide agent behavior — most notably the per-run randomized
 
 When adding a new agent, scan this file and inherit from ``BaseExpert``
 instead of re-implementing this behavior by hand.
+
+Personality traits (risk appetite, conviction, patience, etc.) are applied
+centrally after each run via ``agent_personality.patch_agent_output_personality``;
+configure them in ``config/agent_personalities.json``.
 """
 
 from __future__ import annotations
@@ -62,3 +66,13 @@ class BaseExpert:
 
     def enhance_symbols_payload(self) -> list[dict[str, Any]]:
         return list(self._enhance_requests)
+
+    def personality_meta(self, agent_id: str) -> dict[str, Any]:
+        """Traits for this agent id (used when writing report meta)."""
+        from agent_personality import get_agent_personality, personality_horizon_preference
+
+        traits = get_agent_personality(agent_id)
+        payload = traits.as_dict()
+        payload["temperature"] = self.temperature
+        payload["preferred_horizon"] = personality_horizon_preference(agent_id)
+        return payload

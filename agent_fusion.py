@@ -182,7 +182,15 @@ def current_regime() -> dict[str, Any]:
 
 
 def agent_default_horizon(agent_id: str) -> str:
-    return AGENT_DEFAULT_HORIZON.get(str(agent_id or ""), "24h")
+    aid = str(agent_id or "")
+    if aid in AGENT_DEFAULT_HORIZON:
+        return AGENT_DEFAULT_HORIZON[aid]
+    try:
+        from agent_personality import personality_horizon_preference
+
+        return personality_horizon_preference(aid)
+    except Exception:
+        return "24h"
 
 
 def is_event_day(*, recorded_at: str | None = None) -> bool:
@@ -344,6 +352,20 @@ def fusion_weight(
     except Exception:
         pass
 
+    try:
+        from account_balance_penalty import agent_balance_penalty_multiplier
+
+        base *= agent_balance_penalty_multiplier(aid)
+    except Exception:
+        pass
+
+    try:
+        from agent_personality import personality_fusion_factor
+
+        base *= personality_fusion_factor(aid, regime_posture=regime_posture or current_regime().get("posture", "neutral"))
+    except Exception:
+        pass
+
     return max(0.0, min(1.5, base))
 
 
@@ -371,21 +393,58 @@ def export_walk_forward_weights() -> dict[str, Any]:
     """Persist latest fusion weights for inspection and downstream use."""
     from agents.platform_catalog import active_agent_sources
 
+    balance_penalties: dict[str, Any] = {}
+    try:
+        from account_balance_penalty import rebuild_balance_penalties
+
+        balance_penalties = rebuild_balance_penalties()
+    except Exception:
+        pass
+
     regime = current_regime()
     posture = str(regime.get("posture", "neutral"))
     agents: dict[str, Any] = {}
     for src in active_agent_sources(check_remote=False):
         aid = src["id"]
+        bal_mult = 1.0
+        bal_blame = 0.0
+        bal_credit = 0.0
+        bal_benchmark = 0.0
+        bal_entry = (balance_penalties.get("agents") or {}).get(aid)
+        if isinstance(bal_entry, dict):
+            bal_mult = float(bal_entry.get("multiplier") or 1.0)
+            bal_blame = float(bal_entry.get("blame_score") or 0.0)
+            bal_credit = float(bal_entry.get("reward_score") or 0.0)
+            bal_benchmark = float(bal_entry.get("benchmark_reward_score") or 0.0)
+        personality_label = ""
+        personality_fit = 1.0
+        try:
+            from agent_personality import get_agent_personality, personality_fusion_factor
+
+            personality_label = get_agent_personality(aid).label
+            personality_fit = personality_fusion_factor(aid, regime_posture=posture)
+        except Exception:
+            pass
         agents[aid] = {
             "cluster": agent_cluster(aid),
             "weight_24h": round(fusion_weight(aid, horizon="24h", regime_posture=posture), 3),
             "weight_1wk": round(fusion_weight(aid, horizon="1wk", regime_posture=posture), 3),
             "weight_1mo": round(fusion_weight(aid, horizon="1mo", regime_posture=posture), 3),
             "regime": posture,
+            "balance_multiplier": round(bal_mult, 3),
+            "balance_blame": round(bal_blame, 3),
+            "balance_reward": round(bal_credit, 3),
+            "daily_benchmark_reward": round(bal_benchmark, 3),
+            "personality_label": personality_label,
+            "personality_fit": round(personality_fit, 3),
         }
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "regime": regime,
+        "account_balance": balance_penalties.get("account"),
+        "daily_growth_pct": balance_penalties.get("daily_growth_pct"),
+        "benchmark_tiers_hit": balance_penalties.get("benchmark_tiers_hit", []),
+        "daily_benchmarks_pct": balance_penalties.get("daily_benchmarks_pct", []),
         "agents": agents,
         "accuracy_floor_pct": ACCURACY_FLOOR_PCT,
         "accuracy_exclude_pct": ACCURACY_EXCLUDE_PCT,

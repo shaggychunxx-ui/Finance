@@ -426,7 +426,11 @@ class FinanceAgentsApp(tk.Frame):
         self._accuracy_chip = tk.Label(
             meta_row, text="", bg=BORDER, fg=ACCENT2, font=chip_font, padx=chip_pad[0], pady=chip_pad[1]
         )
-        self._accuracy_chip.pack(side=tk.LEFT)
+        self._accuracy_chip.pack(side=tk.LEFT, padx=(0, self._m.px(6)))
+        self._personality_chip = tk.Label(
+            meta_row, text="", bg=BORDER, fg=MUTED, font=chip_font, padx=chip_pad[0], pady=chip_pad[1]
+        )
+        self._personality_chip.pack(side=tk.LEFT)
 
         self._desc_label = tk.Label(
             header,
@@ -640,9 +644,16 @@ class FinanceAgentsApp(tk.Frame):
             fg="#0a0e17" if status in ("Fresh", "Stale") else TEXT,
         )
         acc_label = agent_accuracy_label(agent)
+        try:
+            from agent_personality import personality_label
+
+            pers_label = personality_label(agent["id"])
+        except Exception:
+            pers_label = ""
         if bucket == "none":
             self._updated_label.configure(text=" No report yet ", bg=BORDER, fg=MUTED)
             self._accuracy_chip.configure(text="", bg="#152238")
+            self._personality_chip.configure(text="", bg="#152238")
         else:
             self._updated_label.configure(text=f" Updated {age_label} ", bg=BORDER, fg=TEXT)
             if acc_label not in ("—", ""):
@@ -656,6 +667,10 @@ class FinanceAgentsApp(tk.Frame):
                 self._accuracy_chip.configure(text=f" Accuracy {acc_label} ", bg=BORDER, fg=acc_color)
             else:
                 self._accuracy_chip.configure(text="", bg="#152238")
+            if pers_label:
+                self._personality_chip.configure(text=f" {pers_label} ", bg=BORDER, fg=ACCENT)
+            else:
+                self._personality_chip.configure(text="", bg="#152238")
         self._load_agent_output(agent)
 
     def _trim_report_header(self, text: str) -> str:
@@ -668,6 +683,10 @@ class FinanceAgentsApp(tk.Frame):
             if start < len(lines) and lines[start].strip() == "":
                 start += 1
             if start < len(lines) and lines[start].startswith("Tracked accuracy:"):
+                start += 1
+                if start < len(lines) and lines[start].strip() == "":
+                    start += 1
+            if start < len(lines) and lines[start].startswith("Personality:"):
                 start += 1
                 if start < len(lines) and lines[start].strip() == "":
                     start += 1
@@ -693,6 +712,7 @@ class FinanceAgentsApp(tk.Frame):
             "Recent events",
             "Top movers",
             "Tracked accuracy",
+            "Personality",
         )
         for section in section_names:
             start = "1.0"
@@ -800,6 +820,14 @@ class FinanceAgentsApp(tk.Frame):
 
         return resolve_runner(agent_id, self._runners)
 
+    def _apply_personality_patch(self, agent_id: str, output_name: str) -> None:
+        try:
+            from agent_personality import patch_agent_output_personality
+
+            patch_agent_output_personality(OUTPUT / output_name, agent_id)
+        except Exception:
+            pass
+
     def _agent_thread(self, agent: dict[str, str]) -> None:
         try:
             runner = self._resolve_runner(agent["id"])
@@ -807,6 +835,7 @@ class FinanceAgentsApp(tk.Frame):
                 raise KeyError(f"No runner registered for {agent['id']}")
             OUTPUT.mkdir(parents=True, exist_ok=True)
             runner(output=OUTPUT / agent["output"])
+            self._apply_personality_patch(agent["id"], agent["output"])
             self._schedule_ui(self._refresh_agent, agent["id"])
             self._schedule_ui(self._set_status, f"Complete — {agent['label']}", UP)
         except Exception as exc:
@@ -860,6 +889,7 @@ class FinanceAgentsApp(tk.Frame):
                 continue
             try:
                 runner(output=OUTPUT / agent["output"])
+                self._apply_personality_patch(agent["id"], agent["output"])
                 ok += 1
                 self._schedule_ui(self._refresh_agent, agent["id"])
             except Exception as exc:
@@ -907,6 +937,7 @@ class FinanceAgentsApp(tk.Frame):
                 continue
             try:
                 runner(output=OUTPUT / agent["output"])
+                self._apply_personality_patch(agent["id"], agent["output"])
                 ok += 1
                 self._schedule_ui(self._refresh_agent, agent["id"])
             except Exception as exc:
@@ -917,6 +948,7 @@ class FinanceAgentsApp(tk.Frame):
             from agents.market_predictor import run_market_predictor_analysis
 
             run_market_predictor_analysis(output=OUTPUT / "market_predictions.json")
+            self._apply_personality_patch("market-predictor", "market_predictions.json")
             self._schedule_ui(self._refresh_agent, "market-predictor")
             self._schedule_ui(
                 self._set_status,

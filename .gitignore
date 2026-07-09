@@ -18,6 +18,7 @@ config.json
 etrade_config.json
 etrade_tokens.json
 ui_prefs.json
+config/agent_personalities.local.json
 
 # Runtime output
 output/

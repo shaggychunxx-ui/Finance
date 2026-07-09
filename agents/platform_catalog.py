@@ -300,6 +300,11 @@ def active_agent_sources(*, check_remote: bool = True) -> list[dict[str, Any]]:
 
 def full_agent_catalog(*, check_remote: bool = True) -> list[dict[str, Any]]:
     """Catalog entries for GUI lists (includes market predictor)."""
+    try:
+        from agent_personality import personality_label as _personality_label
+    except Exception:
+        _personality_label = None
+
     catalog = [
         {
             "id": entry["id"],
@@ -307,6 +312,11 @@ def full_agent_catalog(*, check_remote: bool = True) -> list[dict[str, Any]]:
             "category": entry.get("category", "Platform"),
             "output": entry["file"],
             "desc": entry.get("desc", ""),
+            **(
+                {"personality": _personality_label(entry["id"])}
+                if _personality_label
+                else {}
+            ),
         }
         for entry in build_platform_catalog(check_remote=check_remote)
     ]
@@ -317,6 +327,11 @@ def full_agent_catalog(*, check_remote: bool = True) -> list[dict[str, Any]]:
             "category": "Ensemble",
             "output": "market_predictions.json",
             "desc": "Fuses all agents into top market mover predictions.",
+            **(
+                {"personality": _personality_label("market-predictor")}
+                if _personality_label
+                else {}
+            ),
         }
     )
     return catalog

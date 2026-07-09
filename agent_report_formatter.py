@@ -67,8 +67,33 @@ def format_report_summary(data: dict[str, Any]) -> str:
             if acc not in ("—", ""):
                 lines.append(f"Tracked accuracy: {acc}")
                 lines.append("")
+            try:
+                from agent_personality import personality_summary
+
+                lines.append(f"Personality: {personality_summary(agent_row['id'])}")
+                lines.append("")
+            except Exception:
+                pass
     except Exception:
         pass
+
+    personality = meta.get("personality")
+    if isinstance(personality, dict) and personality.get("label"):
+        summary_bits = []
+        traits = personality.get("traits")
+        if isinstance(traits, dict):
+            for key in ("risk_appetite", "conviction", "patience"):
+                if key in traits:
+                    summary_bits.append(f"{key.replace('_', ' ')} {float(traits[key]):.0%}")
+        horizon = meta.get("preferred_horizon")
+        if horizon:
+            summary_bits.append(f"horizon {horizon}")
+        detail = personality["label"]
+        if summary_bits:
+            detail += " · " + ", ".join(summary_bits)
+        if not any(line.startswith("Personality:") for line in lines):
+            lines.append(f"Personality: {detail}")
+            lines.append("")
 
     summary = meta.get("expert_summary") or meta.get("national_headline")
     if summary:

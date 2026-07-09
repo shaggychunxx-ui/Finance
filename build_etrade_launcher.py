@@ -53,6 +53,8 @@ def main() -> int:
         "position_analysis",
         "position_chart",
         "account_growth_chart",
+        "account_balance_penalty",
+        "agent_personality",
         "trade_history",
         "github_sync",
         "strategy_engine",

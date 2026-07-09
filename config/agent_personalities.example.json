@@ -1,0 +1,194 @@
+{
+  "description": "Default agent personality traits (0.0-1.0). Copy to agent_personalities.local.json to override.",
+  "agents": {
+    "markets": {
+      "label": "The Momentum Hawk",
+      "risk_appetite": 0.82,
+      "conviction": 0.72,
+      "patience": 0.35,
+      "contrarian": 0.18,
+      "defensive_bias": 0.22,
+      "volatility_tolerance": 0.7
+    },
+    "finance": {
+      "label": "The Opportunity Scout",
+      "risk_appetite": 0.78,
+      "conviction": 0.68,
+      "patience": 0.4,
+      "contrarian": 0.25,
+      "defensive_bias": 0.2,
+      "volatility_tolerance": 0.65
+    },
+    "financial-data": {
+      "label": "The Statistician",
+      "risk_appetite": 0.55,
+      "conviction": 0.8,
+      "patience": 0.62,
+      "contrarian": 0.45,
+      "defensive_bias": 0.35,
+      "volatility_tolerance": 0.55
+    },
+    "datascience": {
+      "label": "The Quant",
+      "risk_appetite": 0.58,
+      "conviction": 0.76,
+      "patience": 0.58,
+      "contrarian": 0.4,
+      "defensive_bias": 0.3,
+      "volatility_tolerance": 0.6
+    },
+    "sales-analytics": {
+      "label": "The Retail Reader",
+      "risk_appetite": 0.64,
+      "conviction": 0.66,
+      "patience": 0.48,
+      "contrarian": 0.3,
+      "defensive_bias": 0.28,
+      "volatility_tolerance": 0.52
+    },
+    "geopolitics": {
+      "label": "The Risk Sentinel",
+      "risk_appetite": 0.28,
+      "conviction": 0.74,
+      "patience": 0.7,
+      "contrarian": 0.55,
+      "defensive_bias": 0.78,
+      "volatility_tolerance": 0.35
+    },
+    "events": {
+      "label": "The Headline Watch",
+      "risk_appetite": 0.32,
+      "conviction": 0.62,
+      "patience": 0.45,
+      "contrarian": 0.48,
+      "defensive_bias": 0.62,
+      "volatility_tolerance": 0.38
+    },
+    "patents": {
+      "label": "The Innovation Scout",
+      "risk_appetite": 0.7,
+      "conviction": 0.6,
+      "patience": 0.8,
+      "contrarian": 0.35,
+      "defensive_bias": 0.25,
+      "volatility_tolerance": 0.58
+    },
+    "electricity": {
+      "label": "The Grid Steward",
+      "risk_appetite": 0.38,
+      "conviction": 0.68,
+      "patience": 0.72,
+      "contrarian": 0.22,
+      "defensive_bias": 0.7,
+      "volatility_tolerance": 0.42
+    },
+    "grid": {
+      "label": "The Cautious Engineer",
+      "risk_appetite": 0.36,
+      "conviction": 0.7,
+      "patience": 0.74,
+      "contrarian": 0.2,
+      "defensive_bias": 0.72,
+      "volatility_tolerance": 0.4
+    },
+    "meteorology": {
+      "label": "The Weather Watch",
+      "risk_appetite": 0.34,
+      "conviction": 0.64,
+      "patience": 0.55,
+      "contrarian": 0.28,
+      "defensive_bias": 0.68,
+      "volatility_tolerance": 0.45
+    },
+    "transportation": {
+      "label": "The Infrastructure Analyst",
+      "risk_appetite": 0.46,
+      "conviction": 0.62,
+      "patience": 0.68,
+      "contrarian": 0.3,
+      "defensive_bias": 0.55,
+      "volatility_tolerance": 0.48
+    },
+    "logistics": {
+      "label": "The Freight Tracker",
+      "risk_appetite": 0.5,
+      "conviction": 0.6,
+      "patience": 0.6,
+      "contrarian": 0.38,
+      "defensive_bias": 0.48,
+      "volatility_tolerance": 0.5
+    },
+    "theoretical-probability": {
+      "label": "The Theorist",
+      "risk_appetite": 0.48,
+      "conviction": 0.82,
+      "patience": 0.75,
+      "contrarian": 0.52,
+      "defensive_bias": 0.4,
+      "volatility_tolerance": 0.55
+    },
+    "empirical-probability": {
+      "label": "The Experimentalist",
+      "risk_appetite": 0.52,
+      "conviction": 0.78,
+      "patience": 0.7,
+      "contrarian": 0.46,
+      "defensive_bias": 0.38,
+      "volatility_tolerance": 0.58
+    },
+    "combined-conditional": {
+      "label": "The Conditional Thinker",
+      "risk_appetite": 0.5,
+      "conviction": 0.8,
+      "patience": 0.72,
+      "contrarian": 0.5,
+      "defensive_bias": 0.36,
+      "volatility_tolerance": 0.54
+    },
+    "research-statistics": {
+      "label": "The Research Scientist",
+      "risk_appetite": 0.45,
+      "conviction": 0.84,
+      "patience": 0.78,
+      "contrarian": 0.48,
+      "defensive_bias": 0.34,
+      "volatility_tolerance": 0.5
+    },
+    "order-execution": {
+      "label": "The Execution Purist",
+      "risk_appetite": 0.3,
+      "conviction": 0.9,
+      "patience": 0.4,
+      "contrarian": 0.15,
+      "defensive_bias": 0.6,
+      "volatility_tolerance": 0.25
+    },
+    "data-steward": {
+      "label": "The Steward",
+      "risk_appetite": 0.4,
+      "conviction": 0.88,
+      "patience": 0.85,
+      "contrarian": 0.2,
+      "defensive_bias": 0.5,
+      "volatility_tolerance": 0.3
+    },
+    "records-management": {
+      "label": "The Archivist",
+      "risk_appetite": 0.35,
+      "conviction": 0.86,
+      "patience": 0.9,
+      "contrarian": 0.18,
+      "defensive_bias": 0.55,
+      "volatility_tolerance": 0.28
+    },
+    "market-predictor": {
+      "label": "The Ensemble Conductor",
+      "risk_appetite": 0.5,
+      "conviction": 0.75,
+      "patience": 0.55,
+      "contrarian": 0.35,
+      "defensive_bias": 0.45,
+      "volatility_tolerance": 0.5
+    }
+  }
+}

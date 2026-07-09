@@ -768,6 +768,12 @@ def run_agent_pipeline(
                 patch_agent_output_enhance_symbols(out_path)
             except Exception:
                 pass
+            try:
+                from agent_personality import patch_agent_output_personality
+
+                patch_agent_output_personality(out_path, aid)
+            except Exception:
+                pass
             ok += 1
             try:
                 from analysis_history import archive_agent_output
@@ -790,12 +796,19 @@ def run_agent_pipeline(
         on_progress("Fusing Market Predictor…")
     from agents.market_predictor import run_market_predictor_analysis
 
-    run_market_predictor_analysis(output=OUTPUT / "market_predictions.json")
+    predictor_path = OUTPUT / "market_predictions.json"
+    run_market_predictor_analysis(output=predictor_path)
+    try:
+        from agent_personality import patch_agent_output_personality
+
+        patch_agent_output_personality(predictor_path, "market-predictor")
+    except Exception:
+        pass
     cycle_id: str | None = None
     try:
         from analysis_history import archive_agent_output, archive_pipeline_cycle
 
-        archive_agent_output("market-predictor", OUTPUT / "market_predictions.json")
+        archive_agent_output("market-predictor", predictor_path)
         cycle_id = archive_pipeline_cycle()
         if on_progress:
             on_progress(f"Analysis history saved (cycle {cycle_id}).")

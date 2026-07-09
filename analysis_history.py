@@ -232,6 +232,12 @@ def record_account_value(
     data["growth_pct"] = _growth_pct(data)
     data["updated_at"] = stamp
     _write_json(ACCOUNT_VALUES_FILE, data)
+    try:
+        from account_balance_penalty import rebuild_balance_penalties
+
+        rebuild_balance_penalties()
+    except Exception:
+        pass
     build_agent_context()
 
 
@@ -384,6 +390,14 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
     except Exception:
         pass
 
+    balance_penalties: dict[str, Any] = {}
+    try:
+        from account_balance_penalty import rebuild_balance_penalties
+
+        balance_penalties = rebuild_balance_penalties()
+    except Exception:
+        pass
+
     context = {
         "generated_at": _now_iso(),
         "objective": "maximize_multi_horizon_profit",
@@ -394,6 +408,19 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
             "baseline_value": growth.get("baseline_value"),
             "latest_value": growth.get("latest_value"),
             "growth_pct": growth.get("growth_pct"),
+            "is_declining": balance_penalties.get("is_declining"),
+            "is_rising": balance_penalties.get("is_rising"),
+            "trend": balance_penalties.get("trend"),
+            "penalty_strength": (balance_penalties.get("account") or {}).get("penalty_strength"),
+            "reward_strength": (balance_penalties.get("account") or {}).get("reward_strength"),
+            "daily_growth_pct": balance_penalties.get("daily_growth_pct"),
+            "benchmark_tiers_hit": balance_penalties.get("benchmark_tiers_hit", []),
+            "benchmark_peak_pct": balance_penalties.get("benchmark_peak_pct", 0),
+        },
+        "balance_penalties": {
+            "updated_at": balance_penalties.get("updated_at"),
+            "held_symbols": balance_penalties.get("held_symbols", []),
+            "agents": balance_penalties.get("agents", {}),
         },
         "persistent_bullish_tickers": persistent,
         "regime_history": regime_history[-lookback_cycles:],

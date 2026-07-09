@@ -769,6 +769,7 @@ def pending_prediction_count(agent_id: str) -> int:
 def agent_accuracy_label(agent_id: str) -> str:
     entry = get_agent_accuracy(agent_id)
     total = int(entry.get("total_scored") or entry.get("total") or 0) if entry else 0
+    label = "—"
     if total >= MIN_SAMPLES_FOR_WEIGHT and entry:
         pct = (
             entry.get("combined_accuracy_pct")
@@ -778,14 +779,26 @@ def agent_accuracy_label(agent_id: str) -> str:
         if pct is not None:
             mag = entry.get("magnitude_accuracy_pct")
             if mag is not None and int(entry.get("magnitude_scored") or 0) >= MIN_SAMPLES_FOR_MAGNITUDE:
-                return f"{pct:.0f}% (mag {mag:.0f}%)"
-            return f"{pct:.0f}%"
-    pending = pending_prediction_count(agent_id)
-    if pending:
-        return f"{pending} tracking"
-    if total:
-        return f"{total} scored"
-    return "—"
+                label = f"{pct:.0f}% (mag {mag:.0f}%)"
+            else:
+                label = f"{pct:.0f}%"
+    else:
+        pending = pending_prediction_count(agent_id)
+        if pending:
+            label = f"{pending} tracking"
+        elif total:
+            label = f"{total} scored"
+    try:
+        from account_balance_penalty import penalty_label
+
+        bal = penalty_label(agent_id)
+        if bal and label != "—":
+            return f"{label} · {bal}"
+        if bal:
+            return bal
+    except Exception:
+        pass
+    return label
 
 
 def agent_accuracy_weight(
