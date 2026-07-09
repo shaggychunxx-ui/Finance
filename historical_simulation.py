@@ -34,6 +34,8 @@ INDEX_FILE = HISTORY_ROOT / "index.json"
 DEFAULT_LOOKBACK_DAYS = 365
 DEFAULT_MAX_SYMBOLS = 32
 DEFAULT_BENCHMARK_TRIALS = 1000
+DEFAULT_PIPELINE_BENCHMARK_TRIALS = 10000
+DEFAULT_PIPELINE_BENCHMARK_SYMBOLS = 400
 SIGNAL_STEP_BARS = 5
 MIN_SIM_SAMPLES = 8
 HISTORICAL_BLEND = 0.35
@@ -961,6 +963,52 @@ def run_accuracy_benchmark(
             pass
 
     return report
+
+
+def pipeline_benchmark_config() -> dict[str, Any]:
+    """Read pipeline backtest settings from etrade_config.json with defaults."""
+    from app_paths import ROOT
+
+    cfg = _load_json(ROOT / "etrade_config.json") or {}
+    section = cfg.get("pipeline_benchmark") if isinstance(cfg.get("pipeline_benchmark"), dict) else {}
+    enabled = section.get("enabled", True)
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() not in {"0", "false", "no", "off"}
+    try:
+        trials = int(section.get("target_trials", DEFAULT_PIPELINE_BENCHMARK_TRIALS))
+    except (TypeError, ValueError):
+        trials = DEFAULT_PIPELINE_BENCHMARK_TRIALS
+    try:
+        symbols = int(section.get("max_symbols", DEFAULT_PIPELINE_BENCHMARK_SYMBOLS))
+    except (TypeError, ValueError):
+        symbols = DEFAULT_PIPELINE_BENCHMARK_SYMBOLS
+    return {
+        "enabled": bool(enabled),
+        "target_trials": max(100, trials),
+        "max_symbols": max(20, symbols),
+        "full": bool(section.get("full", True)),
+    }
+
+
+def run_pipeline_accuracy_benchmark(
+    *,
+    on_progress: Any | None = None,
+) -> dict[str, Any] | None:
+    """Run the walk-forward backtest used by the agent pipeline."""
+    settings = pipeline_benchmark_config()
+    if not settings.get("enabled"):
+        return None
+    trials = int(settings["target_trials"])
+    symbols = int(settings["max_symbols"])
+    if on_progress:
+        on_progress(
+            f"Walk-forward backtest — {trials:,} trials across {symbols:,} symbols…"
+        )
+    return run_accuracy_benchmark(
+        target_trials=trials,
+        max_symbols=symbols,
+        full=bool(settings.get("full", True)),
+    )
 
 
 def run_accuracy_benchmark_cli(

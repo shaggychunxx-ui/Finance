@@ -798,6 +798,26 @@ def run_agent_pipeline(
     except Exception as exc:
         if on_progress:
             on_progress(f"E*TRADE enhancement skipped: {exc}")
+    try:
+        from historical_simulation import run_pipeline_accuracy_benchmark
+
+        bench = run_pipeline_accuracy_benchmark(on_progress=on_progress)
+        if on_progress and isinstance(bench, dict):
+            metrics = bench.get("metrics") or {}
+            board = bench.get("leaderboard") or []
+            top = board[0] if board else {}
+            on_progress(
+                f"Backtest complete — {metrics.get('total_trials', 0):,} trials, "
+                f"{(bench.get('meta') or {}).get('universe_size', 0)} symbols"
+                + (
+                    f" · top {top.get('agent_id')} {top.get('accuracy_pct')}%"
+                    if top.get("agent_id")
+                    else ""
+                )
+            )
+    except Exception as exc:
+        if on_progress:
+            on_progress(f"Pipeline backtest skipped: {exc}")
     if on_progress:
         on_progress("Fusing Market Predictor…")
     from agents.market_predictor import run_market_predictor_analysis
@@ -829,7 +849,7 @@ def run_agent_pipeline(
     try:
         from prediction_accuracy import run_accuracy_cycle
 
-        stats = run_accuracy_cycle(cycle_id=cycle_id)
+        stats = run_accuracy_cycle(cycle_id=cycle_id, skip_simulation=True)
         if on_progress and stats.get("scored"):
             on_progress(f"Scored {stats['scored']} matured prediction(s) for accuracy tracking.")
         if on_progress and stats.get("simulated"):

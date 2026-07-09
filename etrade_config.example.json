@@ -45,6 +45,12 @@
     "max_trade_usd": 750.0,
     "min_trade_usd": 75.0
   },
+  "pipeline_benchmark": {
+    "enabled": true,
+    "target_trials": 10000,
+    "max_symbols": 400,
+    "full": true
+  },
   "market_data_enhancement": {
     "enabled": true,
     "max_symbols": 50,

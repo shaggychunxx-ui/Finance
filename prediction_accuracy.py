@@ -973,7 +973,7 @@ def accuracy_leaderboard(*, top_n: int = 10) -> list[dict[str, Any]]:
     return board[:top_n]
 
 
-def run_accuracy_cycle(*, cycle_id: str | None = None) -> dict[str, int]:
+def run_accuracy_cycle(*, cycle_id: str | None = None, skip_simulation: bool = False) -> dict[str, int]:
     """Record new predictions, score matured ones, rebuild index."""
     from price_history import record_prices
 
@@ -984,16 +984,17 @@ def run_accuracy_cycle(*, cycle_id: str | None = None) -> dict[str, int]:
         rebuild_accuracy_index()
 
     simulated = 0
-    try:
-        from historical_simulation import run_historical_simulation
+    if not skip_simulation:
+        try:
+            from historical_simulation import run_historical_simulation
 
-        sim_report = run_historical_simulation(quick=True)
-        simulated = int((sim_report.get("metrics") or {}).get("total_trials") or 0)
-        if simulated:
-            from agent_fusion import export_walk_forward_weights
+            sim_report = run_historical_simulation(quick=True)
+            simulated = int((sim_report.get("metrics") or {}).get("total_trials") or 0)
+            if simulated:
+                from agent_fusion import export_walk_forward_weights
 
-            export_walk_forward_weights()
-    except Exception:
-        pass
+                export_walk_forward_weights()
+        except Exception:
+            pass
 
     return {"recorded": recorded, "scored": scored, "simulated": simulated}
