@@ -359,6 +359,13 @@ def test_validate_agent_output_freshness() -> None:
         path.write_text(json.dumps(stale), encoding="utf-8")
         assert validate_agent_output(path, started_at=started) is not None
 
+        predictor_fresh = {
+            "meta": {"generated_at": (started + timedelta(seconds=30)).isoformat()},
+            "predictions": {},
+        }
+        path.write_text(json.dumps(predictor_fresh), encoding="utf-8")
+        assert validate_agent_output(path, started_at=started) is None
+
         path.write_text("{not json", encoding="utf-8")
         assert validate_agent_output(path, started_at=started) is not None
     finally:

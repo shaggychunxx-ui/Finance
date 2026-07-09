@@ -327,10 +327,12 @@ def run_market_predictor_analysis(
     except Exception:
         pass
 
+    stamp = datetime.now(timezone.utc).isoformat()
     result = {
         "meta": {
             "agent": "Market Predictor",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "analyzed_at": stamp,
+            "generated_at": stamp,
             "source_files": sources_used,
             "tickers_scored": len(scores),
             "horizons": list(predictions.keys()),

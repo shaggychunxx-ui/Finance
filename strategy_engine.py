@@ -784,7 +784,12 @@ def _place_swing_protective_orders(client: ETradeClient, plan: StrategyPlan, buy
 
 def _parse_analyzed_at(data: dict[str, Any]) -> datetime | None:
     meta = data.get("meta") or {}
-    raw = meta.get("analyzed_at") or data.get("analyzed_at")
+    raw = (
+        meta.get("analyzed_at")
+        or data.get("analyzed_at")
+        or meta.get("generated_at")
+        or data.get("generated_at")
+    )
     if not raw:
         return None
     try:
@@ -807,10 +812,10 @@ def validate_agent_output(out_path: Path, *, started_at: datetime) -> str | None
         return "output is empty"
     analyzed = _parse_analyzed_at(data)
     if analyzed is None:
-        return "missing analyzed_at timestamp"
+        return "missing analyzed_at/generated_at timestamp"
     slack = started_at - timedelta(seconds=5)
     if analyzed < slack:
-        return f"stale output (analyzed_at {analyzed.isoformat()} before pipeline start)"
+        return f"stale output (timestamp {analyzed.isoformat()} before pipeline start)"
     return None
 
 
