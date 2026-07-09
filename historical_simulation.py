@@ -28,10 +28,12 @@ from price_history import (
 HISTORY_ROOT = OUTPUT / "history"
 SNAPSHOTS_DIR = HISTORY_ROOT / "snapshots"
 SIM_FILE = HISTORY_ROOT / "historical_simulation.json"
+BENCHMARK_FILE = HISTORY_ROOT / "accuracy_benchmark.json"
 INDEX_FILE = HISTORY_ROOT / "index.json"
 
 DEFAULT_LOOKBACK_DAYS = 365
 DEFAULT_MAX_SYMBOLS = 32
+DEFAULT_BENCHMARK_TRIALS = 1000
 SIGNAL_STEP_BARS = 5
 MIN_SIM_SAMPLES = 8
 HISTORICAL_BLEND = 0.35
@@ -288,6 +290,8 @@ def _bar_walk_forward(
     lookback_days: int,
     bar_cache: dict[str, list[dict[str, Any]]],
     horizons: tuple[str, ...] = ("24h", "1wk", "1mo"),
+    signal_step_bars: int = SIGNAL_STEP_BARS,
+    max_trials: int | None = None,
 ) -> list[SimTrial]:
     trials: list[SimTrial] = []
     proxy_sym = AGENT_PROXY_ETF.get(agent_id, "SPY")
@@ -307,7 +311,10 @@ def _bar_walk_forward(
         if max_start <= min_start:
             continue
 
-        for idx in range(min_start, max_start, SIGNAL_STEP_BARS):
+        step = max(1, int(signal_step_bars))
+        for idx in range(min_start, max_start, step):
+            if max_trials is not None and len(trials) >= max_trials:
+                return trials
             direction, confidence = _agent_signal(
                 agent_id, closes, idx, proxy_closes=proxy_closes or None
             )
@@ -315,6 +322,8 @@ def _bar_walk_forward(
             simulated_at = dates[idx].isoformat() if idx < len(dates) else _now_iso()
 
             for horizon in horizons:
+                if max_trials is not None and len(trials) >= max_trials:
+                    return trials
                 fwd = HORIZON_BARS.get(horizon, 1)
                 actual_ret = forward_return_pct(closes, idx, fwd)
                 if actual_ret is None:
@@ -581,12 +590,35 @@ def _aggregate_trials(trials: list[SimTrial]) -> tuple[dict[str, dict[str, Any]]
     return agents, leaderboard
 
 
+def _estimate_walk_forward_trials(
+    *,
+    agent_count: int,
+    symbol_count: int,
+    lookback_days: int,
+    signal_step_bars: int,
+    horizons: tuple[str, ...],
+) -> int:
+    trading_bars = max(40, int(lookback_days * 0.68))
+    fwd_max = max(HORIZON_BARS.get(h, 1) for h in horizons)
+    min_start = 25
+    max_start = max(min_start + 1, trading_bars - fwd_max - 1)
+    steps = max(1, (max_start - min_start) // max(1, signal_step_bars))
+    symbols_per_agent = min(12, max(4, symbol_count // 2))
+    return max(1, agent_count * symbols_per_agent * steps * len(horizons))
+
+
 def run_historical_simulation(
     *,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     max_symbols: int = DEFAULT_MAX_SYMBOLS,
     quick: bool = False,
     output: Path | None = None,
+    horizons: tuple[str, ...] | None = None,
+    signal_step_bars: int = SIGNAL_STEP_BARS,
+    max_trials: int | None = None,
+    trial_cap: int | None = None,
+    include_snapshots: bool = True,
+    write_output: bool = True,
 ) -> dict[str, Any]:
     """Run bar walk-forward and snapshot replay historical simulations."""
     from agents.platform_catalog import active_agent_sources
@@ -605,15 +637,19 @@ def run_historical_simulation(
     _ensure_proxy_bars(proxy_syms, lookback_days=lookback_days, bar_cache=bar_cache)
 
     all_trials: list[SimTrial] = []
-    horizons: tuple[str, ...] = ("24h", "1wk") if quick else ("24h", "1wk", "1mo")
+    if horizons is None:
+        horizons = ("24h", "1wk") if quick else ("24h", "1wk", "1mo")
 
     for src in active_agent_sources(check_remote=False):
+        if max_trials is not None and len(all_trials) >= max_trials:
+            break
         agent_id = src["id"]
         if agent_id in SKIP_AGENTS:
             continue
         symbols = _agent_symbols(agent_id, universe)
         if not symbols:
             continue
+        remaining = None if max_trials is None else max(0, max_trials - len(all_trials))
         all_trials.extend(
             _bar_walk_forward(
                 agent_id,
@@ -621,11 +657,20 @@ def run_historical_simulation(
                 lookback_days=lookback_days,
                 bar_cache=bar_cache,
                 horizons=horizons,
+                signal_step_bars=signal_step_bars,
+                max_trials=remaining,
             )
         )
 
-    snapshot_trials = _snapshot_replay(bar_cache=bar_cache, max_cycles=20 if quick else 50)
+    snapshot_trials: list[SimTrial] = []
+    if include_snapshots and (max_trials is None or len(all_trials) < max_trials):
+        snapshot_trials = _snapshot_replay(bar_cache=bar_cache, max_cycles=20 if quick else 50)
+        if max_trials is not None:
+            snapshot_trials = snapshot_trials[: max(0, max_trials - len(all_trials))]
     all_trials.extend(snapshot_trials)
+
+    if trial_cap is not None and len(all_trials) > trial_cap:
+        all_trials = _subsample_trials(all_trials, trial_cap)
 
     agents, leaderboard = _aggregate_trials(all_trials)
     bar_count = sum(1 for t in all_trials if t.source == "bar_walk_forward")
@@ -656,8 +701,12 @@ def run_historical_simulation(
         expert_summary=summary,
     )
     payload = to_dict(report, total_trials=total_trials)
-    out_path = output or SIM_FILE
-    _write_json(out_path, payload)
+    payload["meta"]["lookback_days"] = lookback_days
+    payload["meta"]["signal_step_bars"] = signal_step_bars
+    payload["meta"]["horizons"] = list(horizons)
+    if write_output:
+        out_path = output or SIM_FILE
+        _write_json(out_path, payload)
     return payload
 
 
@@ -745,3 +794,158 @@ def historical_weight_multiplier(agent_id: str, *, horizon: str = "24h") -> floa
 
 def run_historical_simulation_cli(output: Path | None = None) -> dict[str, Any]:
     return run_historical_simulation(quick=False, output=output or SIM_FILE)
+
+
+def _subsample_trials(trials: list[SimTrial], target: int) -> list[SimTrial]:
+    if len(trials) <= target:
+        return trials
+    by_agent: dict[str, list[SimTrial]] = {}
+    for trial in trials:
+        by_agent.setdefault(trial.agent_id, []).append(trial)
+    agent_ids = sorted(by_agent)
+    if not agent_ids:
+        return trials[:target]
+    per_agent = max(1, target // len(agent_ids))
+    sampled: list[SimTrial] = []
+    for agent_id in agent_ids:
+        rows = by_agent[agent_id]
+        stride = max(1, len(rows) // per_agent)
+        sampled.extend(rows[::stride][:per_agent])
+    if len(sampled) > target:
+        stride = max(1, len(sampled) // target)
+        sampled = sampled[::stride][:target]
+    elif len(sampled) < target:
+        remaining = [t for t in trials if t not in sampled]
+        sampled.extend(remaining[: target - len(sampled)])
+    return sampled[:target]
+
+
+def run_accuracy_benchmark(
+    *,
+    target_trials: int = DEFAULT_BENCHMARK_TRIALS,
+    full: bool = True,
+    output: Path | None = None,
+) -> dict[str, Any]:
+    """Run a sized walk-forward backtest for agent accuracy benchmarking."""
+    from agents.platform_catalog import active_agent_sources
+
+    target = max(100, int(target_trials))
+    agent_count = sum(
+        1
+        for src in active_agent_sources(check_remote=False)
+        if src["id"] not in SKIP_AGENTS
+    )
+    lookback_days = 504 if full else DEFAULT_LOOKBACK_DAYS
+    max_symbols = 40 if full else 28
+    horizons: tuple[str, ...] = ("24h", "1wk", "1mo", "1yr") if full else ("24h", "1wk", "1mo")
+
+    estimated = _estimate_walk_forward_trials(
+        agent_count=agent_count,
+        symbol_count=max_symbols,
+        lookback_days=lookback_days,
+        signal_step_bars=SIGNAL_STEP_BARS,
+        horizons=horizons,
+    )
+    first_step = SIGNAL_STEP_BARS
+    if estimated > target * 1.15:
+        first_step = max(1, int(round(SIGNAL_STEP_BARS * (estimated / target))))
+
+    step_candidates = list(dict.fromkeys([first_step, 5, 3, 2, 1]))
+    report: dict[str, Any] = {}
+    signal_step = first_step
+    total = 0
+
+    def _run_pass(
+        *,
+        step: int,
+        days: int,
+        symbols: int,
+        cap: int | None,
+    ) -> dict[str, Any]:
+        return run_historical_simulation(
+            lookback_days=days,
+            max_symbols=symbols,
+            quick=not full,
+            horizons=horizons,
+            signal_step_bars=step,
+            trial_cap=cap,
+            include_snapshots=full,
+            write_output=False,
+        )
+
+    for step in step_candidates:
+        signal_step = step
+        report = _run_pass(step=signal_step, days=lookback_days, symbols=max_symbols, cap=None)
+        total = int((report.get("metrics") or {}).get("total_trials") or 0)
+        if total >= target:
+            if total > target:
+                report = _run_pass(
+                    step=signal_step,
+                    days=lookback_days,
+                    symbols=max_symbols,
+                    cap=target,
+                )
+                total = target
+            break
+
+    if total < target:
+        lookback_days = min(1260, lookback_days + 252)
+        max_symbols = min(64, max_symbols + 16)
+        report = _run_pass(step=1, days=lookback_days, symbols=max_symbols, cap=None)
+        signal_step = 1
+        total = int((report.get("metrics") or {}).get("total_trials") or 0)
+        if total > target:
+            report = _run_pass(step=1, days=lookback_days, symbols=max_symbols, cap=target)
+            total = target
+    board = report.get("leaderboard") or []
+    if board:
+        top = board[0]
+        summary = (
+            f"Accuracy benchmark: {total}/{target} walk-forward trials across "
+            f"{report.get('meta', {}).get('universe_size', 0)} symbols "
+            f"({report.get('metrics', {}).get('bar_walk_trials', 0)} bar, "
+            f"{report.get('metrics', {}).get('snapshot_trials', 0)} snapshot). "
+            f"Top agent {top['agent_id']} at {top['accuracy_pct']}% "
+            f"({top['total_trials']} trials)."
+        )
+    else:
+        summary = (
+            f"Accuracy benchmark: {total}/{target} trials recorded; "
+            f"need {MIN_SIM_SAMPLES}+ trials per agent for ranked accuracy."
+        )
+
+    report.setdefault("meta", {})["benchmark"] = {
+        "target_trials": target,
+        "full_mode": full,
+        "signal_step_bars": signal_step,
+        "lookback_days": lookback_days,
+        "horizons": list(horizons),
+    }
+    report["meta"]["expert_summary"] = summary
+    report["meta"]["agent"] = "Agent Accuracy Benchmark"
+
+    out_path = output or BENCHMARK_FILE
+    _write_json(out_path, report)
+    _write_json(SIM_FILE, report)
+
+    try:
+        from agent_fusion import export_walk_forward_weights
+
+        export_walk_forward_weights()
+    except Exception:
+        pass
+
+    return report
+
+
+def run_accuracy_benchmark_cli(
+    output: Path | None = None,
+    *,
+    target_trials: int = DEFAULT_BENCHMARK_TRIALS,
+    full: bool = True,
+) -> dict[str, Any]:
+    return run_accuracy_benchmark(
+        target_trials=target_trials,
+        full=full,
+        output=output or BENCHMARK_FILE,
+    )

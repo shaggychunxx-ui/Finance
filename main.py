@@ -29,7 +29,7 @@ from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
-from historical_simulation import run_historical_simulation_cli
+from historical_simulation import run_accuracy_benchmark_cli, run_historical_simulation_cli
 
 
 def _print_signals(signals: list[dict[str, Any]]) -> None:
@@ -276,6 +276,39 @@ def _print_datascience(data: dict[str, Any]) -> None:
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
+
+
+def _print_accuracy_benchmark(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    benchmark = meta.get("benchmark") or {}
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent Accuracy Benchmark')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Target trials: {benchmark.get('target_trials', '?')} | "
+        f"Recorded: {metrics.get('total_trials')} | "
+        f"Full mode: {benchmark.get('full_mode', True)}"
+    )
+    print(
+        f"  Lookback: {benchmark.get('lookback_days', meta.get('lookback_days'))} days | "
+        f"Step: {benchmark.get('signal_step_bars')} bars | "
+        f"Horizons: {', '.join(benchmark.get('horizons') or meta.get('horizons') or [])}"
+    )
+    print()
+    board = data.get("leaderboard", [])
+    if board:
+        print("  Agent accuracy leaderboard:")
+        for row in board:
+            print(
+                f"    • {row.get('agent_id')}: {row.get('accuracy_pct')}% "
+                f"({row.get('total_trials')} trials, weight {row.get('weight_multiplier')})"
+            )
+        print()
 
 
 def _print_historical_sim(data: dict[str, Any]) -> None:
@@ -994,6 +1027,7 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
 
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "accuracy-benchmark": _print_accuracy_benchmark,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
@@ -1018,6 +1052,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "accuracy-benchmark": run_accuracy_benchmark_cli,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
@@ -1052,11 +1087,24 @@ def main() -> int:
         help="Agent to run (default: events)",
     )
     parser.add_argument("-o", "--output", type=Path, help="Write JSON report to this file")
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=1000,
+        help="Target walk-forward trials for accuracy-benchmark (default: 1000)",
+    )
     parser.add_argument("--json", action="store_true", help="Print full JSON to stdout")
     args = parser.parse_args()
 
     try:
-        result = RUNNERS[args.agent](output=args.output)
+        if args.agent == "accuracy-benchmark":
+            result = run_accuracy_benchmark_cli(
+                output=args.output,
+                target_trials=args.trials,
+                full=True,
+            )
+        else:
+            result = RUNNERS[args.agent](output=args.output)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
