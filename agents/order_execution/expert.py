@@ -18,12 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from agents.base import BaseExpert
-
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-HEADERS = {"User-Agent": "Finance-Order-Execution/1.0 (shaggychunxx@gmail.com)"}
 
 BENCHMARK = "SPY"
 VOLATILITY_SYMBOL = "^VIX"
@@ -182,47 +177,9 @@ class OrderExecutionExpert(BaseExpert):
         super().__init__(pipeline_context=pipeline_context, agent_id="order-execution")
         self.delay_seconds = delay_seconds
 
-    def _fetch_ohlcv(self, symbol: str) -> dict[str, list[float]]:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "3mo"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "3mo"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            quote = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]
-            rows = zip(
-                quote.get("open", []),
-                quote.get("high", []),
-                quote.get("low", []),
-                quote.get("close", []),
-                quote.get("volume", []),
-            )
-            opens, highs, lows, closes, volumes = [], [], [], [], []
-            for o, h, l, c, v in rows:
-                if o is None or h is None or l is None or c is None:
-                    continue
-                opens.append(float(o))
-                highs.append(float(h))
-                lows.append(float(l))
-                closes.append(float(c))
-                volumes.append(float(v) if v is not None else 0.0)
-            return {"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}
-        except Exception:
-            return {"open": [], "high": [], "low": [], "close": [], "volume": []}
-
     def _fetch_last_close(self, symbol: str) -> float | None:
-        data = self._fetch_ohlcv(symbol)
-        closes = data["close"]
+        data = self.fetch_yahoo_ohlcv(symbol, range_="3mo", interval="1d")
+        closes = data.get("close", [])
         return closes[-1] if closes else None
 
     @staticmethod
@@ -247,7 +204,7 @@ class OrderExecutionExpert(BaseExpert):
         return "Thin"
 
     def _analyze_symbol(self, symbol: str, name: str) -> SymbolMicrostructure | None:
-        data = self._fetch_ohlcv(symbol)
+        data = self.fetch_yahoo_ohlcv(symbol, range_="3mo", interval="1d")
         closes = data["close"]
         if len(closes) < 15:
             return None

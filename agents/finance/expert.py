@@ -19,8 +19,9 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 DASHBOARD_URL = "https://www.google.com/finance/beta"
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 SCREENER_API = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
 HEADERS = {"User-Agent": "Finance-GoogleFinance-Analyst/1.0 (shaggychunxx@gmail.com)"}
 
@@ -183,72 +184,47 @@ class FinanceReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class GoogleFinanceAnalyst:
+class GoogleFinanceAnalyst(BaseExpert):
     """Mathematician/trader analysis of Google Finance Beta market views."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="finance")
         self.delay_seconds = delay_seconds
         self._live_ok = False
 
     def _fetch_chart(self, yahoo_symbol: str) -> QuoteRow | None:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=yahoo_symbol),
-                params={"interval": "1d", "range": "1mo"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=yahoo_symbol),
-                    params={"interval": "1d", "range": "1mo"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            result = resp.json()["chart"]["result"][0]
-            meta = result["meta"]
-            price = meta.get("regularMarketPrice")
-            if price is None:
-                return None
-
-            closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
-            valid = [float(c) for c in closes if c is not None]
-
-            day_chg: float | None = None
-            if len(valid) >= 2:
-                day_chg = round(((valid[-1] - valid[-2]) / valid[-2]) * 100, 2)
-            elif meta.get("regularMarketChangePercent") is not None:
-                day_chg = round(float(meta["regularMarketChangePercent"]), 2)
-
-            week_chg: float | None = None
-            if len(valid) >= 6:
-                week_chg = round(((valid[-1] - valid[-6]) / valid[-6]) * 100, 2)
-            elif len(valid) >= 2:
-                week_chg = round(((valid[-1] - valid[0]) / valid[0]) * 100, 2)
-
-            z_score: float | None = None
-            if len(valid) >= 6:
-                window = valid[-6:]
-                mean = sum(window) / len(window)
-                var = sum((x - mean) ** 2 for x in window) / len(window)
-                std = math.sqrt(var) if var > 0 else 0.0
-                if std > 0:
-                    z_score = round((valid[-1] - mean) / std, 2)
-
-            self._live_ok = True
-            return QuoteRow(
-                google_symbol=yahoo_symbol,
-                name=meta.get("shortName") or yahoo_symbol,
-                yahoo_symbol=yahoo_symbol,
-                price=round(float(price), 2),
-                day_chg_pct=day_chg,
-                week_chg_pct=week_chg,
-                z_score_5d=z_score,
-            )
-        except Exception:
+        meta = self.fetch_yahoo_chart_meta(yahoo_symbol, range_="1mo", interval="1d")
+        if not meta:
             return None
+        price = meta.get("price")
+        if price is None:
+            return None
+
+        valid = self.fetch_yahoo_closes(yahoo_symbol, range_="1mo", interval="1d")
+        z_score: float | None = None
+        if len(valid) >= 6:
+            window = valid[-6:]
+            mean = sum(window) / len(window)
+            var = sum((x - mean) ** 2 for x in window) / len(window)
+            std = math.sqrt(var) if var > 0 else 0.0
+            if std > 0:
+                z_score = round((valid[-1] - mean) / std, 2)
+
+        self._live_ok = True
+        return QuoteRow(
+            google_symbol=yahoo_symbol,
+            name=yahoo_symbol,
+            yahoo_symbol=yahoo_symbol,
+            price=round(float(price), 2),
+            day_chg_pct=meta.get("day_chg_pct"),
+            week_chg_pct=meta.get("week_chg_pct"),
+            z_score_5d=z_score,
+        )
 
     def _proxy_quote(
         self, google_symbol: str, name: str, yahoo_symbol: str, category: str
@@ -437,29 +413,42 @@ class GoogleFinanceAnalyst:
             cfg = GOOGLE_SECTORS.get(leader.google_symbol, {})
             etf = cfg.get("etf", leader.yahoo_symbol)
             if (leader.day_chg_pct or 0) > 0.35:
+                leader_bias = "BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL"
                 signals.append(
                     build_market_signal(
                         sector=f"Leading — {leader.name}",
                         tickers=[etf],
-                        bias="BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL",
+                        bias=leader_bias,
                         reason=f"Google Finance sector {leader.google_symbol} {leader.day_chg_pct:+.2f}%",
-                        confidence=sector_rotation_confidence(
-                            leader.day_chg_pct,
-                            week_chg_pct=leader.week_chg_pct,
-                            risk_reward=risk_reward,
+                        confidence=self.adjust_signal_confidence(
+                            etf,
+                            leader_bias,
+                            sector_rotation_confidence(
+                                leader.day_chg_pct,
+                                week_chg_pct=leader.week_chg_pct,
+                                risk_reward=risk_reward,
+                            ),
                         ),
                     )
                 )
             laggard = min(sectors, key=lambda s: s.day_chg_pct or 999)
             cfg_l = GOOGLE_SECTORS.get(laggard.google_symbol, {})
+            laggard_etf = cfg_l.get("etf", laggard.yahoo_symbol)
             if (laggard.day_chg_pct or 0) < -0.6:
                 signals.append(
                     build_market_signal(
                         sector=f"Lagging — {laggard.name}",
-                        tickers=[cfg_l.get("etf", laggard.yahoo_symbol)],
+                        tickers=[laggard_etf],
                         bias="BEARISH",
                         reason=f"{laggard.google_symbol} {laggard.day_chg_pct:+.2f}% on beta dashboard",
-                        confidence=sector_rotation_confidence(laggard.day_chg_pct, week_chg_pct=laggard.week_chg_pct),
+                        confidence=self.adjust_signal_confidence(
+                            laggard_etf,
+                            "BEARISH",
+                            sector_rotation_confidence(
+                                laggard.day_chg_pct,
+                                week_chg_pct=laggard.week_chg_pct,
+                            ),
+                        ),
                     )
                 )
 
@@ -471,18 +460,30 @@ class GoogleFinanceAnalyst:
                     tickers=["QQQ", "XLK", "NVDA", "MSFT"],
                     bias="BEARISH",
                     reason=f"Nasdaq {nasdaq.day_chg_pct:+.2f}% — tech selloff on Google Finance beta",
-                    confidence=sector_rotation_confidence(nasdaq.day_chg_pct, week_chg_pct=nasdaq.week_chg_pct),
+                    confidence=self.adjust_signal_confidence(
+                        "QQQ",
+                        "BEARISH",
+                        sector_rotation_confidence(
+                            nasdaq.day_chg_pct,
+                            week_chg_pct=nasdaq.week_chg_pct,
+                        ),
+                    ),
                 )
             )
 
         if risk_reward >= 0.62 and opps:
+            primary = opps[0].symbol
             signals.append(
                 build_market_signal(
                     sector="Trading Opportunities",
                     tickers=[o.symbol for o in opps[:5]],
                     bias="BULLISH",
                     reason=f"Risk/reward score {risk_reward:.2f} — ranked setups from beta movers",
-                    confidence=sector_rotation_confidence(opps[0].day_chg_pct, risk_reward=risk_reward),
+                    confidence=self.adjust_signal_confidence(
+                        primary,
+                        "BULLISH",
+                        sector_rotation_confidence(opps[0].day_chg_pct, risk_reward=risk_reward),
+                    ),
                 )
             )
 
@@ -493,7 +494,7 @@ class GoogleFinanceAnalyst:
                     tickers=["SPY", "DIA", "IWM"],
                     bias="NEUTRAL",
                     reason="Google Finance beta US market summary baseline exposure",
-                    confidence=0.42,
+                    confidence=self.adjust_signal_confidence("SPY", "NEUTRAL", 0.42),
                 )
             )
         return signals
@@ -608,6 +609,7 @@ class GoogleFinanceAnalyst:
                 "Top gainers: "
                 + ", ".join(f"{g.google_symbol} {g.day_chg_pct:+.2f}%" for g in gainers[:5])
             )
+        recs = self.append_memory_recommendations(recs)
 
         return FinanceReport(
             sectors=sectors,
@@ -705,5 +707,8 @@ class GoogleFinanceAnalyst:
         return result
 
 
-def run_finance_analysis(output: Path | None = None) -> dict[str, Any]:
-    return GoogleFinanceAnalyst().run(output=output)
+def run_finance_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return GoogleFinanceAnalyst(pipeline_context=pipeline_context).run(output=output)

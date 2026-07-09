@@ -396,6 +396,64 @@ def test_record_pipeline_agent_errors_roundtrip() -> None:
             PIPELINE_ERRORS_FILE.write_text(backup, encoding="utf-8")
 
 
+def test_yahoo_session_cache_and_shared_fetch() -> None:
+    from agents.market_data.yahoo import clear_yahoo_session_cache, fetch_closes
+
+    clear_yahoo_session_cache()
+    # Cache should not raise; network may fail in CI — accept empty or data
+    first = fetch_closes("SPY", range_="1mo", delay_seconds=0, client_tag="smoke")
+    second = fetch_closes("SPY", range_="1mo", delay_seconds=0, client_tag="smoke")
+    assert second == first
+
+
+def test_agent_disagreement_contested_symbol() -> None:
+    from agent_disagreement import (
+        collect_agent_bias_votes,
+        disagreement_confidence_factor,
+        disagreement_fusion_multiplier,
+        top_contested_symbols,
+    )
+
+    outputs = {
+        "markets": {
+            "market_signals": [
+                {"tickers": ["NVDA"], "bias": "BULLISH", "confidence": 0.8},
+            ]
+        },
+        "finance": {
+            "market_signals": [
+                {"tickers": ["NVDA"], "bias": "BEARISH", "confidence": 0.75},
+            ]
+        },
+    }
+    votes = collect_agent_bias_votes(agent_outputs=outputs)
+    contested = top_contested_symbols(votes)
+    assert any(row["symbol"] == "NVDA" for row in contested)
+    bull_factor = disagreement_confidence_factor("NVDA", "BULLISH", votes)
+    bear_factor = disagreement_confidence_factor("NVDA", "BEARISH", votes)
+    assert bull_factor < 1.0 or bear_factor < 1.0
+    assert disagreement_fusion_multiplier("NVDA", 0.5, votes) < 1.0
+
+
+def test_base_expert_watchlist_and_memory() -> None:
+    from agents.base import BaseExpert
+
+    expert = BaseExpert(
+        agent_id="datascience",
+        pipeline_context={
+            "live_quote_symbols": ["SPY", "AAPL"],
+            "trust_symbols": ["MSFT"],
+            "avoid_symbols": ["GME"],
+            "lessons": ["Reduce weak calls."],
+        },
+    )
+    wl = expert.pipeline_watchlist_symbols(["QQQ"], limit=10)
+    assert "SPY" in wl
+    assert "GME" not in wl
+    recs = expert.append_memory_recommendations(["Quant scan complete."])
+    assert any(str(r).startswith("[Memory]") for r in recs)
+
+
 def test_trading_gate_cluster_and_eligibility() -> None:
     from trading_gate import (
         agent_trading_eligibility,
@@ -508,6 +566,9 @@ def _run_all() -> None:
         test_proactive_enhancement_candidates,
         test_validate_agent_output_freshness,
         test_record_pipeline_agent_errors_roundtrip,
+        test_yahoo_session_cache_and_shared_fetch,
+        test_agent_disagreement_contested_symbol,
+        test_base_expert_watchlist_and_memory,
         test_trading_gate_cluster_and_eligibility,
     ]
     for test in tests:

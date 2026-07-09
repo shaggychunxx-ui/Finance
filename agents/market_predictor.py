@@ -55,10 +55,12 @@ def _horizon_adjusted_score(symbol: str, row: dict[str, Any], horizon: str) -> f
 
 
 def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
+    from agent_disagreement import collect_agent_bias_votes, disagreement_fusion_multiplier
     from agent_fusion import agent_cluster, apply_cluster_caps, current_regime, fusion_weight
 
     regime = current_regime()
     posture = str(regime.get("posture", "neutral"))
+    bias_votes = collect_agent_bias_votes(output_dir)
 
     scores: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
@@ -112,7 +114,8 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                     weight *= 1.08
         except Exception:
             pass
-        weighted = delta * weight
+        disagree_mult = disagreement_fusion_multiplier(sym, delta, bias_votes)
+        weighted = delta * weight * disagree_mult
         row = scores[sym]
         cluster = agent_cluster(source)
         row["by_cluster"][cluster] += weighted

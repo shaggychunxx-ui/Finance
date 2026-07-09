@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 HEADERS = {"User-Agent": "Finance-Geopolitics-Expert/1.0 (shaggychunxx@gmail.com)"}
 GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 
@@ -134,11 +136,30 @@ class GeopoliticsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class GeopoliticsExpert:
+class GeopoliticsExpert(BaseExpert):
     """Expert geopolitical analyst — news-driven theater risk and market implications."""
 
-    def __init__(self, use_gdelt: bool = True) -> None:
+    def __init__(
+        self,
+        use_gdelt: bool = True,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="geopolitics")
         self.use_gdelt = use_gdelt
+
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
 
     @staticmethod
     def _parse_rss(xml_bytes: bytes, source: str) -> list[NewsArticle]:
@@ -420,8 +441,8 @@ class GeopoliticsExpert:
             data_sources=sources,
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         theaters: list[TheaterRisk],
         assessment: GeopoliticalAssessment,
         global_risk: float,
@@ -508,7 +529,7 @@ class GeopoliticsExpert:
                 "reason": "No acute geopolitical stress in current headlines",
             })
 
-        return signals
+        return self._adjust_market_signals(signals)
 
     @staticmethod
     def _recommendations(
@@ -586,7 +607,7 @@ class GeopoliticsExpert:
                 "risk_label": report.risk_label,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -597,5 +618,8 @@ class GeopoliticsExpert:
         return result
 
 
-def run_geopolitics_analysis(output: Path | None = None) -> dict[str, Any]:
-    return GeopoliticsExpert().run(output=output)
+def run_geopolitics_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return GeopoliticsExpert(pipeline_context=pipeline_context).run(output=output)

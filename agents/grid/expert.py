@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 HEADERS = {"User-Agent": "Finance-Grid-Analyst/1.0 (shaggychunxx@gmail.com)"}
 GRID_LIVE = "https://www.gridstatus.io/live"
 GRID_API = "https://api.gridstatus.io/v1"
@@ -102,13 +104,32 @@ class GridReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class ElectricalGridAnalyst:
+class ElectricalGridAnalyst(BaseExpert):
     """Electrical engineer analyst for live wholesale grid conditions."""
 
-    def __init__(self, config_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path | None = None,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="grid")
         self.config = self._load_config(config_path)
         self.gridstatus_api_key = self.config.get("gridstatus_api_key", "").strip()
         self.eia_api_key = self.config.get("eia_api_key", "DEMO_KEY").strip() or "DEMO_KEY"
+
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:
@@ -419,7 +440,7 @@ class ElectricalGridAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Renewables",
-                    tickers=["TAN", "ENPH", "FSLR", "NEE"],
+                    tickers=self.pipeline_watchlist_symbols(["TAN", "ENPH", "FSLR", "NEE"]),
                     bias="BULLISH",
                     reason=f"High renewable penetration across live ISO feeds ({avg_renewable:.0f}% avg)",
                     confidence=grid_power_confidence(renewable_pct=avg_renewable, grid_stress=weather_stress and weather_stress * 100),
@@ -430,7 +451,7 @@ class ElectricalGridAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Renewables",
-                    tickers=["TAN", "ICLN"],
+                    tickers=self.pipeline_watchlist_symbols(["TAN", "ICLN"]),
                     bias="NEUTRAL",
                     reason=f"Renewable share {avg_renewable:.0f}% — moderate clean-energy mix",
                     confidence=grid_power_confidence(renewable_pct=avg_renewable),
@@ -442,7 +463,7 @@ class ElectricalGridAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Natural Gas / Power",
-                    tickers=["UNG", "XLE", "XLU"],
+                    tickers=self.pipeline_watchlist_symbols(["UNG", "XLE", "XLU"]),
                     bias="BULLISH",
                     reason=f"Gas-heavy ERCOT stack ({ercot.gas_pct:.0f}% gas generation)",
                     confidence=grid_power_confidence(gas_pct=ercot.gas_pct, grid_stress=weather_stress and weather_stress * 100),
@@ -457,7 +478,7 @@ class ElectricalGridAnalyst:
                 signals.append(
                     build_market_signal(
                         sector="Merchant Power / Utilities",
-                        tickers=["VST", "NRG", "XLU", "CEG"],
+                        tickers=self.pipeline_watchlist_symbols(["VST", "NRG", "XLU", "CEG"]),
                         bias=bias,
                         reason=f"ERCOT hub LMP average ${avg_lmp:.2f}/MWh",
                         confidence=grid_power_confidence(lmp=avg_lmp, gas_pct=ercot.gas_pct if ercot else None),
@@ -478,7 +499,7 @@ class ElectricalGridAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Grid Storage",
-                    tickers=["TSLA", "STEM", "XLU"],
+                    tickers=self.pipeline_watchlist_symbols(["TSLA", "STEM", "XLU"]),
                     bias="NEUTRAL",
                     reason=f"Battery dispatch {ercot.storage_mw:,.0f} MW on ERCOT",
                     confidence=grid_power_confidence(grid_stress=weather_stress and weather_stress * 100),
@@ -489,14 +510,14 @@ class ElectricalGridAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Power Grid Baseline",
-                    tickers=["XLU", "NEE"],
+                    tickers=self.pipeline_watchlist_symbols(["XLU", "NEE"]),
                     bias="NEUTRAL",
                     reason="ISO feeds show no strong fuel-mix or price tilt",
                     confidence=0.42,
                 )
             )
 
-        return signals
+        return self._adjust_market_signals(signals)
 
     def analyze(self) -> GridReport:
         fuels: list[FuelSnapshot] = []
@@ -624,7 +645,7 @@ class ElectricalGridAnalyst:
             ],
             "electrical_assessment": report.electrical_assessment,
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -641,5 +662,8 @@ class ElectricalGridAnalyst:
         return result
 
 
-def run_grid_analysis(output: Path | None = None) -> dict[str, Any]:
-    return ElectricalGridAnalyst().run(output=output)
+def run_grid_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return ElectricalGridAnalyst(pipeline_context=pipeline_context).run(output=output)

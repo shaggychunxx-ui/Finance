@@ -20,6 +20,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 HEADERS = {"User-Agent": "Finance-WorldEvents-Tracker/1.0 (shaggychunxx@gmail.com)"}
 
 NEWS_FEEDS = [
@@ -97,8 +99,24 @@ class EventsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class WorldEventsTracker:
+class WorldEventsTracker(BaseExpert):
     """Track world events from live news feeds with market impact classification."""
+
+    def __init__(self, *, pipeline_context: dict | None = None) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="events")
+
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
 
     def _parse_rss(self, xml_bytes: bytes, source: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
@@ -308,7 +326,7 @@ class WorldEventsTracker:
                     confidence=0.4,
                 )
             )
-        return signals
+        return self._adjust_market_signals(signals)
 
     def analyze(self) -> EventsReport:
         headlines, sources = self._fetch_headlines()
@@ -403,7 +421,7 @@ class WorldEventsTracker:
             ],
             "tracker_events": self.to_tracker_json(report),
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -420,5 +438,8 @@ class WorldEventsTracker:
         return result
 
 
-def run_events_analysis(output: Path | None = None) -> dict[str, Any]:
-    return WorldEventsTracker().run(output=output)
+def run_events_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return WorldEventsTracker(pipeline_context=pipeline_context).run(output=output)

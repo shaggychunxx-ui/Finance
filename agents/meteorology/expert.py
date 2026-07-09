@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 DASHBOARD_URL = "https://www.weather.gov/"
 API_BASE = "https://api.weather.gov"
 HEADERS = {
@@ -120,11 +122,30 @@ class MeteorologyReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class MeteorologyExpert:
+class MeteorologyExpert(BaseExpert):
     """Expert meteorologist agent — NWS hazards, hub forecasts, and market implications."""
 
-    def __init__(self, hubs: list[tuple[float, float, str]] | None = None) -> None:
+    def __init__(
+        self,
+        hubs: list[tuple[float, float, str]] | None = None,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="meteorology")
         self.hubs = hubs or self._load_config_hubs() or DEFAULT_HUBS
+
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
 
     @staticmethod
     def _load_config_hubs() -> list[tuple[float, float, str]]:
@@ -475,8 +496,8 @@ class MeteorologyExpert:
         top = next(iter(alerts.by_event.items()))
         return f"{alerts.total_active} active alerts — leading hazard: {top[0]} ({top[1]})"
 
-    @staticmethod
     def _market_signals(
+        self,
         heat: float,
         cold: float,
         severe: float,
@@ -563,7 +584,7 @@ class MeteorologyExpert:
                 "reason": "No significant national weather stress detected",
             })
 
-        return signals
+        return self._adjust_market_signals(signals)
 
     @staticmethod
     def _recommendations(
@@ -674,7 +695,7 @@ class MeteorologyExpert:
                 "disruption_label": report.disruption_label,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -685,5 +706,8 @@ class MeteorologyExpert:
         return result
 
 
-def run_meteorology_analysis(output: Path | None = None) -> dict[str, Any]:
-    return MeteorologyExpert().run(output=output)
+def run_meteorology_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return MeteorologyExpert(pipeline_context=pipeline_context).run(output=output)

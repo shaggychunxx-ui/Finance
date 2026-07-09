@@ -19,10 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-HEADERS = {"User-Agent": "Finance-DataScience-Expert/1.0 (shaggychunxx@gmail.com)"}
+from agents.base import BaseExpert
 
 WATCHLIST = {
     "SPY": "S&P 500",
@@ -92,34 +89,21 @@ class DataScienceReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class DataScienceExpert:
+class DataScienceExpert(BaseExpert):
     """Expert data scientist — statistical factor analysis on US market ETFs."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="datascience")
         self.delay_seconds = delay_seconds
         self.watchlist = dict(WATCHLIST)
 
     def _fetch_closes(self, symbol: str) -> list[float]:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "6mo"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "6mo"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            closes = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            return [float(c) for c in closes if c is not None]
-        except Exception:
-            return []
+        return self.fetch_yahoo_closes(symbol, range_="6mo", interval="1d")
 
     @staticmethod
     def _log_returns(prices: list[float]) -> list[float]:
@@ -365,7 +349,9 @@ class DataScienceExpert:
 
         summary = self._expert_summary(assessment, stress, opportunity, label, tickers)
         signals = self._market_signals(tickers, assessment, stress, opportunity)
-        recs = self._recommendations(tickers, assessment, correlations)
+        recs = self.append_memory_recommendations(
+            self._recommendations(tickers, assessment, correlations)
+        )
 
         return DataScienceReport(
             tickers=tickers,
@@ -380,8 +366,8 @@ class DataScienceExpert:
             data_source="Yahoo Finance (6mo daily, Monte Carlo GBM)",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         tickers: list[TickerStats],
         assessment: QuantAssessment,
         stress: float,
@@ -404,10 +390,14 @@ class DataScienceExpert:
                             f"SPY momentum {spy.momentum_score:.2f}, "
                             f"MC P(up) {spy.mc_prob_up_5d:.0%}"
                         ),
-                        confidence=quant_signal_confidence(
-                            momentum=spy.momentum_score,
-                            mc_prob_up=spy.mc_prob_up_5d,
-                            stress=stress,
+                        confidence=self.adjust_signal_confidence(
+                            "SPY",
+                            "BULLISH",
+                            quant_signal_confidence(
+                                momentum=spy.momentum_score,
+                                mc_prob_up=spy.mc_prob_up_5d,
+                                stress=stress,
+                            ),
                         ),
                         evidence={"mc_prob_up_5d": spy.mc_prob_up_5d, "stress": round(stress, 3)},
                     )
@@ -419,9 +409,13 @@ class DataScienceExpert:
                         tickers=["TLT", "GLD", "XLU"],
                         bias="BULLISH",
                         reason=f"Quant stress {stress:.2f} — defensive factors favored",
-                        confidence=quant_signal_confidence(
-                            momentum=spy.momentum_score,
-                            stress=stress,
+                        confidence=self.adjust_signal_confidence(
+                            "TLT",
+                            "BULLISH",
+                            quant_signal_confidence(
+                                momentum=spy.momentum_score,
+                                stress=stress,
+                            ),
                         ),
                     )
                 )
@@ -441,10 +435,14 @@ class DataScienceExpert:
                         f"{t.symbol} z-score {t.z_score_20d:+.2f}, "
                         f"MC P(up) {t.mc_prob_up_5d:.0%}"
                     ),
-                    confidence=quant_signal_confidence(
-                        momentum=t.momentum_score,
-                        mc_prob_up=t.mc_prob_up_5d,
-                        z_score=t.z_score_20d,
+                    confidence=self.adjust_signal_confidence(
+                        t.symbol,
+                        "BULLISH",
+                        quant_signal_confidence(
+                            momentum=t.momentum_score,
+                            mc_prob_up=t.mc_prob_up_5d,
+                            z_score=t.z_score_20d,
+                        ),
                     ),
                 )
             )
@@ -458,9 +456,13 @@ class DataScienceExpert:
                     tickers=[t.symbol],
                     bias="BEARISH",
                     reason=f"{t.symbol} z-score {t.z_score_20d:+.2f} — stretched vs 20d mean",
-                    confidence=quant_signal_confidence(
-                        momentum=t.momentum_score,
-                        z_score=t.z_score_20d,
+                    confidence=self.adjust_signal_confidence(
+                        t.symbol,
+                        "BEARISH",
+                        quant_signal_confidence(
+                            momentum=t.momentum_score,
+                            z_score=t.z_score_20d,
+                        ),
                     ),
                 )
             )
@@ -473,9 +475,13 @@ class DataScienceExpert:
                     tickers=[leader.symbol],
                     bias="BULLISH",
                     reason=f"Top momentum score {leader.momentum_score:.2f}, 20d {leader.return_20d_pct:+.2f}%",
-                    confidence=quant_signal_confidence(
-                        momentum=leader.momentum_score,
-                        mc_prob_up=leader.mc_prob_up_5d,
+                    confidence=self.adjust_signal_confidence(
+                        leader.symbol,
+                        "BULLISH",
+                        quant_signal_confidence(
+                            momentum=leader.momentum_score,
+                            mc_prob_up=leader.mc_prob_up_5d,
+                        ),
                     ),
                 )
             )
@@ -488,10 +494,14 @@ class DataScienceExpert:
                     tickers=["HYG", "LQD", "JNK"],
                     bias="BEARISH",
                     reason=f"HYG 20d return {hyg.return_20d_pct:+.2f}% — credit risk rising",
-                    confidence=quant_signal_confidence(
-                        momentum=hyg.momentum_score,
-                        z_score=hyg.z_score_20d,
-                        stress=stress,
+                    confidence=self.adjust_signal_confidence(
+                        "HYG",
+                        "BEARISH",
+                        quant_signal_confidence(
+                            momentum=hyg.momentum_score,
+                            z_score=hyg.z_score_20d,
+                            stress=stress,
+                        ),
                     ),
                 )
             )
@@ -503,7 +513,7 @@ class DataScienceExpert:
                     tickers=["SPY"],
                     bias="NEUTRAL",
                     reason="No strong statistical edge detected",
-                    confidence=0.42,
+                    confidence=self.adjust_signal_confidence("SPY", "NEUTRAL", 0.42),
                 )
             )
         return signals
@@ -607,5 +617,8 @@ class DataScienceExpert:
         return result
 
 
-def run_datascience_analysis(output: Path | None = None) -> dict[str, Any]:
-    return DataScienceExpert().run(output=output)
+def run_datascience_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return DataScienceExpert(pipeline_context=pipeline_context).run(output=output)

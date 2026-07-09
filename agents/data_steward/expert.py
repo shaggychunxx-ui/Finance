@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 HEADERS = {"User-Agent": "Finance-Data-Steward/1.0 (shaggychunxx@gmail.com)"}
 FRESHNESS_HOURS = 48
 STALE_HOURS = 168
@@ -332,10 +334,17 @@ class DataStewardReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class DataStewardExpert:
+class DataStewardExpert(BaseExpert):
     """Expert data steward — catalog, lineage, quality, and governance."""
 
-    def __init__(self, output_dir: Path | None = None, config_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        output_dir: Path | None = None,
+        config_path: Path | None = None,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="data-steward")
         self.output_dir = output_dir or Path("output")
         self.config_path = config_path or Path("config.json")
 
@@ -928,7 +937,7 @@ class DataStewardExpert:
                 "open_issues": len(report.issues),
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -952,5 +961,8 @@ class DataStewardExpert:
         return result
 
 
-def run_data_steward_analysis(output: Path | None = None) -> dict[str, Any]:
-    return DataStewardExpert().run(output=output)
+def run_data_steward_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return DataStewardExpert(pipeline_context=pipeline_context).run(output=output)

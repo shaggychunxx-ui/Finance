@@ -19,10 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-HEADERS = {"User-Agent": "Finance-Research-Statistics/1.0 (shaggychunxx@gmail.com)"}
+from agents.base import BaseExpert
 
 BENCHMARK = "SPY"
 ALPHA = 0.05
@@ -201,10 +198,16 @@ class ResearchStatisticsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class ResearchStatisticsExpert:
+class ResearchStatisticsExpert(BaseExpert):
     """Research scientist / statistician — formal inference on market return data."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="research-statistics")
         self.delay_seconds = delay_seconds
 
     @staticmethod
@@ -229,28 +232,6 @@ class ResearchStatisticsExpert:
             if df <= k:
                 return table[k]
         return 1.96
-
-    def _fetch_closes(self, symbol: str) -> list[float]:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1y"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1y"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            closes = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            return [float(c) for c in closes if c is not None]
-        except Exception:
-            return []
 
     @staticmethod
     def _daily_returns(closes: list[float]) -> list[float]:
@@ -656,7 +637,7 @@ class ResearchStatisticsExpert:
         return_map: dict[str, list[float]] = {}
 
         for symbol in WATCHLIST:
-            closes = self._fetch_closes(symbol)
+            closes = self.fetch_yahoo_closes(symbol, range_="1y")
             if closes:
                 return_map[symbol] = self._daily_returns(closes)
             time.sleep(self.delay_seconds)
@@ -740,8 +721,8 @@ class ResearchStatisticsExpert:
             data_source="Yahoo Finance API",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         findings: list[ResearchFinding],
         regressions: list[RegressionResult],
         tests: list[HypothesisTest],
@@ -767,10 +748,14 @@ class ResearchStatisticsExpert:
                     tickers=["SPY", "VOO"],
                     bias=bias,
                     reason=f"H₀: μ=0, t={spy_test.statistic:.2f}, p={spy_test.p_value:.3f}",
-                    confidence=hypothesis_test_confidence(
-                        p_value=spy_test.p_value,
-                        significant=spy_test.significant,
-                        statistic=spy_test.statistic,
+                    confidence=self.adjust_signal_confidence(
+                        "SPY",
+                        bias,
+                        hypothesis_test_confidence(
+                            p_value=spy_test.p_value,
+                            significant=spy_test.significant,
+                            statistic=spy_test.statistic,
+                        ),
                     ),
                     evidence={"p_value": spy_test.p_value, "t_stat": spy_test.statistic},
                 )
@@ -785,16 +770,21 @@ class ResearchStatisticsExpert:
             )
             if bias == "NEUTRAL":
                 continue
+            primary = f.symbols[0] if f.symbols else "SPY"
             signals.append(
                 build_market_signal(
                     sector=f"Research Finding — {f.title}",
                     tickers=f.symbols,
                     bias=bias,
                     reason=f"{f.method}: stat={f.statistic:.3f}, p={f.p_value:.3f}",
-                    confidence=hypothesis_test_confidence(
-                        p_value=f.p_value,
-                        significant=True,
-                        statistic=f.statistic,
+                    confidence=self.adjust_signal_confidence(
+                        primary,
+                        bias,
+                        hypothesis_test_confidence(
+                            p_value=f.p_value,
+                            significant=True,
+                            statistic=f.statistic,
+                        ),
                     ),
                 )
             )
@@ -807,10 +797,14 @@ class ResearchStatisticsExpert:
                         tickers=[r.symbol],
                         bias="BULLISH",
                         reason=f"β={r.beta:.2f}, R²={r.r_squared:.2f}, p={r.slope_p_value:.3f}",
-                        confidence=hypothesis_test_confidence(
-                            p_value=r.slope_p_value,
-                            significant=r.significant_beta,
-                            statistic=r.beta,
+                        confidence=self.adjust_signal_confidence(
+                            r.symbol,
+                            "BULLISH",
+                            hypothesis_test_confidence(
+                                p_value=r.slope_p_value,
+                                significant=r.significant_beta,
+                                statistic=r.beta,
+                            ),
                         ),
                     )
                 )
@@ -823,10 +817,14 @@ class ResearchStatisticsExpert:
                         tickers=[a.symbol],
                         bias="BULLISH",
                         reason=f"ρ₁={a.autocorr:.3f}, p={a.p_value:.3f}",
-                        confidence=hypothesis_test_confidence(
-                            p_value=a.p_value,
-                            significant=a.significant,
-                            statistic=a.autocorr,
+                        confidence=self.adjust_signal_confidence(
+                            a.symbol,
+                            "BULLISH",
+                            hypothesis_test_confidence(
+                                p_value=a.p_value,
+                                significant=a.significant,
+                                statistic=a.autocorr,
+                            ),
                         ),
                     )
                 )
@@ -1005,7 +1003,7 @@ class ResearchStatisticsExpert:
                 "regime_label": report.regime_label,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -1021,5 +1019,8 @@ class ResearchStatisticsExpert:
         return result
 
 
-def run_research_statistics_analysis(output: Path | None = None) -> dict[str, Any]:
-    return ResearchStatisticsExpert().run(output=output)
+def run_research_statistics_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return ResearchStatisticsExpert(pipeline_context=pipeline_context).run(output=output)

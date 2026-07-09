@@ -20,6 +20,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 HEADERS = {"User-Agent": "Finance-Patent-Landscape/1.0 (shaggychunxx@gmail.com)"}
 OPENALEX_URL = "https://api.openalex.org/works"
 USPTO_ODP_SEARCH = "https://api.uspto.gov/api/v1/patent/applications/search"
@@ -279,10 +281,16 @@ class PatentReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class PatentLandscapeAnalyst:
+class PatentLandscapeAnalyst(BaseExpert):
     """Patent landscape analyst — resource catalog and innovation monitoring."""
 
-    def __init__(self, config_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path | None = None,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="patents")
         self.config = self._load_config(config_path)
         self.uspto_api_key = self.config.get("uspto_api_key", "").strip()
 
@@ -707,7 +715,7 @@ class PatentLandscapeAnalyst:
                 for f in report.findings
             ],
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -724,5 +732,8 @@ class PatentLandscapeAnalyst:
         return result
 
 
-def run_patents_analysis(output: Path | None = None) -> dict[str, Any]:
-    return PatentLandscapeAnalyst().run(output=output)
+def run_patents_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return PatentLandscapeAnalyst(pipeline_context=pipeline_context).run(output=output)

@@ -19,10 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-HEADERS = {"User-Agent": "Finance-Theoretical-Probability/1.0 (shaggychunxx@gmail.com)"}
+from agents.base import BaseExpert
 
 BENCHMARK = "SPY"
 WATCHLIST = {
@@ -184,37 +181,21 @@ class TheoreticalProbabilityReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class TheoreticalProbabilityExpert:
+class TheoreticalProbabilityExpert(BaseExpert):
     """Expert in theoretical probability — models and inference on market data."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="theoretical-probability")
         self.delay_seconds = delay_seconds
 
     @staticmethod
     def _norm_cdf(x: float) -> float:
         return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
-    def _fetch_closes(self, symbol: str) -> list[float]:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "6mo"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "6mo"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            closes = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            return [float(c) for c in closes if c is not None]
-        except Exception:
-            return []
 
     @staticmethod
     def _daily_returns(closes: list[float]) -> list[float]:
@@ -617,7 +598,7 @@ class TheoreticalProbabilityExpert:
         return_map: dict[str, list[float]] = {}
 
         for symbol in WATCHLIST:
-            closes = self._fetch_closes(symbol)
+            closes = self.fetch_yahoo_closes(symbol, range_="6mo")
             if closes:
                 price_data[symbol] = closes
                 return_map[symbol] = self._daily_returns(closes)
@@ -703,8 +684,8 @@ class TheoreticalProbabilityExpert:
             data_source="Yahoo Finance API",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         bayesian: BayesianPosterior,
         markov: MarkovModel,
         conditionals: list[ConditionalProb],
@@ -729,7 +710,11 @@ class TheoreticalProbabilityExpert:
                     tickers=["SPY", "QQQ", "IWM"],
                     bias=bias,
                     reason=f"Posterior P({dom})={post_p:.0%} — {bayesian.evidence}",
-                    confidence=confidence_from_edge(post_p, samples=120, min_samples=60),
+                    confidence=self.adjust_signal_confidence(
+                        "SPY",
+                        bias,
+                        confidence_from_edge(post_p, samples=120, min_samples=60),
+                    ),
                 )
             )
 
@@ -741,7 +726,11 @@ class TheoreticalProbabilityExpert:
                     tickers=["SPY", "DIA"],
                     bias="BULLISH",
                     reason=f"P(bull tomorrow | {markov.current_state})={bull_f:.0%}",
-                    confidence=confidence_from_edge(bull_f, samples=80, min_samples=40),
+                    confidence=self.adjust_signal_confidence(
+                        "SPY",
+                        "BULLISH",
+                        confidence_from_edge(bull_f, samples=80, min_samples=40),
+                    ),
                 )
             )
         elif markov.one_step_forecast.get("bear", 0) >= 0.52:
@@ -752,7 +741,11 @@ class TheoreticalProbabilityExpert:
                     tickers=["SH", "TLT", "GLD"],
                     bias="BEARISH",
                     reason=f"P(bear tomorrow | {markov.current_state})={bear_f:.0%}",
-                    confidence=confidence_from_edge(1.0 - bear_f, samples=80, min_samples=40),
+                    confidence=self.adjust_signal_confidence(
+                        "SH",
+                        "BEARISH",
+                        confidence_from_edge(1.0 - bear_f, samples=80, min_samples=40),
+                    ),
                 )
             )
 
@@ -929,7 +922,7 @@ class TheoreticalProbabilityExpert:
                 "regime_label": report.regime_label,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -945,5 +938,8 @@ class TheoreticalProbabilityExpert:
         return result
 
 
-def run_theoretical_probability_analysis(output: Path | None = None) -> dict[str, Any]:
-    return TheoreticalProbabilityExpert().run(output=output)
+def run_theoretical_probability_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return TheoreticalProbabilityExpert(pipeline_context=pipeline_context).run(output=output)

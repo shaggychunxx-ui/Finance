@@ -17,10 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-HEADERS = {"User-Agent": "Finance-Sales-Analytics-BI/1.0 (shaggychunxx@gmail.com)"}
+from agents.base import BaseExpert
 
 RETAIL_UNIVERSE: dict[str, dict[str, str]] = {
     "WMT": {"name": "Walmart", "category": "big_box"},
@@ -112,32 +109,17 @@ class SalesAnalyticsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class SalesAnalyticsBIExpert:
+class SalesAnalyticsBIExpert(BaseExpert):
     """BI developer — retail sales proxy analytics and dashboard data feeds."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="sales-analytics")
         self.delay_seconds = delay_seconds
-
-    def _fetch_chart(self, symbol: str) -> dict[str, Any] | None:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "3mo"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "3mo"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            return resp.json()["chart"]["result"][0]
-        except Exception:
-            return None
 
     @staticmethod
     def _period_return(closes: list[float], days: int) -> float | None:
@@ -155,21 +137,16 @@ class SalesAnalyticsBIExpert:
         return round(max(0.0, min(1.0, score)), 4)
 
     def _retail_metric(self, symbol: str, meta: dict[str, str]) -> RetailMetric | None:
-        result = self._fetch_chart(symbol)
-        if not result:
-            return None
-        chart_meta = result["meta"]
-        closes = [
-            float(c) for c in result["indicators"]["quote"][0]["close"] if c is not None
-        ]
+        closes = self.fetch_yahoo_closes(symbol, range_="3mo", interval="1d")
         if len(closes) < 2:
             return None
+        chart_meta = self.fetch_yahoo_chart_meta(symbol, range_="3mo", interval="1d")
+        if not chart_meta:
+            return None
 
-        day_chg: float | None = None
-        if len(closes) >= 2:
+        day_chg = chart_meta.get("day_chg_pct")
+        if day_chg is None and len(closes) >= 2:
             day_chg = round(((closes[-1] - closes[-2]) / closes[-2]) * 100, 2)
-        elif chart_meta.get("regularMarketChangePercent") is not None:
-            day_chg = round(float(chart_meta["regularMarketChangePercent"]), 2)
 
         trend = closes[-20:] if len(closes) >= 20 else closes
         trend_norm = []
@@ -185,11 +162,11 @@ class SalesAnalyticsBIExpert:
             symbol=symbol,
             name=meta["name"],
             category=meta["category"],
-            price=round(float(chart_meta.get("regularMarketPrice") or closes[-1]), 2),
+            price=round(float(chart_meta.get("price") or closes[-1]), 2),
             return_1d_pct=day_chg,
             return_5d_pct=r5,
             return_20d_pct=r20,
-            volume=chart_meta.get("regularMarketVolume"),
+            volume=chart_meta.get("volume"),
             momentum_score=self._momentum_score(r20, r5),
             trend_20d=trend_norm,
         )
@@ -334,8 +311,10 @@ class SalesAnalyticsBIExpert:
         )
 
         signals = self._market_signals(retailers, categories, assessment, consumer_strength)
-        recs = self._recommendations(
-            assessment, retailers, categories, momentum_index, breadth, disc_premium
+        recs = self.append_memory_recommendations(
+            self._recommendations(
+                assessment, retailers, categories, momentum_index, breadth, disc_premium
+            )
         )
 
         return SalesAnalyticsReport(
@@ -353,8 +332,8 @@ class SalesAnalyticsBIExpert:
             data_source="Yahoo Finance API",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         retailers: list[RetailMetric],
         categories: list[CategoryAggregate],
         assessment: BIAssessment,
@@ -390,7 +369,7 @@ class SalesAnalyticsBIExpert:
                     tickers=["XLY", "XLP", "WMT"],
                     bias=sector_bias,
                     reason=f"Consumer strength {strength:.2f}, breadth {breadth:.0f}% — {assessment.consumer_demand}",
-                    confidence=sector_conf,
+                    confidence=self.adjust_signal_confidence("XLY", sector_bias, sector_conf),
                     evidence={"consumer_strength": round(strength, 3), "breadth_pct": breadth},
                 )
             )
@@ -403,17 +382,22 @@ class SalesAnalyticsBIExpert:
                 if r.category == leader.category and r.symbol in RETAIL_UNIVERSE
             ][:3]
             if leader_tickers and leader.avg_return_20d_pct > 1.5 and leader.breadth_pct >= 50:
+                primary = leader_tickers[0]
                 signals.append(
                     build_market_signal(
                         sector=f"Category Leader — {leader.label}",
                         tickers=leader_tickers,
                         bias="BULLISH",
                         reason=f"Avg 20d {leader.avg_return_20d_pct:+.2f}%, breadth {leader.breadth_pct:.0f}%",
-                        confidence=retail_signal_confidence(
-                            momentum=leader.avg_momentum,
-                            return_20d_pct=leader.avg_return_20d_pct,
-                            breadth_pct=leader.breadth_pct,
-                            consumer_strength=strength,
+                        confidence=self.adjust_signal_confidence(
+                            primary,
+                            "BULLISH",
+                            retail_signal_confidence(
+                                momentum=leader.avg_momentum,
+                                return_20d_pct=leader.avg_return_20d_pct,
+                                breadth_pct=leader.breadth_pct,
+                                consumer_strength=strength,
+                            ),
                         ),
                     )
                 )
@@ -431,11 +415,15 @@ class SalesAnalyticsBIExpert:
                         tickers=[pick.symbol],
                         bias="BULLISH",
                         reason=f"Momentum {pick.momentum_score:.2f}, 20d {pick.return_20d_pct:+.2f}%",
-                        confidence=retail_signal_confidence(
-                            momentum=pick.momentum_score,
-                            return_20d_pct=pick.return_20d_pct,
-                            breadth_pct=breadth,
-                            consumer_strength=strength,
+                        confidence=self.adjust_signal_confidence(
+                            pick.symbol,
+                            "BULLISH",
+                            retail_signal_confidence(
+                                momentum=pick.momentum_score,
+                                return_20d_pct=pick.return_20d_pct,
+                                breadth_pct=breadth,
+                                consumer_strength=strength,
+                            ),
                         ),
                     )
                 )
@@ -454,7 +442,7 @@ class SalesAnalyticsBIExpert:
                     tickers=[r.symbol for r in ecom[:2]],
                     bias="BEARISH",
                     reason=f"{ecom[0].symbol} 20d {ecom[0].return_20d_pct:+.2f}%",
-                    confidence=0.58,
+                    confidence=self.adjust_signal_confidence(ecom[0].symbol, "BEARISH", 0.58),
                 )
             )
 
@@ -465,7 +453,7 @@ class SalesAnalyticsBIExpert:
                     tickers=["XLY"],
                     bias="NEUTRAL",
                     reason="No statistically strong retail sales signal",
-                    confidence=0.42,
+                    confidence=self.adjust_signal_confidence("XLY", "NEUTRAL", 0.42),
                 )
             )
         return signals
@@ -620,5 +608,8 @@ class SalesAnalyticsBIExpert:
         return result
 
 
-def run_sales_analytics_analysis(output: Path | None = None) -> dict[str, Any]:
-    return SalesAnalyticsBIExpert().run(output=output)
+def run_sales_analytics_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return SalesAnalyticsBIExpert(pipeline_context=pipeline_context).run(output=output)

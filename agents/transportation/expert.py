@@ -17,6 +17,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 HEADERS = {"User-Agent": "Finance-Transportation-Analyst/1.0 (shaggychunxx@gmail.com)"}
 DOT_BASE = "https://data.transportation.gov/resource"
 DOT_PORTAL = "https://data.transportation.gov/"
@@ -160,8 +162,24 @@ class TransportationReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class CivilTransportationAnalyst:
+class CivilTransportationAnalyst(BaseExpert):
     """Civil engineer analyst for DOT transportation open data."""
+
+    def __init__(self, *, pipeline_context: dict | None = None) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="transportation")
+
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
 
     def _socrata_get(self, dataset_id: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         url = f"{DOT_BASE}/{dataset_id}.json"
@@ -409,7 +427,7 @@ class CivilTransportationAnalyst:
                 )
             )
 
-        return signals
+        return self._adjust_market_signals(signals)
 
     def analyze(self) -> TransportationReport:
         bridge_states, total_bridges = self._fetch_rail_bridge_states()
@@ -520,7 +538,7 @@ class CivilTransportationAnalyst:
             "truck_inspections": report.truck_inspection_leaders,
             "civil_assessment": report.civil_assessment,
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -537,5 +555,8 @@ class CivilTransportationAnalyst:
         return result
 
 
-def run_transportation_analysis(output: Path | None = None) -> dict[str, Any]:
-    return CivilTransportationAnalyst().run(output=output)
+def run_transportation_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return CivilTransportationAnalyst(pipeline_context=pipeline_context).run(output=output)

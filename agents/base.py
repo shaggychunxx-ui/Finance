@@ -126,6 +126,117 @@ class BaseExpert:
         except (TypeError, ValueError):
             return None
 
+    def pipeline_watchlist_symbols(
+        self,
+        base: list[str] | None = None,
+        *,
+        limit: int = 32,
+    ) -> list[str]:
+        """Merge static watchlist with live quotes, memory trust, and bullish tickers."""
+        seen: set[str] = set()
+        ordered: list[str] = []
+        candidates = list(base or [])
+        candidates.extend(self.pipeline_context.get("live_quote_symbols") or [])
+        candidates.extend(self.pipeline_context.get("persistent_bullish_tickers") or [])
+        candidates.extend(self.pipeline_context.get("trust_symbols") or [])
+        for raw in candidates:
+            sym = str(raw or "").strip().upper()
+            if not sym or sym in seen or self.pipeline_should_skip_symbol(sym):
+                continue
+            if not self.domain_allows_symbol(sym):
+                continue
+            seen.add(sym)
+            ordered.append(sym)
+            if len(ordered) >= limit:
+                break
+        return ordered
+
+    def cross_agent_bias_votes(self) -> dict[str, dict[str, Any]]:
+        cached = self.pipeline_context.get("cross_agent_votes")
+        if isinstance(cached, dict):
+            return cached
+        try:
+            from agent_disagreement import collect_agent_bias_votes
+
+            same_cycle = self.pipeline_context.get("same_cycle_outputs")
+            if isinstance(same_cycle, dict) and same_cycle:
+                return collect_agent_bias_votes(
+                    agent_outputs=same_cycle,
+                    exclude_agent=self.agent_id,
+                )
+            return collect_agent_bias_votes(exclude_agent=self.agent_id)
+        except Exception:
+            return {}
+
+    def adjust_signal_confidence(self, symbol: str, bias: str, base_confidence: float) -> float:
+        """Apply memory trust/avoid and cross-agent disagreement to a raw confidence."""
+        try:
+            conf = float(base_confidence)
+        except (TypeError, ValueError):
+            conf = 0.5
+        conf *= self.pipeline_symbol_confidence_factor(symbol)
+        try:
+            from agent_disagreement import disagreement_confidence_factor
+
+            conf *= disagreement_confidence_factor(symbol, bias, self.cross_agent_bias_votes())
+        except Exception:
+            pass
+        return round(max(0.08, min(0.99, conf)), 3)
+
+    def fetch_yahoo_closes(
+        self,
+        symbol: str,
+        *,
+        range_: str = "6mo",
+        interval: str = "1d",
+    ) -> list[float]:
+        from agents.market_data.yahoo import fetch_closes
+
+        delay = float(getattr(self, "delay_seconds", 0.35))
+        return fetch_closes(
+            symbol,
+            range_=range_,
+            interval=interval,
+            delay_seconds=delay,
+            client_tag=self.agent_id or type(self).__name__,
+        )
+
+    def fetch_yahoo_ohlcv(
+        self,
+        symbol: str,
+        *,
+        range_: str = "3mo",
+        interval: str = "1d",
+    ) -> dict[str, list[float]]:
+        from agents.market_data.yahoo import fetch_ohlcv
+
+        delay = float(getattr(self, "delay_seconds", 0.35))
+        return fetch_ohlcv(
+            symbol,
+            range_=range_,
+            interval=interval,
+            delay_seconds=delay,
+            client_tag=self.agent_id or type(self).__name__,
+        )
+
+    def fetch_yahoo_chart_meta(
+        self,
+        symbol: str,
+        *,
+        range_: str = "1mo",
+        interval: str = "1d",
+    ) -> dict[str, Any] | None:
+        from agents.market_data.yahoo import fetch_chart_meta
+
+        delay = float(getattr(self, "delay_seconds", 0.35))
+        return fetch_chart_meta(
+            symbol,
+            range_=range_,
+            interval=interval,
+            delay_seconds=delay,
+            client_tag=self.agent_id or type(self).__name__,
+        )
+
     def request_enhanced_data(
         self,
         symbol: str,

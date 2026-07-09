@@ -20,10 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-HEADERS = {"User-Agent": "Finance-Empirical-Probability/1.0 (shaggychunxx@gmail.com)"}
+from agents.base import BaseExpert
 
 BENCHMARK = "SPY"
 WATCHLIST = {
@@ -184,33 +181,17 @@ class EmpiricalProbabilityReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class EmpiricalProbabilityExpert:
+class EmpiricalProbabilityExpert(BaseExpert):
     """Expert in empirical/experimental probability — observed frequencies and rule trials."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="empirical-probability")
         self.delay_seconds = delay_seconds
-
-    def _fetch_closes(self, symbol: str) -> list[float]:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1y"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1y"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            closes = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            return [float(c) for c in closes if c is not None]
-        except Exception:
-            return []
 
     @staticmethod
     def _daily_returns(closes: list[float]) -> list[float]:
@@ -525,7 +506,7 @@ class EmpiricalProbabilityExpert:
         return_map: dict[str, list[float]] = {}
 
         for symbol in WATCHLIST:
-            closes = self._fetch_closes(symbol)
+            closes = self.fetch_yahoo_closes(symbol, range_="1y")
             if closes:
                 return_map[symbol] = self._daily_returns(closes)
             time.sleep(self.delay_seconds)
@@ -626,8 +607,8 @@ class EmpiricalProbabilityExpert:
             data_source="Yahoo Finance API",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         frequencies: list[FrequencyEstimate],
         experiments: list[RuleExperiment],
         conditionals: list[FrequencyEstimate],
@@ -661,7 +642,11 @@ class EmpiricalProbabilityExpert:
                         f"P(up)={spy.empirical_prob:.0%} over {spy.trials} days "
                         f"[{spy.wilson_ci_low:.0%}, {spy.wilson_ci_high:.0%}]"
                     ),
-                    confidence=confidence_from_edge(spy.empirical_prob, samples=spy.trials, min_samples=40),
+                    confidence=self.adjust_signal_confidence(
+                        "SPY",
+                        bias,
+                        confidence_from_edge(spy.empirical_prob, samples=spy.trials, min_samples=40),
+                    ),
                     evidence={"wilson_ci": [spy.wilson_ci_low, spy.wilson_ci_high], "trials": spy.trials},
                 )
             )
@@ -681,10 +666,14 @@ class EmpiricalProbabilityExpert:
                             f"OOS win rate {exp.out_of_sample_win_rate:.0%} "
                             f"({exp.out_of_sample_trials} trials)"
                         ),
-                        confidence=confidence_from_edge(
-                            exp.out_of_sample_win_rate,
-                            samples=exp.out_of_sample_trials,
-                            min_samples=25,
+                        confidence=self.adjust_signal_confidence(
+                            exp.symbol,
+                            "BULLISH",
+                            confidence_from_edge(
+                                exp.out_of_sample_win_rate,
+                                samples=exp.out_of_sample_trials,
+                                min_samples=25,
+                            ),
                         ),
                     )
                 )
@@ -871,7 +860,7 @@ class EmpiricalProbabilityExpert:
                 "regime_label": report.regime_label,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -887,5 +876,8 @@ class EmpiricalProbabilityExpert:
         return result
 
 
-def run_empirical_probability_analysis(output: Path | None = None) -> dict[str, Any]:
-    return EmpiricalProbabilityExpert().run(output=output)
+def run_empirical_probability_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return EmpiricalProbabilityExpert(pipeline_context=pipeline_context).run(output=output)

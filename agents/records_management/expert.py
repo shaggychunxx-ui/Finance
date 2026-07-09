@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agents.base import BaseExpert
+
 RETENTION_SCHEDULE: list[dict[str, Any]] = [
     {
         "series": "agent_primary_report",
@@ -150,7 +152,7 @@ class RecordsManagementReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class RecordsManagementExpert:
+class RecordsManagementExpert(BaseExpert):
     """Expert records manager / archivist — inventory, retention, and snapshots."""
 
     def __init__(
@@ -158,7 +160,10 @@ class RecordsManagementExpert:
         output_dir: Path | None = None,
         archive_dir: Path | None = None,
         create_snapshot: bool = True,
+        *,
+        pipeline_context: dict | None = None,
     ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="records-management")
         self.output_dir = output_dir or Path("output")
         self.archive_dir = archive_dir or self.output_dir / "archive" / "snapshots"
         self.create_snapshot = create_snapshot
@@ -599,7 +604,7 @@ class RecordsManagementExpert:
                 "pending_actions": len(report.disposition_actions),
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -620,5 +625,8 @@ class RecordsManagementExpert:
         return result
 
 
-def run_records_management_analysis(output: Path | None = None) -> dict[str, Any]:
-    return RecordsManagementExpert().run(output=output)
+def run_records_management_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return RecordsManagementExpert(pipeline_context=pipeline_context).run(output=output)

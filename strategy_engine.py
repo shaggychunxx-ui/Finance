@@ -1037,6 +1037,15 @@ def run_agent_pipeline(
         )
         if outcome.get("ok"):
             ok += 1
+            try:
+                from agents.pipeline_memory import register_same_cycle_agent_output
+
+                if out_path.exists():
+                    loaded = json.loads(out_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        register_same_cycle_agent_output(aid, loaded)
+            except Exception:
+                pass
             if outcome.get("degraded"):
                 agent_degraded.append(
                     {

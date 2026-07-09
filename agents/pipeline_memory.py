@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 _active_context: dict[str, Any] | None = None
+_same_cycle_outputs: dict[str, dict[str, Any]] = {}
 
 
 def get_active_pipeline_context() -> dict[str, Any]:
@@ -28,6 +29,15 @@ def begin_pipeline_memory_session() -> dict[str, Any]:
     """Load (or build) pipeline_run_context.json and activate it for this run."""
     from analysis_history import load_pipeline_run_context, write_pipeline_run_context
 
+    global _same_cycle_outputs
+    _same_cycle_outputs = {}
+    try:
+        from agents.market_data.yahoo import clear_yahoo_session_cache
+
+        clear_yahoo_session_cache()
+    except Exception:
+        pass
+
     context = load_pipeline_run_context()
     if not isinstance(context, dict) or not context.get("agent_learning"):
         try:
@@ -38,7 +48,26 @@ def begin_pipeline_memory_session() -> dict[str, Any]:
 
 
 def end_pipeline_memory_session() -> None:
+    global _same_cycle_outputs
+    _same_cycle_outputs = {}
+    try:
+        from agents.market_data.yahoo import clear_yahoo_session_cache
+
+        clear_yahoo_session_cache()
+    except Exception:
+        pass
     clear_pipeline_memory()
+
+
+def register_same_cycle_agent_output(agent_id: str, data: dict[str, Any]) -> None:
+    """Expose completed agent outputs to later agents in the same pipeline cycle."""
+    global _same_cycle_outputs
+    if isinstance(data, dict) and agent_id:
+        _same_cycle_outputs[str(agent_id)] = data
+
+
+def same_cycle_agent_outputs() -> dict[str, dict[str, Any]]:
+    return dict(_same_cycle_outputs)
 
 
 def _live_quote_symbols(*, limit: int = 20) -> list[str]:
@@ -71,6 +100,19 @@ def memory_bundle_for_agent(agent_id: str) -> dict[str, Any]:
         cycle = str(last.get("cycle_id") or "?")
         prior_hint = f"Prior pipeline cycle {cycle}: {agents_ok}/{agents_total} agents succeeded."
 
+    cross_votes: dict[str, Any] = {}
+    contested: list[dict[str, Any]] = []
+    try:
+        from agent_disagreement import collect_agent_bias_votes, top_contested_symbols
+
+        if _same_cycle_outputs:
+            cross_votes = collect_agent_bias_votes(agent_outputs=_same_cycle_outputs, exclude_agent=aid)
+        else:
+            cross_votes = collect_agent_bias_votes(exclude_agent=aid)
+        contested = top_contested_symbols(cross_votes, limit=8)
+    except Exception:
+        pass
+
     return {
         "agent_id": aid,
         "posture": learning_row.get("posture", "neutral"),
@@ -89,6 +131,9 @@ def memory_bundle_for_agent(agent_id: str) -> dict[str, Any]:
             if (s.get("symbol") if isinstance(s, dict) else s)
         ],
         "live_quote_symbols": _live_quote_symbols(),
+        "same_cycle_outputs": dict(_same_cycle_outputs),
+        "cross_agent_votes": cross_votes,
+        "contested_symbols": contested,
         "regime_history": list(ctx.get("regime_history") or [])[-3:],
         "accuracy_leaderboard_top": list(ctx.get("accuracy_leaderboard") or [])[:5],
         "total_pipeline_runs": int(ctx.get("total_pipeline_runs") or 0),
@@ -153,6 +198,8 @@ def apply_pipeline_memory_to_result(
         "prior_runs_count": bundle.get("prior_runs_count"),
         "accuracy_rank": bundle.get("accuracy_rank"),
         "total_pipeline_runs": bundle.get("total_pipeline_runs"),
+        "live_quote_symbols": bundle.get("live_quote_symbols"),
+        "contested_symbols": bundle.get("contested_symbols"),
     }
 
     steered_signals: list[dict[str, Any]] = []

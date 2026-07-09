@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 HEADERS = {"User-Agent": "Finance-Electricity-Analyst/1.0 (shaggychunxx@gmail.com)"}
 EIA_REGION_URL = "https://api.eia.gov/v2/electricity/rto/region-data/data/"
 EIA_FUEL_URL = "https://api.eia.gov/v2/electricity/rto/fuel-type-data/data/"
@@ -137,12 +139,31 @@ class ElectricityReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class EiaGridMonitorAnalyst:
+class EiaGridMonitorAnalyst(BaseExpert):
     """Civil electrical engineer analyst for EIA Grid Monitor US48 overview."""
 
-    def __init__(self, config_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path | None = None,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="electricity")
         self.config = self._load_config(config_path)
         self.eia_api_key = self.config.get("eia_api_key", "DEMO_KEY").strip() or "DEMO_KEY"
+
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:
@@ -380,7 +401,7 @@ class EiaGridMonitorAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Renewables",
-                    tickers=["TAN", "ICLN", "NEE", "ENPH"],
+                    tickers=self.pipeline_watchlist_symbols(["TAN", "ICLN", "NEE", "ENPH"]),
                     bias="BULLISH",
                     reason=f"US48 renewable share {renewable_pct:.0f}% on EIA Grid Monitor",
                     confidence=min(0.78, 0.5 + renewable_pct / 100.0),
@@ -390,7 +411,7 @@ class EiaGridMonitorAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Renewables",
-                    tickers=["TAN", "ICLN"],
+                    tickers=self.pipeline_watchlist_symbols(["TAN", "ICLN"]),
                     bias="NEUTRAL",
                     reason=f"US48 renewable share {renewable_pct:.0f}%",
                     confidence=0.48,
@@ -406,7 +427,7 @@ class EiaGridMonitorAnalyst:
             signals.append(
                 build_market_signal(
                     sector="Natural Gas / Power",
-                    tickers=["UNG", "XLE", "VST", "NRG"],
+                    tickers=self.pipeline_watchlist_symbols(["UNG", "XLE", "VST", "NRG"]),
                     bias=gas_bias,
                     reason=(
                         f"Gas provides {gas_pct:.0f}% of US48 generation"
@@ -432,12 +453,12 @@ class EiaGridMonitorAnalyst:
 
         signals.append({
             "sector": "Utilities / Grid Infrastructure",
-            "tickers": ["XLU", "CEG", "DUK", "SO"],
+            "tickers": self.pipeline_watchlist_symbols(["XLU", "CEG", "DUK", "SO"]),
             "bias": "NEUTRAL",
             "reason": "EIA Grid Monitor US48 overview — baseline utility exposure",
         })
 
-        return signals
+        return self._adjust_market_signals(signals)
 
     def analyze(self) -> ElectricityReport:
         sources: list[str] = []
@@ -582,7 +603,7 @@ class EiaGridMonitorAnalyst:
             ],
             "electrical_assessment": report.electrical_assessment,
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -599,5 +620,8 @@ class EiaGridMonitorAnalyst:
         return result
 
 
-def run_electricity_analysis(output: Path | None = None) -> dict[str, Any]:
-    return EiaGridMonitorAnalyst().run(output=output)
+def run_electricity_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return EiaGridMonitorAnalyst(pipeline_context=pipeline_context).run(output=output)

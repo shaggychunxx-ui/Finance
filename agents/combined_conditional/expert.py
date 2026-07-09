@@ -18,10 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-import requests
-
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-HEADERS = {"User-Agent": "Finance-Combined-Conditional/1.0 (shaggychunxx@gmail.com)"}
+from agents.base import BaseExpert
 
 BENCHMARK = "SPY"
 WATCHLIST = {
@@ -200,33 +197,17 @@ class CombinedConditionalReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class CombinedConditionalExpert:
+class CombinedConditionalExpert(BaseExpert):
     """Expert in combined & conditional probabilities on market return events."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="combined-conditional")
         self.delay_seconds = delay_seconds
-
-    def _fetch_closes(self, symbol: str) -> list[float]:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1y"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1y"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            closes = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            return [float(c) for c in closes if c is not None]
-        except Exception:
-            return []
 
     @staticmethod
     def _daily_returns(closes: list[float]) -> list[float]:
@@ -607,7 +588,7 @@ class CombinedConditionalExpert:
         return_map: dict[str, list[float]] = {}
 
         for symbol in WATCHLIST:
-            closes = self._fetch_closes(symbol)
+            closes = self.fetch_yahoo_closes(symbol, range_="1y")
             if closes:
                 return_map[symbol] = self._daily_returns(closes)
             time.sleep(self.delay_seconds)
@@ -734,8 +715,8 @@ class CombinedConditionalExpert:
             data_source="Yahoo Finance API",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         joints: list[JointProb],
         conditionals: list[ConditionalProb],
         multi: list[MultiConditionalProb],
@@ -755,20 +736,29 @@ class CombinedConditionalExpert:
                         tickers=[top.symbol_a, top.symbol_b],
                         bias="BULLISH",
                         reason=f"P({top.event_a}∩{top.event_b})={top.joint_prob:.0%}",
-                        confidence=conditional_prob_confidence(top.joint_prob, sample_size=252),
+                        confidence=self.adjust_signal_confidence(
+                            top.symbol_a,
+                            "BULLISH",
+                            conditional_prob_confidence(top.joint_prob, sample_size=252),
+                        ),
                         evidence={"joint_prob": top.joint_prob},
                     )
                 )
 
         for c in sorted(conditionals, key=lambda x: -x.conditional_prob)[:2]:
             if c.conditional_prob >= 0.68 or c.conditional_prob <= 0.32:
+                bias = "BULLISH" if c.conditional_prob >= 0.5 else "BEARISH"
                 signals.append(
                     build_market_signal(
                         sector=f"Conditional — {c.event}",
                         tickers=[c.symbol],
-                        bias="BULLISH" if c.conditional_prob >= 0.5 else "BEARISH",
+                        bias=bias,
                         reason=f"P({c.event}|{c.condition})={c.conditional_prob:.0%}",
-                        confidence=conditional_prob_confidence(c.conditional_prob, sample_size=252),
+                        confidence=self.adjust_signal_confidence(
+                            c.symbol,
+                            bias,
+                            conditional_prob_confidence(c.conditional_prob, sample_size=252),
+                        ),
                     )
                 )
 
@@ -780,7 +770,11 @@ class CombinedConditionalExpert:
                         tickers=["SPY", "QQQ", "XLK"],
                         bias="BULLISH",
                         reason=f"P({m.event}|{m.conditions})={m.conditional_prob:.0%}",
-                        confidence=conditional_prob_confidence(m.conditional_prob, sample_size=252),
+                        confidence=self.adjust_signal_confidence(
+                            "SPY",
+                            "BULLISH",
+                            conditional_prob_confidence(m.conditional_prob, sample_size=252),
+                        ),
                     )
                 )
 
@@ -792,20 +786,29 @@ class CombinedConditionalExpert:
                         tickers=["SPY", "QQQ"],
                         bias="BULLISH",
                         reason=f"joint/independent ratio={t.independence_ratio:.2f}",
-                        confidence=conditional_prob_confidence(min(0.9, 0.5 + (t.independence_ratio - 1.0) * 0.2)),
+                        confidence=self.adjust_signal_confidence(
+                            "SPY",
+                            "BULLISH",
+                            conditional_prob_confidence(min(0.9, 0.5 + (t.independence_ratio - 1.0) * 0.2)),
+                        ),
                     )
                 )
 
         if scenarios:
             s = scenarios[0]
             if s.combined_prob >= 0.55:
+                primary = s.tickers[0] if s.tickers else "SPY"
                 signals.append(
                     build_market_signal(
                         sector=f"Combined Scenario — {s.strategy}",
                         tickers=s.tickers,
                         bias="BULLISH",
                         reason=f"'{s.name}' P={s.combined_prob:.0%}",
-                        confidence=conditional_prob_confidence(s.combined_prob, sample_size=252),
+                        confidence=self.adjust_signal_confidence(
+                            primary,
+                            "BULLISH",
+                            conditional_prob_confidence(s.combined_prob, sample_size=252),
+                        ),
                     )
                 )
 
@@ -993,7 +996,7 @@ class CombinedConditionalExpert:
                 "regime_label": report.regime_label,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -1009,5 +1012,8 @@ class CombinedConditionalExpert:
         return result
 
 
-def run_combined_conditional_analysis(output: Path | None = None) -> dict[str, Any]:
-    return CombinedConditionalExpert().run(output=output)
+def run_combined_conditional_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return CombinedConditionalExpert(pipeline_context=pipeline_context).run(output=output)

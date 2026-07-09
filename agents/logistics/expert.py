@@ -20,6 +20,8 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 AIS_EXPORT_URL = "https://services.marinetraffic.com/api/exportvessels"
 HEADERS = {"User-Agent": "Finance-Logistics-Expert/1.0 (shaggychunxx@gmail.com)"}
 PRIMARY_DASHBOARD = (
@@ -139,11 +141,30 @@ class LogisticsReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class LogisticsExpert:
+class LogisticsExpert(BaseExpert):
     """Expert logistics agent — multi-corridor AIS analysis and supply-chain signals."""
 
-    def __init__(self, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="logistics")
         self.api_key = api_key or os.environ.get("MARINETRAFFIC_API_KEY", "") or self._load_config_key()
+
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
 
     @staticmethod
     def _load_config_key() -> str:
@@ -519,8 +540,8 @@ class LogisticsExpert:
             data_sources=sources,
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         corridors: list[CorridorSnapshot],
         assessment: LogisticsAssessment,
         stress: float,
@@ -607,7 +628,7 @@ class LogisticsExpert:
                 )
             )
 
-        return signals
+        return self._adjust_market_signals(signals)
 
     @staticmethod
     def _recommendations(
@@ -716,7 +737,7 @@ class LogisticsExpert:
                 "stress_label": report.stress_label,
             },
             "market_signals": report.market_signals,
-            "recommendations": report.recommendations,
+            "recommendations": self.append_memory_recommendations(report.recommendations),
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
@@ -733,5 +754,8 @@ class LogisticsExpert:
         return result
 
 
-def run_logistics_analysis(output: Path | None = None) -> dict[str, Any]:
-    return LogisticsExpert().run(output=output)
+def run_logistics_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return LogisticsExpert(pipeline_context=pipeline_context).run(output=output)

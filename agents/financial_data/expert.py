@@ -20,8 +20,9 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 DASHBOARD_URL = "https://finance.yahoo.com/"
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 TRENDING_API = "https://query1.finance.yahoo.com/v1/finance/trending/US"
 SCREENER_API = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
 HEADERS = {"User-Agent": "Finance-Statistical-Analyst/1.0 (shaggychunxx@gmail.com)"}
@@ -165,34 +166,21 @@ class FinancialDataReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class YahooFinanceStatisticalAnalyst:
+class YahooFinanceStatisticalAnalyst(BaseExpert):
     """Mathematician/market analyst — statistical analysis of Yahoo Finance data."""
 
-    def __init__(self, delay_seconds: float = 0.3) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.3,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="financial-data")
         self.delay_seconds = delay_seconds
         self.symbols = list(US_INDICES) + list(SECTOR_ETFS) + [BENCHMARK]
 
     def _fetch_closes(self, symbol: str, range_: str = "3mo") -> list[float]:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": range_},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": range_},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            closes = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            return [float(c) for c in closes if c is not None]
-        except Exception:
-            return []
+        return self.fetch_yahoo_closes(symbol, range_=range_, interval="1d")
 
     @staticmethod
     def _returns(closes: list[float]) -> list[float]:
@@ -635,7 +623,9 @@ class YahooFinanceStatisticalAnalyst:
 
         summary = self._expert_summary(assessment, cs, regime_label, statistical_score, sectors)
         signals = self._market_signals(sectors, cs, outliers, indices, statistical_score)
-        recs = self._recommendations(assessment, cs, sectors, correlations, outliers, gainers, losers, trending)
+        recs = self.append_memory_recommendations(
+            self._recommendations(assessment, cs, sectors, correlations, outliers, gainers, losers, trending)
+        )
 
         return FinancialDataReport(
             indices=indices,
@@ -657,8 +647,8 @@ class YahooFinanceStatisticalAnalyst:
             data_source="Yahoo Finance API",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         sectors: list[SeriesStats],
         cs: CrossSectionStats,
         outliers: list[OutlierMover],
@@ -684,9 +674,13 @@ class YahooFinanceStatisticalAnalyst:
                         f"μ={cs.mean_return_pct:+.2f}%, {cs.breadth_pct_positive:.0f}% sectors up, "
                         f"A/D {cs.advance_decline_ratio:.1f}x"
                     ),
-                    confidence=cross_section_confidence(
-                        statistical_score,
-                        breadth_pct=cs.breadth_pct_positive,
+                    confidence=self.adjust_signal_confidence(
+                        "SPY",
+                        bias,
+                        cross_section_confidence(
+                            statistical_score,
+                            breadth_pct=cs.breadth_pct_positive,
+                        ),
                     ),
                     evidence={"statistical_score": round(statistical_score, 3)},
                 )
@@ -701,9 +695,13 @@ class YahooFinanceStatisticalAnalyst:
                         tickers=[z_leader.symbol],
                         bias="BULLISH",
                         reason=f"Cross-section z={z_leader.cross_section_z:+.2f} vs sector peers",
-                        confidence=cross_section_confidence(
-                            statistical_score,
-                            z_score=z_leader.cross_section_z,
+                        confidence=self.adjust_signal_confidence(
+                            z_leader.symbol,
+                            "BULLISH",
+                            cross_section_confidence(
+                                statistical_score,
+                                z_score=z_leader.cross_section_z,
+                            ),
                         ),
                     )
                 )
@@ -715,24 +713,33 @@ class YahooFinanceStatisticalAnalyst:
                         tickers=[z_laggard.symbol],
                         bias="BEARISH",
                         reason=f"Cross-section z={z_laggard.cross_section_z:+.2f} — relative weakness",
-                        confidence=cross_section_confidence(
-                            statistical_score,
-                            z_score=z_laggard.cross_section_z,
+                        confidence=self.adjust_signal_confidence(
+                            z_laggard.symbol,
+                            "BEARISH",
+                            cross_section_confidence(
+                                statistical_score,
+                                z_score=z_laggard.cross_section_z,
+                            ),
                         ),
                     )
                 )
 
         for o in outliers[:2]:
             if abs(o.z_score_mover) >= 1.8:
+                outlier_bias = "BULLISH" if o.day_chg_pct > 0 else "BEARISH"
                 signals.append(
                     build_market_signal(
                         sector=f"Mover Outlier ({o.direction})",
                         tickers=[o.symbol],
-                        bias="BULLISH" if o.day_chg_pct > 0 else "BEARISH",
+                        bias=outlier_bias,
                         reason=f"{o.symbol} mover z={o.z_score_mover:+.2f} ({o.day_chg_pct:+.2f}%)",
-                        confidence=cross_section_confidence(
-                            statistical_score,
-                            z_score=o.z_score_mover,
+                        confidence=self.adjust_signal_confidence(
+                            o.symbol,
+                            outlier_bias,
+                            cross_section_confidence(
+                                statistical_score,
+                                z_score=o.z_score_mover,
+                            ),
                         ),
                     )
                 )
@@ -745,7 +752,11 @@ class YahooFinanceStatisticalAnalyst:
                     tickers=["VIXY", "UVXY", "GLD"],
                     bias="BULLISH",
                     reason=f"VIX z-score {vix.z_score_20d:+.2f} — fear elevated vs 20d",
-                    confidence=cross_section_confidence(statistical_score, z_score=vix.z_score_20d),
+                    confidence=self.adjust_signal_confidence(
+                        "VIXY",
+                        "BULLISH",
+                        cross_section_confidence(statistical_score, z_score=vix.z_score_20d),
+                    ),
                 )
             )
 
@@ -756,7 +767,7 @@ class YahooFinanceStatisticalAnalyst:
                     tickers=["SPY"],
                     bias="NEUTRAL",
                     reason="No significant statistical edge detected",
-                    confidence=0.42,
+                    confidence=self.adjust_signal_confidence("SPY", "NEUTRAL", 0.42),
                 )
             )
         return signals
@@ -909,5 +920,8 @@ class YahooFinanceStatisticalAnalyst:
         return result
 
 
-def run_financial_data_analysis(output: Path | None = None) -> dict[str, Any]:
-    return YahooFinanceStatisticalAnalyst().run(output=output)
+def run_financial_data_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return YahooFinanceStatisticalAnalyst(pipeline_context=pipeline_context).run(output=output)

@@ -17,8 +17,9 @@ from typing import Any
 
 import requests
 
+from agents.base import BaseExpert
+
 DASHBOARD_URL = "https://finance.yahoo.com/"
-CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 TRENDING_API = "https://query1.finance.yahoo.com/v1/finance/trending/US"
 SCREENER_API = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
 HEADERS = {"User-Agent": "Finance-Market-Analyst/1.0 (shaggychunxx@gmail.com)"}
@@ -94,10 +95,16 @@ class MarketReport:
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class MarketAnalystExpert:
+class MarketAnalystExpert(BaseExpert):
     """Expert market analyst — indices, sectors, movers, and regime assessment."""
 
-    def __init__(self, delay_seconds: float = 0.35) -> None:
+    def __init__(
+        self,
+        delay_seconds: float = 0.35,
+        *,
+        pipeline_context: dict | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="markets")
         self.delay_seconds = delay_seconds
         self.symbols = (
             US_INDICES + RISK_SYMBOLS + list(SECTOR_ETFS)
@@ -105,57 +112,20 @@ class MarketAnalystExpert:
         )
 
     def _fetch_chart(self, symbol: str) -> Quote | None:
-        try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "1mo"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "1mo"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            result = resp.json()["chart"]["result"][0]
-            meta = result["meta"]
-            price = meta.get("regularMarketPrice")
-            if price is None:
-                return None
-
-            closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
-            valid = [float(c) for c in closes if c is not None]
-
-            day_chg: float | None = None
-            if len(valid) >= 2:
-                day_chg = round(((valid[-1] - valid[-2]) / valid[-2]) * 100, 2)
-            elif meta.get("regularMarketChangePercent") is not None:
-                day_chg = round(float(meta["regularMarketChangePercent"]), 2)
-            else:
-                prev = meta.get("previousClose")
-                if prev is not None:
-                    day_chg = round(((float(price) - float(prev)) / float(prev)) * 100, 2)
-
-            week_chg: float | None = None
-            if len(valid) >= 6:
-                week_chg = round(((valid[-1] - valid[-6]) / valid[-6]) * 100, 2)
-            elif len(valid) >= 2:
-                week_chg = round(((valid[-1] - valid[0]) / valid[0]) * 100, 2)
-
-            return Quote(
-                symbol=symbol,
-                name=meta.get("shortName") or symbol,
-                price=round(float(price), 2),
-                day_chg_pct=day_chg,
-                week_chg_pct=week_chg,
-                volume=meta.get("regularMarketVolume"),
-            )
-        except Exception:
+        meta = self.fetch_yahoo_chart_meta(symbol, range_="1mo", interval="1d")
+        if not meta:
             return None
+        price = meta.get("price")
+        if price is None:
+            return None
+        return Quote(
+            symbol=symbol,
+            name=symbol,
+            price=round(float(price), 2),
+            day_chg_pct=meta.get("day_chg_pct"),
+            week_chg_pct=meta.get("week_chg_pct"),
+            volume=meta.get("volume"),
+        )
 
     def _fetch_trending(self) -> list[str]:
         try:
@@ -376,7 +346,9 @@ class MarketAnalystExpert:
         )
         summary = self._expert_summary(assessment, breadth_pct, risk_on, momentum, label, gainers)
         signals = self._market_signals(by_sym, sectors, gainers, losers, breadth_pct, risk_on)
-        recs = self._recommendations(by_sym, sectors, gainers, losers, trending, assessment, risk_on)
+        recs = self.append_memory_recommendations(
+            self._recommendations(by_sym, sectors, gainers, losers, trending, assessment, risk_on)
+        )
 
         return MarketReport(
             indices=indices,
@@ -396,8 +368,8 @@ class MarketAnalystExpert:
             data_source="Yahoo Finance API",
         )
 
-    @staticmethod
     def _market_signals(
+        self,
         by_sym: dict[str, Quote],
         sectors: list[SectorSnapshot],
         gainers: list[Quote],
@@ -417,7 +389,11 @@ class MarketAnalystExpert:
                     tickers=["SPY", "QQQ", "IWM"],
                     bias=bias,
                     reason=f"Index breadth {breadth:+.2f}%",
-                    confidence=breadth_risk_signal_confidence(breadth, risk_on),
+                    confidence=self.adjust_signal_confidence(
+                        "SPY",
+                        bias,
+                        breadth_risk_signal_confidence(breadth, risk_on),
+                    ),
                     evidence={"breadth_pct": round(breadth, 3), "risk_on": round(risk_on, 3)},
                 )
             )
@@ -429,7 +405,11 @@ class MarketAnalystExpert:
                     tickers=["QQQ", "XLK", "NVDA", "MSFT"],
                     bias="BULLISH",
                     reason=f"Risk-on score {risk_on:.2f}",
-                    confidence=breadth_risk_signal_confidence(breadth, risk_on),
+                    confidence=self.adjust_signal_confidence(
+                        "QQQ",
+                        "BULLISH",
+                        breadth_risk_signal_confidence(breadth, risk_on),
+                    ),
                 )
             )
         elif risk_on <= 0.40:
@@ -439,23 +419,32 @@ class MarketAnalystExpert:
                     tickers=["XLU", "XLP", "GLD", "TLT"],
                     bias="BULLISH",
                     reason=f"Risk-off score {risk_on:.2f}",
-                    confidence=breadth_risk_signal_confidence(breadth, risk_on),
+                    confidence=self.adjust_signal_confidence(
+                        "XLU",
+                        "BULLISH",
+                        breadth_risk_signal_confidence(breadth, risk_on),
+                    ),
                 )
             )
 
         if sectors:
             leader = sectors[0]
             if (leader.day_chg_pct or 0) > 0.4:
+                leader_bias = "BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL"
                 signals.append(
                     build_market_signal(
                         sector=f"Leading — {leader.sector}",
                         tickers=[leader.etf],
-                        bias="BULLISH" if (leader.day_chg_pct or 0) > 0.5 else "NEUTRAL",
+                        bias=leader_bias,
                         reason=f"{leader.etf} {leader.day_chg_pct:+.2f}% today",
-                        confidence=breadth_risk_signal_confidence(
-                            leader.day_chg_pct,
-                            risk_on,
-                            momentum=0.55 + min((leader.day_chg_pct or 0) / 5.0, 0.2),
+                        confidence=self.adjust_signal_confidence(
+                            leader.etf,
+                            leader_bias,
+                            breadth_risk_signal_confidence(
+                                leader.day_chg_pct,
+                                risk_on,
+                                momentum=0.55 + min((leader.day_chg_pct or 0) / 5.0, 0.2),
+                            ),
                         ),
                     )
                 )
@@ -467,19 +456,28 @@ class MarketAnalystExpert:
                         tickers=[laggard.etf],
                         bias="BEARISH",
                         reason=f"{laggard.etf} {laggard.day_chg_pct:+.2f}% today",
-                        confidence=breadth_risk_signal_confidence(laggard.day_chg_pct, risk_on),
+                        confidence=self.adjust_signal_confidence(
+                            laggard.etf,
+                            "BEARISH",
+                            breadth_risk_signal_confidence(laggard.day_chg_pct, risk_on),
+                        ),
                     )
                 )
 
         xle = by_sym.get("XLE")
         if xle and xle.day_chg_pct is not None and abs(xle.day_chg_pct) > 0.75:
+            xle_bias = "BULLISH" if xle.day_chg_pct > 0 else "BEARISH"
             signals.append(
                 build_market_signal(
                     sector="Energy",
                     tickers=["XLE", "USO", "XOM"],
-                    bias="BULLISH" if xle.day_chg_pct > 0 else "BEARISH",
+                    bias=xle_bias,
                     reason=f"Energy {xle.day_chg_pct:+.2f}%",
-                    confidence=breadth_risk_signal_confidence(xle.day_chg_pct, risk_on),
+                    confidence=self.adjust_signal_confidence(
+                        "XLE",
+                        xle_bias,
+                        breadth_risk_signal_confidence(xle.day_chg_pct, risk_on),
+                    ),
                 )
             )
 
@@ -490,7 +488,11 @@ class MarketAnalystExpert:
                     tickers=[g.symbol for g in gainers[:5]],
                     bias="BULLISH",
                     reason=f"Leader {gainers[0].symbol} {gainers[0].day_chg_pct:+.2f}%",
-                    confidence=breadth_risk_signal_confidence(gainers[0].day_chg_pct, risk_on),
+                    confidence=self.adjust_signal_confidence(
+                        gainers[0].symbol,
+                        "BULLISH",
+                        breadth_risk_signal_confidence(gainers[0].day_chg_pct, risk_on),
+                    ),
                 )
             )
 
@@ -501,7 +503,7 @@ class MarketAnalystExpert:
                     tickers=["SPY"],
                     bias="NEUTRAL",
                     reason="No strong directional tilt on tape",
-                    confidence=0.42,
+                    confidence=self.adjust_signal_confidence("SPY", "NEUTRAL", 0.42),
                 )
             )
         return signals
@@ -610,5 +612,8 @@ class MarketAnalystExpert:
         return result
 
 
-def run_markets_analysis(output: Path | None = None) -> dict[str, Any]:
-    return MarketAnalystExpert().run(output=output)
+def run_markets_analysis(
+    output: Path | None = None,
+    pipeline_context: dict | None = None,
+) -> dict[str, Any]:
+    return MarketAnalystExpert(pipeline_context=pipeline_context).run(output=output)
