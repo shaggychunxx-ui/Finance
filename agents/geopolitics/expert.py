@@ -4,7 +4,7 @@ Geopolitics Expert Agent
 Expert geopolitical risk analysis from global news feeds and theater monitoring.
 
 Primary data: BBC World RSS, NPR World RSS, Al Jazeera RSS, France 24 RSS,
-GDELT DOC API (rate-limited, optional).
+NHK World RSS, GDELT DOC API (rate-limited, optional).
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ NEWS_FEEDS = [
     ("NPR World", "https://feeds.npr.org/1004/rss.xml"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
     ("France 24", "https://www.france24.com/en/rss"),
+    ("NHK World", "https://www3.nhk.or.jp/nhkworld/en/news/rss/all.xml"),
 ]
 
 THEATERS = {
