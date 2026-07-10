@@ -708,6 +708,37 @@ def test_pipeline_memory_bundle_and_steering() -> None:
         clear_pipeline_memory()
 
 
+def test_restore_same_cycle_agent_outputs() -> None:
+    import tempfile
+
+    import app_paths
+    from agents import pipeline_memory as pm
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    payload = {
+        "meta": {"analyzed_at": "2026-01-01T00:00:00+00:00"},
+        "market_signals": [
+            {"sector": "Broad Market", "tickers": ["SPY"], "impact_scope": "market"},
+        ],
+        "recommendations": ["ok"],
+    }
+    pm.begin_pipeline_memory_session()
+    try:
+        pm.register_same_cycle_agent_output("logistics", payload)
+        restored = pm.restore_same_cycle_agent_outputs(
+            [{"id": "logistics", "file": "logistics.json"}],
+        )
+        assert restored == 1
+        written = json.loads((out_dir / "logistics.json").read_text(encoding="utf-8"))
+        assert written["market_signals"][0]["impact_scope"] == "market"
+    finally:
+        pm.end_pipeline_memory_session()
+        app_paths.OUTPUT = original_output
+
+
 def _run_all() -> None:
     tests = [
         test_app_paths_consistent,
@@ -716,6 +747,7 @@ def _run_all() -> None:
         test_prediction_hit_logic,
         test_import_core_modules,
         test_pipeline_memory_bundle_and_steering,
+        test_restore_same_cycle_agent_outputs,
         test_agent_signal_logic_thresholds,
         test_live_accuracy_merge_prefers_live_samples,
         test_temperature_stabilized_by_posture_and_accuracy,

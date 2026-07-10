@@ -70,6 +70,40 @@ def same_cycle_agent_outputs() -> dict[str, dict[str, Any]]:
     return dict(_same_cycle_outputs)
 
 
+def restore_same_cycle_agent_outputs(
+    sources: list[dict[str, str]] | None = None,
+) -> int:
+    """Persist in-memory same-cycle agent outputs back to disk.
+
+    Guards against external processes overwriting output/*.json while a pipeline
+    run is still in progress (e.g. GUI workers with stale agent code).
+    """
+    outputs = same_cycle_agent_outputs()
+    if not outputs:
+        return 0
+
+    from app_paths import OUTPUT
+
+    if sources is None:
+        from agents.platform_catalog import active_agent_sources
+
+        sources = active_agent_sources(check_remote=False)
+
+    restored = 0
+    for src in sources:
+        aid = str(src.get("id") or "")
+        data = outputs.get(aid)
+        if not isinstance(data, dict):
+            continue
+        out_path = OUTPUT / str(src.get("file") or "")
+        if not out_path.name.endswith(".json"):
+            continue
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        restored += 1
+    return restored
+
+
 def _live_quote_symbols(*, limit: int = 20) -> list[str]:
     try:
         from agents.enhancement import load_enhanced_quotes

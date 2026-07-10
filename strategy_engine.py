@@ -1075,6 +1075,14 @@ def run_agent_pipeline(
             preview += f"; and {extra} more"
         on_progress(f"Pipeline agent failures ({len(agent_failures)}): {preview}")
     try:
+        from agents.pipeline_memory import restore_same_cycle_agent_outputs
+
+        restored = restore_same_cycle_agent_outputs(sources)
+        if restored and on_progress:
+            on_progress(f"Restored {restored} agent output(s) from pipeline memory.")
+    except Exception:
+        pass
+    try:
         from etrade_market_enhancer import run_etrade_enhancement
 
         run_etrade_enhancement(on_progress=on_progress)
@@ -1102,6 +1110,12 @@ def run_agent_pipeline(
     except Exception as exc:
         if on_progress:
             on_progress(f"Pipeline backtest skipped: {exc}")
+    try:
+        from agents.pipeline_memory import restore_same_cycle_agent_outputs
+
+        restore_same_cycle_agent_outputs(sources)
+    except Exception:
+        pass
     if on_progress:
         on_progress("Fusing Market Predictor…")
     predictor_outcome = _run_market_predictor(
