@@ -15,7 +15,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
-| **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR / Al Jazeera / France 24 / NHK World RSS (+ optional GDELT) |
+| **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR / Al Jazeera / France 24 / NHK World / DW RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
@@ -205,7 +205,7 @@ Live US market analysis from Yahoo Finance:
 ## Geopolitics Expert
 
 Monitors global headlines from BBC World, NPR World, Al Jazeera,
-France 24, and NHK World RSS feeds, and scores risk across six theaters:
+France 24, NHK World, and DW RSS feeds, and scores risk across six theaters:
 
 - **Ukraine / Russia**, **Middle East**, **China / Taiwan**
 - **Trade / Sanctions**, **Energy Security**, **Americas**
