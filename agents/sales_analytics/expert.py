@@ -310,7 +310,24 @@ class SalesAnalyticsBIExpert(BaseExpert):
             f"{assessment.bi_insight}."
         )
 
-        signals = self._market_signals(retailers, categories, assessment, consumer_strength)
+        ecom_weak = any(
+            r.category == "e_commerce"
+            and (r.return_20d_pct or 0) < -5
+            and r.momentum_score < 0.45
+            for r in retailers
+        )
+        leading = categories[0] if categories else None
+        signals = self._market_signals(
+            assessment,
+            consumer_strength=consumer_strength,
+            breadth_pct=breadth,
+            momentum_index=momentum_index,
+            discretionary_premium_pct=disc_premium,
+            strength_label=strength_label,
+            leading_category=leading.label if leading else "",
+            category_momentum=leading.avg_momentum if leading else None,
+            e_commerce_weak=ecom_weak,
+        )
         recs = self.append_memory_recommendations(
             self._recommendations(
                 assessment, retailers, categories, momentum_index, breadth, disc_premium
@@ -332,131 +349,46 @@ class SalesAnalyticsBIExpert(BaseExpert):
             data_source="Yahoo Finance API",
         )
 
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
+
     def _market_signals(
         self,
-        retailers: list[RetailMetric],
-        categories: list[CategoryAggregate],
         assessment: BIAssessment,
-        strength: float,
+        *,
+        consumer_strength: float,
+        breadth_pct: float,
+        momentum_index: float,
+        discretionary_premium_pct: float | None,
+        strength_label: str,
+        leading_category: str,
+        category_momentum: float | None,
+        e_commerce_weak: bool,
     ) -> list[dict[str, Any]]:
-        from agent_signal_logic import build_market_signal, retail_signal_confidence
+        from agent_signal_logic import sales_consumer_market_impact_signals
 
-        non_etf = [r for r in retailers if r.category != "sector_etf"]
-        breadth = (
-            round(sum(1 for r in non_etf if (r.return_20d_pct or 0) > 0) / len(non_etf) * 100, 1)
-            if non_etf
-            else 50.0
+        signals = sales_consumer_market_impact_signals(
+            consumer_strength=consumer_strength,
+            breadth_pct=breadth_pct,
+            momentum_index=momentum_index,
+            discretionary_premium_pct=discretionary_premium_pct,
+            strength_label=strength_label,
+            leading_category=leading_category,
+            category_momentum=category_momentum,
+            e_commerce_weak=e_commerce_weak,
+            source="sales-analytics",
         )
-        signals: list[dict[str, Any]] = []
-
-        sector_bias = (
-            "BULLISH"
-            if strength >= 0.62 and breadth >= 55
-            else "BEARISH"
-            if strength <= 0.38 and breadth <= 45
-            else "NEUTRAL"
-        )
-        sector_conf = retail_signal_confidence(
-            momentum=strength,
-            return_20d_pct=None,
-            breadth_pct=breadth,
-            consumer_strength=strength,
-        )
-        if sector_bias != "NEUTRAL" or strength >= 0.5:
-            signals.append(
-                build_market_signal(
-                    sector="Consumer / Retail",
-                    tickers=["XLY", "XLP", "WMT"],
-                    bias=sector_bias,
-                    reason=f"Consumer strength {strength:.2f}, breadth {breadth:.0f}% — {assessment.consumer_demand}",
-                    confidence=self.adjust_signal_confidence("XLY", sector_bias, sector_conf),
-                    evidence={"consumer_strength": round(strength, 3), "breadth_pct": breadth},
-                )
-            )
-
-        if categories:
-            leader = categories[0]
-            leader_tickers = [
-                r.symbol
-                for r in retailers
-                if r.category == leader.category and r.symbol in RETAIL_UNIVERSE
-            ][:3]
-            if leader_tickers and leader.avg_return_20d_pct > 1.5 and leader.breadth_pct >= 50:
-                primary = leader_tickers[0]
-                signals.append(
-                    build_market_signal(
-                        sector=f"Category Leader — {leader.label}",
-                        tickers=leader_tickers,
-                        bias="BULLISH",
-                        reason=f"Avg 20d {leader.avg_return_20d_pct:+.2f}%, breadth {leader.breadth_pct:.0f}%",
-                        confidence=self.adjust_signal_confidence(
-                            primary,
-                            "BULLISH",
-                            retail_signal_confidence(
-                                momentum=leader.avg_momentum,
-                                return_20d_pct=leader.avg_return_20d_pct,
-                                breadth_pct=leader.breadth_pct,
-                                consumer_strength=strength,
-                            ),
-                        ),
-                    )
-                )
-
-        top = sorted(
-            [r for r in non_etf if r.symbol in RETAIL_UNIVERSE],
-            key=lambda r: -r.momentum_score,
-        )[:1]
-        if top:
-            pick = top[0]
-            if pick.momentum_score >= 0.58 and (pick.return_20d_pct or 0) >= 1.5:
-                signals.append(
-                    build_market_signal(
-                        sector=f"Top Retail Proxy — {pick.name}",
-                        tickers=[pick.symbol],
-                        bias="BULLISH",
-                        reason=f"Momentum {pick.momentum_score:.2f}, 20d {pick.return_20d_pct:+.2f}%",
-                        confidence=self.adjust_signal_confidence(
-                            pick.symbol,
-                            "BULLISH",
-                            retail_signal_confidence(
-                                momentum=pick.momentum_score,
-                                return_20d_pct=pick.return_20d_pct,
-                                breadth_pct=breadth,
-                                consumer_strength=strength,
-                            ),
-                        ),
-                    )
-                )
-
-        ecom = [
-            r
-            for r in retailers
-            if r.category == "e_commerce"
-            and (r.return_20d_pct or 0) < -5
-            and r.momentum_score < 0.45
-        ]
-        if ecom:
-            signals.append(
-                build_market_signal(
-                    sector="E-Commerce Weakness",
-                    tickers=[r.symbol for r in ecom[:2]],
-                    bias="BEARISH",
-                    reason=f"{ecom[0].symbol} 20d {ecom[0].return_20d_pct:+.2f}%",
-                    confidence=self.adjust_signal_confidence(ecom[0].symbol, "BEARISH", 0.58),
-                )
-            )
-
-        if not signals:
-            signals.append(
-                build_market_signal(
-                    sector="Retail Neutral",
-                    tickers=["XLY"],
-                    bias="NEUTRAL",
-                    reason="No statistically strong retail sales signal",
-                    confidence=self.adjust_signal_confidence("XLY", "NEUTRAL", 0.42),
-                )
-            )
-        return signals
+        return self._adjust_market_signals(signals)
 
     @staticmethod
     def _recommendations(

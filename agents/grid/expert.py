@@ -430,93 +430,24 @@ class ElectricalGridAnalyst(BaseExpert):
         hub_prices: list[HubPrice],
         demands: list[IsoDemand],
     ) -> list[dict[str, Any]]:
-        from agent_signal_logic import build_market_signal, grid_power_confidence, meteorology_energy_score
+        from agent_signal_logic import meteorology_energy_score, power_grid_market_impact_signals
 
-        signals: list[dict[str, Any]] = []
         avg_renewable = sum(f.renewable_pct for f in fuels) / len(fuels) if fuels else 0.0
-        weather_stress = meteorology_energy_score()
-
-        if avg_renewable >= 38:
-            signals.append(
-                build_market_signal(
-                    sector="Renewables",
-                    tickers=self.pipeline_watchlist_symbols(["TAN", "ENPH", "FSLR", "NEE"]),
-                    bias="BULLISH",
-                    reason=f"High renewable penetration across live ISO feeds ({avg_renewable:.0f}% avg)",
-                    confidence=grid_power_confidence(renewable_pct=avg_renewable, grid_stress=weather_stress and weather_stress * 100),
-                    evidence={"renewable_pct": round(avg_renewable, 1)},
-                )
-            )
-        elif avg_renewable >= 25:
-            signals.append(
-                build_market_signal(
-                    sector="Renewables",
-                    tickers=self.pipeline_watchlist_symbols(["TAN", "ICLN"]),
-                    bias="NEUTRAL",
-                    reason=f"Renewable share {avg_renewable:.0f}% — moderate clean-energy mix",
-                    confidence=grid_power_confidence(renewable_pct=avg_renewable),
-                )
-            )
-
         ercot = next((f for f in fuels if f.market == "ERCOT"), None)
-        if ercot and ercot.gas_pct >= 45:
-            signals.append(
-                build_market_signal(
-                    sector="Natural Gas / Power",
-                    tickers=self.pipeline_watchlist_symbols(["UNG", "XLE", "XLU"]),
-                    bias="BULLISH",
-                    reason=f"Gas-heavy ERCOT stack ({ercot.gas_pct:.0f}% gas generation)",
-                    confidence=grid_power_confidence(gas_pct=ercot.gas_pct, grid_stress=weather_stress and weather_stress * 100),
-                    evidence={"gas_pct": ercot.gas_pct, "weather_energy": weather_stress},
-                )
-            )
+        avg_lmp = sum(p.lmp for p in hub_prices) / len(hub_prices) if hub_prices else None
+        peak_load = max((d.demand_mw for d in demands), default=0.0) or None
+        stress_score, _, stress_label = self._scores(fuels, hub_prices)
 
-        if hub_prices:
-            avg_lmp = sum(p.lmp for p in hub_prices) / len(hub_prices)
-            bias = "BULLISH" if avg_lmp >= 55 else "BEARISH" if avg_lmp <= 22 else "NEUTRAL"
-            if bias != "NEUTRAL":
-                signals.append(
-                    build_market_signal(
-                        sector="Merchant Power / Utilities",
-                        tickers=self.pipeline_watchlist_symbols(["VST", "NRG", "XLU", "CEG"]),
-                        bias=bias,
-                        reason=f"ERCOT hub LMP average ${avg_lmp:.2f}/MWh",
-                        confidence=grid_power_confidence(lmp=avg_lmp, gas_pct=ercot.gas_pct if ercot else None),
-                        evidence={"avg_lmp": round(avg_lmp, 2)},
-                    )
-                )
-        else:
-            tex = next((d for d in demands if d.iso == "TEX"), None)
-            if tex and tex.demand_mw > 75000:
-                signals.append({
-                    "sector": "Texas Utilities",
-                    "tickers": ["VST", "NRG", "XLU"],
-                    "bias": "NEUTRAL",
-                    "reason": f"ERCOT-area load {tex.demand_mw:,.0f} MW per EIA",
-                })
-
-        if ercot and ercot.storage_mw >= 3500:
-            signals.append(
-                build_market_signal(
-                    sector="Grid Storage",
-                    tickers=self.pipeline_watchlist_symbols(["TSLA", "STEM", "XLU"]),
-                    bias="NEUTRAL",
-                    reason=f"Battery dispatch {ercot.storage_mw:,.0f} MW on ERCOT",
-                    confidence=grid_power_confidence(grid_stress=weather_stress and weather_stress * 100),
-                )
-            )
-
-        if not signals:
-            signals.append(
-                build_market_signal(
-                    sector="Power Grid Baseline",
-                    tickers=self.pipeline_watchlist_symbols(["XLU", "NEE"]),
-                    bias="NEUTRAL",
-                    reason="ISO feeds show no strong fuel-mix or price tilt",
-                    confidence=0.42,
-                )
-            )
-
+        signals = power_grid_market_impact_signals(
+            grid_stress=stress_score,
+            stress_label=stress_label,
+            renewable_pct=avg_renewable,
+            gas_pct=ercot.gas_pct if ercot else None,
+            avg_lmp=avg_lmp,
+            weather_energy=meteorology_energy_score(),
+            peak_load_mw=peak_load,
+            source="grid",
+        )
         return self._adjust_market_signals(signals)
 
     def analyze(self) -> GridReport:

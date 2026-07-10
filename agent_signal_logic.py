@@ -98,6 +98,15 @@ def weighted_event_score(events: list[dict[str, Any]], *, impact_weights: dict[s
     return round(total, 3)
 
 
+MARKET_IMPACT_TICKERS = frozenset({
+    "SPY", "QQQ", "IWM", "DIA", "VOO",
+    "XLI", "XLF", "XLY", "XLP", "XLK", "XLV", "XLB", "XLC", "XLRE", "XLU",
+    "TLT", "HYG", "GLD", "SLV", "VIXY",
+    "UNG", "USO", "XLE",
+    "EEM", "FXI",
+})
+
+
 def build_market_signal(
     *,
     sector: str,
@@ -118,6 +127,1086 @@ def build_market_signal(
     if evidence:
         row["evidence"] = evidence
     return row
+
+
+def build_market_impact_signal(
+    *,
+    sector: str,
+    tickers: list[str],
+    bias: str,
+    reason: str,
+    confidence: float | None = None,
+    evidence: dict[str, Any] | None = None,
+    domain_context: str = "",
+) -> dict[str, Any]:
+    """Domain reading translated into a market-facing trade expression (not a sector buy)."""
+    row = build_market_signal(
+        sector=sector,
+        tickers=[t for t in tickers if str(t).upper() in MARKET_IMPACT_TICKERS],
+        bias=bias,
+        reason=reason,
+        confidence=confidence,
+        evidence=evidence,
+    )
+    row["impact_scope"] = "market"
+    if domain_context:
+        row["domain_context"] = domain_context
+    return row
+
+
+def power_grid_market_impact_signals(
+    *,
+    grid_stress: float,
+    stress_label: str = "",
+    renewable_pct: float = 0.0,
+    gas_pct: float | None = None,
+    avg_lmp: float | None = None,
+    weather_energy: float | None = None,
+    peak_load_mw: float | None = None,
+    source: str = "grid",
+) -> list[dict[str, Any]]:
+    """Translate ISO / LMP / fuel-mix readings into broad market picks (events-style)."""
+    signals: list[dict[str, Any]] = []
+    stress = float(grid_stress or 0.0)
+    label = str(stress_label or "").strip()
+    evidence_base: dict[str, Any] = {
+        "grid_stress": round(stress, 1),
+        "renewable_pct": round(float(renewable_pct or 0.0), 1),
+        "source": source,
+    }
+    if gas_pct is not None:
+        evidence_base["gas_pct"] = round(float(gas_pct), 1)
+    if avg_lmp is not None:
+        evidence_base["avg_lmp"] = round(float(avg_lmp), 2)
+    if weather_energy is not None:
+        evidence_base["weather_energy"] = round(float(weather_energy), 3)
+    if peak_load_mw is not None:
+        evidence_base["peak_load_mw"] = round(float(peak_load_mw), 0)
+
+    high_stress = stress >= 65.0 or (avg_lmp is not None and float(avg_lmp) >= 55.0)
+    low_power_cost = stress < 40.0 and avg_lmp is not None and float(avg_lmp) <= 22.0
+    clean_low_stress = float(renewable_pct or 0.0) >= 38.0 and stress < 50.0
+    gas_inflation = (
+        gas_pct is not None
+        and float(gas_pct) >= 45.0
+        and (
+            weather_energy is None
+            or float(weather_energy) >= 0.55
+        )
+    )
+    strong_load = peak_load_mw is not None and float(peak_load_mw) >= 75_000.0
+
+    if high_stress:
+        lmp_note = f" avg LMP ${float(avg_lmp):.2f}/MWh" if avg_lmp is not None else ""
+        conf = grid_power_confidence(
+            renewable_pct=renewable_pct,
+            gas_pct=gas_pct,
+            lmp=avg_lmp,
+            grid_stress=stress,
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market / Industrials",
+                tickers=["SPY", "XLI", "IWM"],
+                bias="BEARISH",
+                reason=(
+                    f"Wholesale power stress ({label or 'elevated'}{lmp_note}) — "
+                    "input-cost headwind for cyclicals and industrials"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="grid_stress",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Defensive / Rates Hedge",
+                tickers=["TLT", "GLD"],
+                bias="BULLISH" if stress >= 70.0 else "NEUTRAL",
+                reason=(
+                    "Elevated grid stress raises inflation and margin-risk — "
+                    "favor duration and defensive hedges"
+                ),
+                confidence=min(0.82, conf + 0.06),
+                evidence=evidence_base,
+                domain_context="grid_stress",
+            )
+        )
+
+    if low_power_cost:
+        conf = grid_power_confidence(renewable_pct=renewable_pct, lmp=avg_lmp, grid_stress=stress)
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY", "IWM"],
+                bias="BULLISH",
+                reason=(
+                    f"Subdued wholesale power costs (LMP ${float(avg_lmp):.2f}/MWh) "
+                    "support corporate margins and cyclical risk appetite"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="low_lmp",
+            )
+        )
+
+    if clean_low_stress and not high_stress:
+        conf = grid_power_confidence(renewable_pct=renewable_pct, grid_stress=stress)
+        signals.append(
+            build_market_impact_signal(
+                sector="Growth / Broad Market",
+                tickers=["QQQ", "SPY"],
+                bias="BULLISH" if float(renewable_pct) >= 42.0 else "NEUTRAL",
+                reason=(
+                    f"High renewable penetration ({float(renewable_pct):.0f}%) with "
+                    f"manageable grid stress ({label or 'normal'}) — lower power-cost drag"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="renewables",
+            )
+        )
+
+    if gas_inflation and not high_stress:
+        conf = grid_power_confidence(
+            gas_pct=gas_pct,
+            grid_stress=weather_energy and weather_energy * 100,
+        )
+        weather_note = (
+            f"; weather-energy {float(weather_energy):.2f}"
+            if weather_energy is not None
+            else ""
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Growth / Small Cap",
+                tickers=["SPY", "IWM"],
+                bias="BEARISH" if float(gas_pct or 0) >= 50.0 else "NEUTRAL",
+                reason=(
+                    f"Gas-heavy generation stack ({float(gas_pct):.0f}% gas){weather_note} — "
+                    "energy inflation risk to growth and margins"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="gas_inflation",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Energy Inflation Transmission",
+                tickers=["UNG", "XLE"],
+                bias="BULLISH" if float(gas_pct or 0) >= 50.0 else "NEUTRAL",
+                reason="Wholesale fuel-mix tilt — energy prices as inflation transmission, not utility beta",
+                confidence=max(0.45, conf - 0.05),
+                evidence=evidence_base,
+                domain_context="gas_inflation",
+            )
+        )
+
+    if strong_load and not high_stress:
+        signals.append(
+            build_market_impact_signal(
+                sector="Cyclicals / Economic Activity",
+                tickers=["SPY", "XLI"],
+                bias="BULLISH",
+                reason=(
+                    f"Peak monitored grid load {float(peak_load_mw):,.0f} MW — "
+                    "strong real-economy power draw"
+                ),
+                confidence=grid_power_confidence(grid_stress=stress),
+                evidence=evidence_base,
+                domain_context="peak_load",
+            )
+        )
+
+    if 40.0 <= stress < 65.0 and not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=f"Moderate grid conditions ({label or 'moderate stress'}) — no strong macro tilt",
+                confidence=grid_power_confidence(
+                    renewable_pct=renewable_pct,
+                    gas_pct=gas_pct,
+                    lmp=avg_lmp,
+                    grid_stress=stress,
+                ),
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason="ISO feeds show no acute wholesale-power tilt for macro positioning",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
+
+def weather_disruption_confidence(
+    *,
+    disruption: float,
+    heat: float | None = None,
+    cold: float | None = None,
+    severe: float | None = None,
+    energy: float | None = None,
+) -> float:
+    """National weather disruption strength for market-impact signals."""
+    disruption_factor = _clamp(float(disruption or 0.0) / 0.75, 0.0, 1.0)
+    heat_factor = _clamp((float(heat or 0.0) - 0.45) / 0.35, 0.0, 1.0) if heat is not None else 0.3
+    cold_factor = _clamp((float(cold or 0.0) - 0.35) / 0.35, 0.0, 1.0) if cold is not None else 0.25
+    severe_factor = _clamp(float(severe or 0.0) / 0.5, 0.0, 1.0) if severe is not None else 0.25
+    energy_factor = _clamp((float(energy or 0.0) - 0.45) / 0.35, 0.0, 1.0) if energy is not None else 0.25
+    return round(
+        _clamp(
+            0.38
+            + 0.3 * disruption_factor
+            + 0.14 * heat_factor
+            + 0.08 * cold_factor
+            + 0.06 * severe_factor
+            + 0.04 * energy_factor
+        ),
+        3,
+    )
+
+
+def transportation_market_impact_signals(
+    *,
+    infrastructure_stress: float,
+    stress_label: str = "",
+    freight_score: float = 50.0,
+    truck_chg_avg_pct: float = 0.0,
+    passenger_chg_avg_pct: float | None = None,
+    unknown_bridge_design_pct: float | None = None,
+    source: str = "transportation",
+) -> list[dict[str, Any]]:
+    """Translate DOT freight / infrastructure readings into broad market picks."""
+    signals: list[dict[str, Any]] = []
+    stress = float(infrastructure_stress or 0.0)
+    label = str(stress_label or "").strip()
+    truck_avg = float(truck_chg_avg_pct or 0.0)
+    passenger_avg = float(passenger_chg_avg_pct) if passenger_chg_avg_pct is not None else None
+    evidence_base: dict[str, Any] = {
+        "infrastructure_stress": round(stress, 1),
+        "freight_score": round(float(freight_score or 0.0), 1),
+        "truck_chg_avg_pct": round(truck_avg, 2),
+        "source": source,
+    }
+    if passenger_avg is not None:
+        evidence_base["passenger_chg_avg_pct"] = round(passenger_avg, 2)
+    if unknown_bridge_design_pct is not None:
+        evidence_base["unknown_bridge_design_pct"] = round(float(unknown_bridge_design_pct), 1)
+
+    freight_proxy = 0.5 + min(max(truck_avg / 8.0, -0.15), 0.25)
+    conf = freight_logistics_confidence(freight_proxy, stress=stress / 100.0)
+
+    strong_freight = truck_avg >= 3.0
+    weak_freight = truck_avg <= -2.0
+    high_infra_stress = stress >= 65.0
+    freight_led = (
+        passenger_avg is not None
+        and truck_avg > passenger_avg + 2.0
+        and truck_avg > 0.0
+    )
+    commute_led = (
+        passenger_avg is not None
+        and passenger_avg > truck_avg + 2.0
+        and passenger_avg > 0.0
+    )
+
+    if strong_freight:
+        signals.append(
+            build_market_impact_signal(
+                sector="Cyclicals / Economic Activity",
+                tickers=["SPY", "XLI", "IWM"],
+                bias="BULLISH",
+                reason=(
+                    f"Freight-led traffic momentum (truck volumes {truck_avg:+.1f}% avg) — "
+                    "industrial and logistics demand supports cyclical risk appetite"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="freight_expansion",
+            )
+        )
+
+    if weak_freight:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market / Industrials",
+                tickers=["SPY", "XLI", "IWM"],
+                bias="BEARISH",
+                reason=(
+                    f"Softening truck freight volumes ({truck_avg:+.1f}% avg) — "
+                    "logistics slowdown signal for cyclicals and small caps"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="freight_contraction",
+            )
+        )
+
+    if high_infra_stress:
+        signals.append(
+            build_market_impact_signal(
+                sector="Supply Chain / Industrials",
+                tickers=["SPY", "XLI"],
+                bias="BEARISH",
+                reason=(
+                    f"Infrastructure stress ({label or 'elevated'}) — "
+                    "bridge inventory uncertainty and corridor risk weigh on industrials"
+                ),
+                confidence=freight_logistics_confidence(
+                    freight_proxy,
+                    stress=stress / 100.0,
+                    congestion=0.7,
+                ),
+                evidence=evidence_base,
+                domain_context="infrastructure_stress",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Defensive / Credit Caution",
+                tickers=["TLT", "HYG"],
+                bias="NEUTRAL",
+                reason="Elevated civil-infrastructure stress raises supply-chain and credit tail risk",
+                confidence=max(0.45, conf - 0.04),
+                evidence=evidence_base,
+                domain_context="infrastructure_stress",
+            )
+        )
+
+    if freight_led and not weak_freight:
+        signals.append(
+            build_market_impact_signal(
+                sector="Industrials / Production",
+                tickers=["XLI", "SPY"],
+                bias="BULLISH" if truck_avg >= 1.5 else "NEUTRAL",
+                reason=(
+                    f"Freight traffic outpacing passenger volumes — "
+                    f"trucks {truck_avg:+.1f}% vs all vehicles {passenger_avg:+.1f}%"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="freight_led_mode",
+            )
+        )
+
+    if commute_led and not strong_freight:
+        signals.append(
+            build_market_impact_signal(
+                sector="Consumer / Broad Market",
+                tickers=["XLY", "SPY"],
+                bias="BULLISH" if passenger_avg >= 2.0 else "NEUTRAL",
+                reason=(
+                    f"Passenger traffic outpacing freight — "
+                    f"all vehicles {passenger_avg:+.1f}% vs trucks {truck_avg:+.1f}%"
+                ),
+                confidence=max(0.45, conf - 0.03),
+                evidence=evidence_base,
+                domain_context="commute_led_mode",
+            )
+        )
+
+    if 40.0 <= stress < 65.0 and not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=f"Moderate infrastructure conditions ({label or 'stable'}) — no strong macro tilt",
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason="DOT freight and bridge data show no acute macro directional tilt",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
+
+def meteorology_market_impact_signals(
+    *,
+    heat_stress: float = 0.0,
+    cold_stress: float = 0.0,
+    severe_stress: float = 0.0,
+    flood_stress: float = 0.0,
+    energy_stress: float = 0.0,
+    disruption_score: float = 0.0,
+    disruption_label: str = "",
+    tropical_activity: str = "",
+    agricultural_risk: str = "",
+    heat_alerts: int = 0,
+    cold_alerts: int = 0,
+    severe_alerts: int = 0,
+    source: str = "meteorology",
+) -> list[dict[str, Any]]:
+    """Translate NWS weather stress into broad market picks (not utility/energy beta)."""
+    signals: list[dict[str, Any]] = []
+    heat = float(heat_stress or 0.0)
+    cold = float(cold_stress or 0.0)
+    severe = float(severe_stress or 0.0)
+    flood = float(flood_stress or 0.0)
+    energy = float(energy_stress or 0.0)
+    disruption = float(disruption_score or 0.0)
+    label = str(disruption_label or "").strip()
+    tropical = str(tropical_activity or "").lower()
+    ag_risk = str(agricultural_risk or "").lower()
+    evidence_base: dict[str, Any] = {
+        "heat_stress": round(heat, 3),
+        "cold_stress": round(cold, 3),
+        "severe_stress": round(severe, 3),
+        "flood_stress": round(flood, 3),
+        "energy_stress": round(energy, 3),
+        "disruption_score": round(disruption, 3),
+        "source": source,
+    }
+    conf = weather_disruption_confidence(
+        disruption=disruption,
+        heat=heat,
+        cold=cold,
+        severe=severe,
+        energy=energy,
+    )
+
+    critical_disruption = disruption >= 0.75
+    elevated_disruption = disruption >= 0.55
+    energy_demand = energy >= 0.55 or heat >= 0.52 or cold >= 0.45
+    active_tropical = "hurricane" in tropical or "active tropical" in tropical
+    ag_pressure = (
+        "drought" in ag_risk
+        or "flood" in ag_risk
+        or "heat/drought" in ag_risk
+    )
+
+    if critical_disruption or elevated_disruption:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market / Cyclicals",
+                tickers=["SPY", "IWM", "XLI"],
+                bias="BEARISH" if critical_disruption else "NEUTRAL",
+                reason=(
+                    f"National weather disruption {label or ('critical' if critical_disruption else 'elevated')} "
+                    f"(score {disruption:.2f}) — outage, logistics, and activity headwinds"
+                ),
+                confidence=conf,
+                evidence={**evidence_base, "severe_alerts": severe_alerts},
+                domain_context="disruption",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Safe Haven / Defensive",
+                tickers=["GLD", "TLT", "XLU"],
+                bias="BULLISH" if critical_disruption else "NEUTRAL",
+                reason="Weather shock raises volatility and defensive hedging demand",
+                confidence=min(0.84, conf + 0.05),
+                evidence=evidence_base,
+                domain_context="disruption",
+            )
+        )
+
+    if energy_demand and not critical_disruption:
+        bias = "BEARISH" if energy >= 0.72 or heat >= 0.68 or cold >= 0.65 else "NEUTRAL"
+        signals.append(
+            build_market_impact_signal(
+                sector="Growth / Margins",
+                tickers=["SPY", "IWM"],
+                bias=bias,
+                reason=(
+                    f"Weather-driven energy demand (score {energy:.2f}; "
+                    f"{heat_alerts} heat / {cold_alerts} cold alerts) — "
+                    "input-cost pressure on corporate margins"
+                ),
+                confidence=conf,
+                evidence={**evidence_base, "heat_alerts": heat_alerts, "cold_alerts": cold_alerts},
+                domain_context="energy_demand",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Energy Inflation Transmission",
+                tickers=["UNG", "XLE", "USO"],
+                bias="BULLISH" if energy >= 0.72 else "NEUTRAL",
+                reason="Heating/cooling stress transmitted through energy prices, not utility beta",
+                confidence=max(0.45, conf - 0.04),
+                evidence=evidence_base,
+                domain_context="energy_demand",
+            )
+        )
+
+    if severe >= 0.35 and not critical_disruption:
+        signals.append(
+            build_market_impact_signal(
+                sector="Industrials / Activity",
+                tickers=["SPY", "XLI"],
+                bias="BEARISH" if severe >= 0.5 else "NEUTRAL",
+                reason=(
+                    f"Severe weather stress {severe:.2f} ({severe_alerts} alerts) — "
+                    "near-term industrial and transport disruption"
+                ),
+                confidence=conf,
+                evidence={**evidence_base, "severe_alerts": severe_alerts},
+                domain_context="severe_weather",
+            )
+        )
+
+    if active_tropical:
+        signals.append(
+            build_market_impact_signal(
+                sector="Risk-Off / Volatility",
+                tickers=["SPY", "GLD"],
+                bias="BEARISH" if "hurricane" in tropical else "NEUTRAL",
+                reason=f"Tropical activity: {tropical_activity} — Gulf supply-chain and volatility risk",
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="tropical",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Energy Supply Transmission",
+                tickers=["USO", "XLE"],
+                bias="NEUTRAL",
+                reason="Storm risk to Gulf energy infrastructure — commodity transmission channel",
+                confidence=max(0.44, conf - 0.06),
+                evidence=evidence_base,
+                domain_context="tropical",
+            )
+        )
+
+    if ag_pressure:
+        drought = "drought" in ag_risk or "heat/drought" in ag_risk
+        signals.append(
+            build_market_impact_signal(
+                sector="Consumer / Staples",
+                tickers=["XLP", "SPY"] if drought else ["SPY", "XLI"],
+                bias="BEARISH" if drought else "NEUTRAL",
+                reason=(
+                    f"Agricultural weather risk: {agricultural_risk} — "
+                    + ("crop-cost pressure on discretionary demand" if drought else "flood-related activity drag")
+                ),
+                confidence=max(0.45, conf - 0.03),
+                evidence={**evidence_base, "flood_stress": round(flood, 3)},
+                domain_context="agriculture",
+            )
+        )
+
+    if flood >= 0.4 and not ag_pressure and not critical_disruption:
+        signals.append(
+            build_market_impact_signal(
+                sector="Industrials / Regional Activity",
+                tickers=["SPY", "XLI"],
+                bias="NEUTRAL",
+                reason=f"Flood risk score {flood:.2f} — localized construction and transport delays",
+                confidence=max(0.43, conf - 0.05),
+                evidence=evidence_base,
+                domain_context="flood",
+            )
+        )
+
+    if disruption < 0.35 and not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason="No significant national weather stress for macro positioning",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason="Weather backdrop balanced — no acute market tilt from NWS feeds",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
+
+PATENT_SECTOR_MARKET_MAP: dict[str, tuple[list[str], str]] = {
+    "semiconductor": (
+        ["XLK", "QQQ"],
+        "Semiconductor patent cluster — innovation-led tech risk appetite",
+    ),
+    "artificial-intelligence": (
+        ["QQQ", "XLK"],
+        "AI patent velocity — growth and capex cycle signal",
+    ),
+    "biotechnology": (
+        ["XLV", "QQQ"],
+        "Biotech filing cluster — healthcare innovation backdrop",
+    ),
+    "energy": (
+        ["XLE", "XLK"],
+        "Energy/storage IP — transition theme with commodity transmission",
+    ),
+    "automotive": (
+        ["XLI", "SPY"],
+        "Mobility patent activity — industrial and auto-cycle signal",
+    ),
+    "telecom": (
+        ["XLC", "SPY"],
+        "Telecom IP cluster — communications sector macro tilt",
+    ),
+}
+
+
+def innovation_velocity_confidence(
+    *,
+    innovation_score: float,
+    filing_count: int = 0,
+    high_impact_count: int = 0,
+) -> float:
+    score_factor = _clamp((float(innovation_score or 0.0) - 40.0) / 45.0, 0.0, 1.0)
+    filing_factor = _clamp(int(filing_count) / 8.0, 0.0, 1.0)
+    impact_factor = _clamp(int(high_impact_count) / 4.0, 0.0, 1.0)
+    return round(_clamp(0.38 + 0.28 * score_factor + 0.2 * filing_factor + 0.14 * impact_factor), 3)
+
+
+def logistics_market_impact_signals(
+    *,
+    supply_chain_stress: float,
+    stress_label: str = "",
+    freight_momentum: float = 0.5,
+    congestion_score: float = 0.5,
+    us_west_coast_congestion: float | None = None,
+    tanker_flow_active: bool = False,
+    retail_lead_time_stressed: bool = False,
+    source: str = "logistics",
+) -> list[dict[str, Any]]:
+    """Translate marine/shipping corridor stress into broad market picks."""
+    signals: list[dict[str, Any]] = []
+    stress = float(supply_chain_stress or 0.0)
+    freight = float(freight_momentum or 0.0)
+    congestion = float(congestion_score or 0.0)
+    label = str(stress_label or "").strip()
+    evidence_base: dict[str, Any] = {
+        "supply_chain_stress": round(stress, 3),
+        "freight_momentum": round(freight, 3),
+        "congestion_score": round(congestion, 3),
+        "source": source,
+    }
+    if us_west_coast_congestion is not None:
+        evidence_base["us_west_coast_congestion"] = round(float(us_west_coast_congestion), 3)
+
+    conf = freight_logistics_confidence(freight, stress=stress, congestion=congestion)
+    critical_stress = stress >= 0.75
+    elevated_stress = stress >= 0.55
+    strong_freight = freight >= 0.58
+    import_congestion = (
+        us_west_coast_congestion is not None and float(us_west_coast_congestion) >= 0.58
+    ) or retail_lead_time_stressed
+
+    if critical_stress or elevated_stress:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market / Industrials",
+                tickers=["SPY", "XLI", "IWM"],
+                bias="BEARISH" if critical_stress else "NEUTRAL",
+                reason=(
+                    f"Global logistics stress {label or ('critical' if critical_stress else 'elevated')} "
+                    f"(score {stress:.2f}) — supply-chain friction for cyclicals"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="supply_chain_stress",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Credit / Defensive",
+                tickers=["HYG", "TLT"],
+                bias="NEUTRAL",
+                reason="Shipping chokepoints raise margin and credit tail risk across trade-sensitive sectors",
+                confidence=max(0.44, conf - 0.04),
+                evidence=evidence_base,
+                domain_context="supply_chain_stress",
+            )
+        )
+
+    if strong_freight and not critical_stress:
+        signals.append(
+            build_market_impact_signal(
+                sector="Global Trade / Cyclicals",
+                tickers=["SPY", "XLI", "EEM"],
+                bias="BULLISH" if freight >= 0.70 else "NEUTRAL",
+                reason=(
+                    f"Freight momentum {freight:.2f} — active shipping lanes support "
+                    "trade and industrial activity"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="freight_expansion",
+            )
+        )
+
+    if import_congestion:
+        wc = float(us_west_coast_congestion or congestion)
+        signals.append(
+            build_market_impact_signal(
+                sector="Consumer / Import Delays",
+                tickers=["XLY", "SPY"],
+                bias="BEARISH" if wc >= 0.72 else "NEUTRAL",
+                reason=(
+                    f"West-coast import congestion {wc:.2f} — retail lead-time pressure "
+                    "on discretionary demand"
+                ),
+                confidence=freight_logistics_confidence(freight, congestion=wc, stress=stress),
+                evidence=evidence_base,
+                domain_context="import_congestion",
+            )
+        )
+
+    if tanker_flow_active and freight >= 0.5:
+        signals.append(
+            build_market_impact_signal(
+                sector="Energy Supply Transmission",
+                tickers=["USO", "XLE"],
+                bias="BULLISH" if freight >= 0.65 else "NEUTRAL",
+                reason="Active tanker corridors — commodity flow transmission, not shipping beta",
+                confidence=max(0.45, conf - 0.03),
+                evidence=evidence_base,
+                domain_context="tanker_flow",
+            )
+        )
+
+    if stress < 0.35 and not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason="Marine logistics backdrop balanced — no acute macro tilt",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason="No significant global logistics stress for macro positioning",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
+
+def patents_market_impact_signals(
+    *,
+    innovation_score: float,
+    landscape_label: str = "",
+    by_sector: dict[str, int] | None = None,
+    high_impact_count: int = 0,
+    top_sector: str = "",
+    source: str = "patents",
+) -> list[dict[str, Any]]:
+    """Translate patent-sector clusters into innovation-led market expressions."""
+    signals: list[dict[str, Any]] = []
+    score = float(innovation_score or 0.0)
+    label = str(landscape_label or "").strip()
+    sectors = dict(by_sector or {})
+    total_filings = sum(int(v) for v in sectors.values())
+    evidence_base: dict[str, Any] = {
+        "innovation_score": round(score, 1),
+        "high_impact_count": int(high_impact_count),
+        "total_filings": total_filings,
+        "source": source,
+    }
+    conf = innovation_velocity_confidence(
+        innovation_score=score,
+        filing_count=total_filings,
+        high_impact_count=high_impact_count,
+    )
+
+    if score >= 70.0:
+        signals.append(
+            build_market_impact_signal(
+                sector="Innovation / Growth",
+                tickers=["QQQ", "SPY", "XLK"],
+                bias="BULLISH",
+                reason=f"High innovation velocity ({label or 'elevated'}) — patent activity supports growth risk-on",
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="innovation_velocity",
+            )
+        )
+
+    ranked = sorted(sectors.items(), key=lambda x: -x[1])
+    for sector, count in ranked[:3]:
+        if sector == "general" or count < 2:
+            continue
+        tickers, base_note = PATENT_SECTOR_MARKET_MAP.get(
+            sector,
+            (["SPY", "QQQ"], "Patent activity cluster — broad innovation backdrop"),
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector=f"Innovation Theme — {sector.replace('-', ' ').title()}",
+                tickers=tickers,
+                bias="BULLISH" if count >= 4 else "NEUTRAL",
+                reason=f"{count} tracked filings in {sector.replace('-', ' ')}; {base_note}",
+                confidence=conf,
+                evidence={**evidence_base, "sector": sector, "sector_count": count},
+                domain_context="sector_cluster",
+            )
+        )
+
+    if high_impact_count >= 2 and score < 70.0:
+        signals.append(
+            build_market_impact_signal(
+                sector="IP Catalyst / Growth",
+                tickers=["QQQ", "SPY"],
+                bias="NEUTRAL",
+                reason=f"{high_impact_count} high-impact patent signals — innovation catalyst watch",
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="high_impact_ip",
+            )
+        )
+
+    if score < 45.0 and not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=f"Quiet patent landscape ({label or 'low velocity'}) — no innovation-led macro tilt",
+                confidence=max(0.4, conf - 0.05),
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    if not signals:
+        top = str(top_sector or "").replace("-", " ")
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=f"No concentrated patent cluster — leading theme: {top or 'mixed'}",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
+
+def sales_consumer_market_impact_signals(
+    *,
+    consumer_strength: float,
+    breadth_pct: float,
+    momentum_index: float,
+    discretionary_premium_pct: float | None = None,
+    strength_label: str = "",
+    leading_category: str = "",
+    category_momentum: float | None = None,
+    e_commerce_weak: bool = False,
+    source: str = "sales-analytics",
+) -> list[dict[str, Any]]:
+    """Translate retail/consumer BI readings into broad market picks."""
+    signals: list[dict[str, Any]] = []
+    strength = float(consumer_strength or 0.0)
+    breadth = float(breadth_pct or 50.0)
+    momentum = float(momentum_index or 0.0)
+    label = str(strength_label or "").strip()
+    evidence_base: dict[str, Any] = {
+        "consumer_strength": round(strength, 3),
+        "breadth_pct": round(breadth, 1),
+        "momentum_index": round(momentum, 3),
+        "source": source,
+    }
+    if discretionary_premium_pct is not None:
+        evidence_base["discretionary_premium_pct"] = round(float(discretionary_premium_pct), 2)
+
+    conf = retail_signal_confidence(
+        momentum=max(strength, momentum),
+        return_20d_pct=None,
+        breadth_pct=breadth,
+        consumer_strength=strength,
+    )
+
+    risk_on_consumer = strength >= 0.62 and breadth >= 55.0
+    risk_off_consumer = strength <= 0.38 and breadth <= 45.0
+    discretionary_leading = (
+        discretionary_premium_pct is not None and float(discretionary_premium_pct) > 0.8
+    )
+    staples_leading = (
+        discretionary_premium_pct is not None and float(discretionary_premium_pct) < -0.8
+    )
+
+    if risk_on_consumer:
+        signals.append(
+            build_market_impact_signal(
+                sector="Consumer Discretionary / Broad Market",
+                tickers=["SPY", "XLY", "IWM"],
+                bias="BULLISH",
+                reason=(
+                    f"Strong consumer backdrop ({label or 'risk-on'}) — "
+                    f"strength {strength:.2f}, breadth {breadth:.0f}%"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="consumer_strength",
+            )
+        )
+
+    if risk_off_consumer:
+        signals.append(
+            build_market_impact_signal(
+                sector="Consumer / Cyclicals",
+                tickers=["SPY", "XLY", "IWM"],
+                bias="BEARISH",
+                reason=(
+                    f"Weak consumer demand signal — strength {strength:.2f}, "
+                    f"breadth {breadth:.0f}%"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="consumer_weakness",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Defensive Rotation",
+                tickers=["XLP", "TLT"],
+                bias="BULLISH" if strength <= 0.32 else "NEUTRAL",
+                reason="Soft retail breadth favors staples and defensive duration",
+                confidence=max(0.45, conf - 0.03),
+                evidence=evidence_base,
+                domain_context="consumer_weakness",
+            )
+        )
+
+    if leading_category and category_momentum is not None and category_momentum >= 0.58:
+        signals.append(
+            build_market_impact_signal(
+                sector=f"Category Momentum — {leading_category}",
+                tickers=["XLY", "SPY"],
+                bias="BULLISH",
+                reason=f"Leading retail category momentum {category_momentum:.2f} — discretionary tilt",
+                confidence=conf,
+                evidence={**evidence_base, "leading_category": leading_category},
+                domain_context="category_leader",
+            )
+        )
+
+    if discretionary_leading and not risk_off_consumer:
+        signals.append(
+            build_market_impact_signal(
+                sector="Discretionary vs Staples",
+                tickers=["XLY", "SPY"],
+                bias="BULLISH",
+                reason=(
+                    f"Discretionary premium {float(discretionary_premium_pct):+.2f}% — "
+                    "consumer risk appetite improving"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="discretionary_rotation",
+            )
+        )
+
+    if staples_leading:
+        signals.append(
+            build_market_impact_signal(
+                sector="Staples Rotation",
+                tickers=["XLP", "SPY"],
+                bias="NEUTRAL",
+                reason=(
+                    f"Discretionary premium {float(discretionary_premium_pct):+.2f}% — "
+                    "defensive consumer rotation"
+                ),
+                confidence=max(0.44, conf - 0.04),
+                evidence=evidence_base,
+                domain_context="staples_rotation",
+            )
+        )
+
+    if e_commerce_weak:
+        signals.append(
+            build_market_impact_signal(
+                sector="Growth / E-Commerce",
+                tickers=["QQQ", "XLY", "SPY"],
+                bias="BEARISH",
+                reason="E-commerce momentum deterioration — drag on growth and discretionary beta",
+                confidence=max(0.48, conf - 0.02),
+                evidence=evidence_base,
+                domain_context="ecommerce_weakness",
+            )
+        )
+
+    if not risk_on_consumer and not risk_off_consumer and not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=f"Balanced consumer backdrop ({label or 'neutral'}) — no strong macro tilt",
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason="Retail sales proxies show no acute directional consumer signal",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
 
 
 def load_peer_agent_output(filename: str) -> dict[str, Any] | None:

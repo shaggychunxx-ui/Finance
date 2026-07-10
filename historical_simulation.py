@@ -46,13 +46,13 @@ HORIZON_HOURS = {"24h": 24, "1wk": 168, "1mo": 720, "1yr": 8760}
 HORIZON_MOVE_PCT = {"24h": 0.5, "1wk": 1.5, "1mo": 3.0, "1yr": 8.0}
 
 AGENT_PROXY_ETF: dict[str, str] = {
-    "electricity": "XLU",
-    "grid": "XLU",
-    "meteorology": "XLE",
-    "transportation": "IYT",
-    "logistics": "ZIM",
-    "patents": "XLK",
-    "sales-analytics": "XRT",
+    "electricity": "SPY",
+    "grid": "SPY",
+    "meteorology": "SPY",
+    "transportation": "SPY",
+    "logistics": "SPY",
+    "patents": "SPY",
+    "sales-analytics": "SPY",
     "geopolitics": "SPY",
     "events": "SPY",
     "order-execution": "SPY",

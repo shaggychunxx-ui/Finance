@@ -520,7 +520,15 @@ class LogisticsExpert(BaseExpert):
         summary = self._expert_summary(
             corridors, assessment, stress, freight, label, primary
         )
-        signals = self._market_signals(corridors, assessment, stress, freight, congestion)
+        us_wc = next((c for c in corridors if c.corridor_id == "us_west_coast"), None)
+        signals = self._market_signals(
+            assessment,
+            supply_chain_stress=stress,
+            stress_label=label,
+            freight_momentum=freight,
+            congestion_score=congestion,
+            us_west_coast_congestion=us_wc.congestion_score if us_wc else None,
+        )
         recs = self._recommendations(corridors, assessment, stress, freight, congestion)
         for key, value in strategies.items():
             recs.append(f"{key.replace('_', ' ').title()}: {value}")
@@ -542,92 +550,30 @@ class LogisticsExpert(BaseExpert):
 
     def _market_signals(
         self,
-        corridors: list[CorridorSnapshot],
         assessment: LogisticsAssessment,
-        stress: float,
-        freight: float,
-        congestion: float,
+        *,
+        supply_chain_stress: float,
+        stress_label: str,
+        freight_momentum: float,
+        congestion_score: float,
+        us_west_coast_congestion: float | None = None,
     ) -> list[dict[str, Any]]:
-        from agent_signal_logic import build_market_signal, freight_logistics_confidence
+        from agent_signal_logic import logistics_market_impact_signals
 
-        signals: list[dict[str, Any]] = []
-
-        if freight >= 0.58:
-            signals.append(
-                build_market_signal(
-                    sector="Dry Bulk Shipping",
-                    tickers=["BDRY", "GOGL", "SBLK"],
-                    bias="BULLISH" if freight >= 0.70 else "NEUTRAL",
-                    reason=f"Freight momentum {freight:.2f} — {assessment.bulk_freight_signal}",
-                    confidence=freight_logistics_confidence(freight, stress=stress, congestion=congestion),
-                )
-            )
-
-        north_sea = next((c for c in corridors if c.corridor_id == "north_sea"), None)
-        if north_sea and north_sea.lane_density_score >= 0.68:
-            signals.append(
-                build_market_signal(
-                    sector="Container Shipping — Europe",
-                    tickers=["ZIM", "DAC", "CMRE"],
-                    bias="BULLISH" if north_sea.freight_score >= 0.70 else "NEUTRAL",
-                    reason=f"North Sea density {north_sea.lane_density_score:.2f} — Rotterdam/Antwerp active",
-                    confidence=freight_logistics_confidence(
-                        north_sea.freight_score,
-                        lane_density=north_sea.lane_density_score,
-                        congestion=congestion,
-                    ),
-                )
-            )
-
-        us_wc = next((c for c in corridors if c.corridor_id == "us_west_coast"), None)
-        if us_wc and us_wc.congestion_score >= 0.58:
-            signals.append(
-                build_market_signal(
-                    sector="Retail / Import Congestion",
-                    tickers=["XRT", "AMZN", "WMT", "TGT"],
-                    bias="BEARISH" if us_wc.congestion_score >= 0.72 else "NEUTRAL",
-                    reason=assessment.retail_lead_time_signal,
-                    confidence=freight_logistics_confidence(
-                        freight,
-                        congestion=us_wc.congestion_score,
-                        stress=stress,
-                    ),
-                )
-            )
-
-        if "tanker" in assessment.tanker_flow_signal.lower() and freight >= 0.5:
-            signals.append(
-                build_market_signal(
-                    sector="Tanker / Product Shipping",
-                    tickers=["FRO", "STNG", "TNK", "DHT"],
-                    bias="BULLISH",
-                    reason=assessment.tanker_flow_signal,
-                    confidence=freight_logistics_confidence(max(freight, 0.55), stress=stress),
-                )
-            )
-
-        if stress >= 0.65:
-            signals.append(
-                build_market_signal(
-                    sector="Supply Chain Stress",
-                    tickers=["CHRW", "XPO", "JBHT"],
-                    bias="NEUTRAL",
-                    reason=f"Elevated logistics stress {stress:.2f} — rate volatility likely",
-                    confidence=freight_logistics_confidence(freight, stress=stress, congestion=congestion),
-                )
-            )
-
-        if not signals:
-            signals.append(
-                build_market_signal(
-                    sector="Global Trade / Shipping",
-                    tickers=["BDRY", "ZIM"],
-                    bias="NEUTRAL",
-                    reason="No significant logistics stress detected",
-                    confidence=0.42,
-                )
-            )
-
+        tanker_active = "tanker" in assessment.tanker_flow_signal.lower()
+        retail_stressed = (
+            us_west_coast_congestion is not None and float(us_west_coast_congestion) >= 0.58
+        ) or "delay" in assessment.retail_lead_time_signal.lower()
+        signals = logistics_market_impact_signals(
+            supply_chain_stress=supply_chain_stress,
+            stress_label=stress_label,
+            freight_momentum=freight_momentum,
+            congestion_score=congestion_score,
+            us_west_coast_congestion=us_west_coast_congestion,
+            tanker_flow_active=tanker_active,
+            retail_lead_time_stressed=retail_stressed,
+            source="logistics",
+        )
         return self._adjust_market_signals(signals)
 
     @staticmethod

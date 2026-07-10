@@ -72,6 +72,8 @@ def test_agent_signal_logic_thresholds() -> None:
         event_recency_weight,
         freight_logistics_confidence,
         grid_power_confidence,
+        weather_disruption_confidence,
+        innovation_velocity_confidence,
         hypothesis_test_confidence,
         quant_signal_confidence,
         retail_signal_confidence,
@@ -102,6 +104,8 @@ def test_agent_signal_logic_thresholds() -> None:
     assert quant_signal_confidence(momentum=0.7, mc_prob_up=0.58, z_score=-1.5) >= 0.55
     assert sector_rotation_confidence(1.2, week_chg_pct=2.5, risk_reward=0.65) >= 0.6
     assert grid_power_confidence(renewable_pct=42.0, gas_pct=48.0, lmp=62.0) >= 0.55
+    assert weather_disruption_confidence(disruption=0.8, heat=0.7, severe=0.45) >= 0.55
+    assert innovation_velocity_confidence(innovation_score=72.0, filing_count=12, high_impact_count=3) >= 0.55
     assert freight_logistics_confidence(0.72, congestion=0.68, stress=0.55) >= 0.58
     assert hypothesis_test_confidence(p_value=0.01, significant=True, statistic=2.4) >= 0.7
     assert hypothesis_test_confidence(p_value=0.12, significant=False) <= 0.5
@@ -207,6 +211,160 @@ def test_temperature_stabilized_by_posture_and_accuracy() -> None:
         assert stamped["meta"]["temperature_control"]["mode"] == "pipeline_stabilized"
     finally:
         clear_pipeline_memory()
+
+
+def test_transportation_and_meteorology_market_impact_signals() -> None:
+    from agent_constraints import apply_agent_constraints_to_result, load_domain_constraint_settings
+    from agent_signal_logic import (
+        MARKET_IMPACT_TICKERS,
+        meteorology_market_impact_signals,
+        transportation_market_impact_signals,
+    )
+
+    freight_up = transportation_market_impact_signals(
+        infrastructure_stress=32.0,
+        stress_label="Stable infrastructure conditions",
+        freight_score=78.0,
+        truck_chg_avg_pct=4.2,
+        passenger_chg_avg_pct=1.1,
+        unknown_bridge_design_pct=8.0,
+    )
+    assert freight_up
+    assert all(sig.get("impact_scope") == "market" for sig in freight_up)
+    transport_tickers = {t for sig in freight_up for t in sig.get("tickers", [])}
+    assert "SPY" in transport_tickers
+    assert "XLI" in transport_tickers
+    assert not any(t in {"UNP", "CSX", "JBHT", "ODFL"} for t in transport_tickers)
+
+    weather_shock = meteorology_market_impact_signals(
+        heat_stress=0.74,
+        cold_stress=0.2,
+        severe_stress=0.48,
+        flood_stress=0.3,
+        energy_stress=0.78,
+        disruption_score=0.81,
+        disruption_label="Critical",
+        tropical_activity="Active tropical systems in Gulf",
+        agricultural_risk="Heat/drought stress on Plains crops",
+        heat_alerts=18,
+        cold_alerts=2,
+        severe_alerts=11,
+    )
+    assert weather_shock
+    assert all(sig.get("impact_scope") == "market" for sig in weather_shock)
+    weather_tickers = {t for sig in weather_shock for t in sig.get("tickers", [])}
+    assert "SPY" in weather_tickers
+    assert all(t in MARKET_IMPACT_TICKERS for t in weather_tickers)
+    assert not any(t in {"CEG", "VST", "ALL", "TRV", "DBA", "CORN"} for t in weather_tickers)
+
+    for agent_id, payload in (
+        ("transportation", freight_up),
+        ("meteorology", weather_shock),
+    ):
+        steered = apply_agent_constraints_to_result(
+            {"meta": {}, "market_signals": payload},
+            agent_id,
+            settings=load_domain_constraint_settings(),
+        )
+        assert steered["market_signals"]
+        assert "SPY" in steered["market_signals"][0]["tickers"]
+
+
+def test_remaining_specialist_market_impact_signals() -> None:
+    from agent_constraints import apply_agent_constraints_to_result, load_domain_constraint_settings
+    from agent_signal_logic import (
+        MARKET_IMPACT_TICKERS,
+        logistics_market_impact_signals,
+        patents_market_impact_signals,
+        sales_consumer_market_impact_signals,
+    )
+
+    logistics_stress = logistics_market_impact_signals(
+        supply_chain_stress=0.78,
+        stress_label="Critical",
+        freight_momentum=0.62,
+        congestion_score=0.71,
+        us_west_coast_congestion=0.74,
+        tanker_flow_active=True,
+        retail_lead_time_stressed=True,
+    )
+    assert logistics_stress and all(sig.get("impact_scope") == "market" for sig in logistics_stress)
+    logistics_tickers = {t for sig in logistics_stress for t in sig.get("tickers", [])}
+    assert "SPY" in logistics_tickers
+    assert not any(t in {"ZIM", "BDRY", "CHRW", "AMZN"} for t in logistics_tickers)
+
+    patent_burst = patents_market_impact_signals(
+        innovation_score=76.0,
+        landscape_label="High innovation velocity",
+        by_sector={"artificial-intelligence": 5, "semiconductor": 3},
+        high_impact_count=3,
+        top_sector="artificial-intelligence",
+    )
+    assert patent_burst and all(sig.get("impact_scope") == "market" for sig in patent_burst)
+    patent_tickers = {t for sig in patent_burst for t in sig.get("tickers", [])}
+    assert "QQQ" in patent_tickers
+    assert not any(t in {"NVDA", "MRNA", "ABCL", "ARKK"} for t in patent_tickers)
+
+    consumer_risk_on = sales_consumer_market_impact_signals(
+        consumer_strength=0.68,
+        breadth_pct=62.0,
+        momentum_index=0.71,
+        discretionary_premium_pct=1.2,
+        strength_label="Strong consumer demand",
+        leading_category="Big Box Retail",
+        category_momentum=0.64,
+        e_commerce_weak=False,
+    )
+    assert consumer_risk_on and all(sig.get("impact_scope") == "market" for sig in consumer_risk_on)
+    retail_tickers = {t for sig in consumer_risk_on for t in sig.get("tickers", [])}
+    assert "SPY" in retail_tickers
+    assert "XLY" in retail_tickers
+    assert not any(t in {"WMT", "COST", "AMZN", "TGT"} for t in retail_tickers)
+    assert all(t in MARKET_IMPACT_TICKERS for t in retail_tickers)
+
+    for agent_id, payload in (
+        ("logistics", logistics_stress),
+        ("patents", patent_burst),
+        ("sales-analytics", consumer_risk_on),
+    ):
+        steered = apply_agent_constraints_to_result(
+            {"meta": {}, "market_signals": payload},
+            agent_id,
+            settings=load_domain_constraint_settings(),
+        )
+        assert steered["market_signals"]
+        assert "SPY" in steered["market_signals"][0]["tickers"]
+
+
+def test_power_grid_market_impact_signals() -> None:
+    from agent_constraints import apply_agent_constraints_to_result, load_domain_constraint_settings
+    from agent_signal_logic import MARKET_IMPACT_TICKERS, power_grid_market_impact_signals
+
+    stressed = power_grid_market_impact_signals(
+        grid_stress=72.0,
+        stress_label="Elevated grid stress",
+        renewable_pct=22.0,
+        gas_pct=52.0,
+        avg_lmp=61.0,
+        weather_energy=0.68,
+        peak_load_mw=82_000.0,
+        source="grid",
+    )
+    assert stressed
+    assert all(sig.get("impact_scope") == "market" for sig in stressed)
+    tickers = {t for sig in stressed for t in sig.get("tickers", [])}
+    assert "SPY" in tickers
+    assert "XLI" in tickers
+    assert all(t in MARKET_IMPACT_TICKERS for t in tickers)
+    assert not any(t in {"XLU", "VST", "NEE", "TAN"} for t in tickers)
+
+    steered = apply_agent_constraints_to_result(
+        {"meta": {}, "market_signals": stressed},
+        "grid",
+        settings=load_domain_constraint_settings(),
+    )
+    assert steered["market_signals"]
+    assert "SPY" in steered["market_signals"][0]["tickers"]
 
 
 def test_agent_domain_and_horizon_constraints() -> None:
@@ -561,6 +719,9 @@ def _run_all() -> None:
         test_agent_signal_logic_thresholds,
         test_live_accuracy_merge_prefers_live_samples,
         test_temperature_stabilized_by_posture_and_accuracy,
+        test_transportation_and_meteorology_market_impact_signals,
+        test_remaining_specialist_market_impact_signals,
+        test_power_grid_market_impact_signals,
         test_agent_domain_and_horizon_constraints,
         test_accuracy_measurement_horizon_and_regime,
         test_proactive_enhancement_candidates,

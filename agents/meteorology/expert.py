@@ -466,7 +466,18 @@ class MeteorologyExpert(BaseExpert):
 
         headline = self._national_headline(alerts)
         summary = self._expert_summary(alerts, synoptic, heat, cold, severe, disruption, label)
-        signals = self._market_signals(heat, cold, severe, flood, energy, alerts, hubs, synoptic)
+        signals = self._market_signals(
+            heat,
+            cold,
+            severe,
+            flood,
+            energy,
+            alerts,
+            hubs,
+            synoptic,
+            disruption_score=disruption,
+            disruption_label=label,
+        )
         recs = self._recommendations(alerts, hubs, heat, cold, severe, flood, energy, synoptic)
 
         return MeteorologyReport(
@@ -506,84 +517,27 @@ class MeteorologyExpert(BaseExpert):
         alerts: AlertSummary,
         hubs: list[HubForecast],
         synoptic: SynopticAssessment,
+        *,
+        disruption_score: float,
+        disruption_label: str,
     ) -> list[dict[str, Any]]:
-        signals: list[dict[str, Any]] = []
+        from agent_signal_logic import meteorology_market_impact_signals
 
-        from agent_signal_logic import build_market_signal
-
-        if heat >= 0.52:
-            signals.append(
-                build_market_signal(
-                    sector="Power / Cooling Demand",
-                    tickers=["CEG", "VST", "XLU", "NRG"],
-                    bias="BULLISH" if heat >= 0.68 else "NEUTRAL",
-                    reason=f"Heat stress {heat:.2f} — {alerts.heat_alerts} heat alerts",
-                    confidence=min(0.85, 0.45 + heat * 0.55),
-                    evidence={"heat_stress": round(heat, 3), "heat_alerts": alerts.heat_alerts},
-                )
-            )
-
-        if energy >= 0.55:
-            signals.append(
-                build_market_signal(
-                    sector="Natural Gas / Energy",
-                    tickers=["XLE", "UNG", "AR", "EQT"],
-                    bias="BULLISH" if energy >= 0.72 else "NEUTRAL",
-                    reason=f"Weather-driven energy demand score {energy:.2f}",
-                    confidence=min(0.82, 0.42 + energy * 0.5),
-                    evidence={"weather_energy_score": round(energy, 3)},
-                )
-            )
-
-        if cold >= 0.45:
-            signals.append({
-                "sector": "Heating Demand",
-                "tickers": ["UNG", "XLE", "XLU"],
-                "bias": "BULLISH" if cold >= 0.65 else "NEUTRAL",
-                "reason": f"Cold stress {cold:.2f} — {alerts.cold_alerts} winter alerts",
-            })
-
-        if "hurricane" in synoptic.tropical_activity.lower() or "active tropical" in synoptic.tropical_activity.lower():
-            signals.append({
-                "sector": "Gulf Energy / Refining",
-                "tickers": ["USO", "XLE", "VLO", "MPC", "HAL"],
-                "bias": "NEUTRAL",
-                "reason": synoptic.tropical_activity,
-            })
-
-        if "flood" in synoptic.agricultural_risk.lower() or "heat/drought" in synoptic.agricultural_risk.lower():
-            signals.append({
-                "sector": "Agriculture / Soft Commodities",
-                "tickers": ["DBA", "CORN", "SOYB", "WEAT"],
-                "bias": "BULLISH" if "drought" in synoptic.agricultural_risk.lower() else "NEUTRAL",
-                "reason": synoptic.agricultural_risk,
-            })
-
-        if severe >= 0.35:
-            signals.append({
-                "sector": "Insurance / Utilities",
-                "tickers": ["ALL", "TRV", "PGR", "XLU"],
-                "bias": "NEUTRAL",
-                "reason": f"{alerts.severe_alerts} severe/tropical alerts — outage & claims risk",
-            })
-
-        houston = next((h for h in hubs if h.name == "Houston"), None)
-        if houston and houston.max_temp_f and houston.max_temp_f >= 95:
-            signals.append({
-                "sector": "Gulf / Refining",
-                "tickers": ["USO", "XLE", "VLO"],
-                "bias": "NEUTRAL",
-                "reason": f"Houston peak forecast {houston.max_temp_f:.0f}°F",
-            })
-
-        if not signals:
-            signals.append({
-                "sector": "Weather / Utilities",
-                "tickers": ["XLU", "CEG"],
-                "bias": "NEUTRAL",
-                "reason": "No significant national weather stress detected",
-            })
-
+        signals = meteorology_market_impact_signals(
+            heat_stress=heat,
+            cold_stress=cold,
+            severe_stress=severe,
+            flood_stress=flood,
+            energy_stress=energy,
+            disruption_score=disruption_score,
+            disruption_label=disruption_label,
+            tropical_activity=synoptic.tropical_activity,
+            agricultural_risk=synoptic.agricultural_risk,
+            heat_alerts=alerts.heat_alerts,
+            cold_alerts=alerts.cold_alerts,
+            severe_alerts=alerts.severe_alerts,
+            source="meteorology",
+        )
         return self._adjust_market_signals(signals)
 
     @staticmethod

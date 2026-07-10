@@ -146,7 +146,20 @@ def _filter_tickers(
     agent_id: str,
     sector_hint: str,
     settings: dict[str, Any],
+    impact_scope: str = "",
 ) -> list[str]:
+    if str(impact_scope or "") == "market":
+        try:
+            from agent_signal_logic import MARKET_IMPACT_TICKERS
+
+            return [
+                str(ticker or "").strip().upper()
+                for ticker in tickers or []
+                if str(ticker or "").strip().upper() in MARKET_IMPACT_TICKERS
+            ]
+        except Exception:
+            pass
+
     kept: list[str] = []
     for ticker in tickers or []:
         sym = str(ticker or "").strip().upper()
@@ -171,7 +184,13 @@ def _constrain_market_signals(
         if not isinstance(sig, dict):
             continue
         sector = str(sig.get("sector", ""))
-        tickers = _filter_tickers(sig.get("tickers") or [], agent_id=aid, sector_hint=sector, settings=settings)
+        tickers = _filter_tickers(
+            sig.get("tickers") or [],
+            agent_id=aid,
+            sector_hint=sector,
+            settings=settings,
+            impact_scope=str(sig.get("impact_scope") or ""),
+        )
         removed += max(0, len(sig.get("tickers") or []) - len(tickers))
         if not tickers:
             removed += 1

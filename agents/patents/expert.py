@@ -597,40 +597,40 @@ class PatentLandscapeAnalyst(BaseExpert):
             label = "Quiet landscape"
         return round(score, 1), label
 
+    def _adjust_market_signals(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        adjusted: list[dict[str, Any]] = []
+        for sig in signals:
+            row = dict(sig)
+            tickers = row.get("tickers") or []
+            conf = row.get("confidence")
+            if tickers and conf is not None:
+                row["confidence"] = self.adjust_signal_confidence(
+                    str(tickers[0]), str(row.get("bias", "NEUTRAL")), conf
+                )
+            adjusted.append(row)
+        return adjusted
+
     def _market_signals(
-        self, findings: list[PatentFinding], by_sector: dict[str, int]
+        self,
+        findings: list[PatentFinding],
+        by_sector: dict[str, int],
+        *,
+        innovation_score: float,
+        landscape_label: str,
+        top_sector: str,
     ) -> list[dict[str, Any]]:
-        signals: list[dict[str, Any]] = []
-        ranked = sorted(by_sector.items(), key=lambda x: -x[1])
+        from agent_signal_logic import patents_market_impact_signals
 
-        for sector, count in ranked[:3]:
-            if sector == "general" or count < 2:
-                continue
-            tickers = SECTOR_TICKERS.get(sector, ["SPY"])
-            signals.append({
-                "sector": sector.replace("-", " ").title(),
-                "tickers": tickers,
-                "bias": "BULLISH" if count >= 4 else "NEUTRAL",
-                "reason": f"{count} tracked filings in {sector.replace('-', ' ')}",
-            })
-
-        high_impact = [f for f in findings if f.impact == "high"]
-        if high_impact:
-            signals.append({
-                "sector": "IP Leaders",
-                "tickers": ["QQQ", "SPY"],
-                "bias": "NEUTRAL",
-                "reason": f"{len(high_impact)} high-impact patent signals detected",
-            })
-
-        if not signals:
-            signals.append({
-                "sector": "Broad Market",
-                "tickers": ["SPY"],
-                "bias": "NEUTRAL",
-                "reason": "No concentrated patent cluster detected",
-            })
-        return signals
+        high_impact = sum(1 for f in findings if f.impact == "high")
+        signals = patents_market_impact_signals(
+            innovation_score=innovation_score,
+            landscape_label=landscape_label,
+            by_sector=by_sector,
+            high_impact_count=high_impact,
+            top_sector=top_sector,
+            source="patents",
+        )
+        return self._adjust_market_signals(signals)
 
     def analyze(self) -> PatentReport:
         resources = self._catalog_resources()
@@ -654,7 +654,13 @@ class PatentLandscapeAnalyst(BaseExpert):
             f"Landscape: {landscape_label} (score {innovation_score})."
         )
 
-        signals = self._market_signals(findings, by_sector)
+        signals = self._market_signals(
+            findings,
+            by_sector,
+            innovation_score=innovation_score,
+            landscape_label=landscape_label,
+            top_sector=top_sector,
+        )
         recs = [
             summary,
             f"Resources online: {online}/{len(resources)} | "

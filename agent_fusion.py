@@ -143,7 +143,16 @@ def agent_cluster(agent_id: str) -> str:
 def agent_in_domain(agent_id: str, symbol: str, *, sector_hint: str = "") -> bool:
     aid = str(agent_id or "")
     sym = str(symbol or "").strip().upper()
-    if aid in GENERALIST_AGENTS or not sym:
+    if not sym:
+        return True
+    try:
+        from agent_signal_logic import MARKET_IMPACT_TICKERS
+
+        if sym in MARKET_IMPACT_TICKERS:
+            return True
+    except Exception:
+        pass
+    if aid in GENERALIST_AGENTS:
         return True
     domain = AGENT_DOMAINS.get(aid)
     if not domain:

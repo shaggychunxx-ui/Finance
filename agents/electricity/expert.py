@@ -391,73 +391,22 @@ class EiaGridMonitorAnalyst(BaseExpert):
         fuel_mix: list[FuelGeneration],
         renewable_pct: float,
         gas_pct: float,
+        *,
+        grid_stress: float,
+        stress_label: str,
+        peak_load_mw: float | None = None,
     ) -> list[dict[str, Any]]:
-        from agent_signal_logic import build_market_signal, meteorology_energy_score
+        from agent_signal_logic import meteorology_energy_score, power_grid_market_impact_signals
 
-        signals: list[dict[str, Any]] = []
-        weather_energy = meteorology_energy_score()
-
-        if renewable_pct >= 28:
-            signals.append(
-                build_market_signal(
-                    sector="Renewables",
-                    tickers=self.pipeline_watchlist_symbols(["TAN", "ICLN", "NEE", "ENPH"]),
-                    bias="BULLISH",
-                    reason=f"US48 renewable share {renewable_pct:.0f}% on EIA Grid Monitor",
-                    confidence=min(0.78, 0.5 + renewable_pct / 100.0),
-                )
-            )
-        elif renewable_pct >= 22:
-            signals.append(
-                build_market_signal(
-                    sector="Renewables",
-                    tickers=self.pipeline_watchlist_symbols(["TAN", "ICLN"]),
-                    bias="NEUTRAL",
-                    reason=f"US48 renewable share {renewable_pct:.0f}%",
-                    confidence=0.48,
-                )
-            )
-
-        gas_bias = "BULLISH" if gas_pct >= 34 else "NEUTRAL"
-        gas_conf = min(0.8, 0.45 + gas_pct / 120.0)
-        if weather_energy is not None and weather_energy >= 0.6 and gas_pct >= 28:
-            gas_bias = "BULLISH"
-            gas_conf = min(0.88, gas_conf + 0.12)
-        if gas_pct >= 28:
-            signals.append(
-                build_market_signal(
-                    sector="Natural Gas / Power",
-                    tickers=self.pipeline_watchlist_symbols(["UNG", "XLE", "VST", "NRG"]),
-                    bias=gas_bias,
-                    reason=(
-                        f"Gas provides {gas_pct:.0f}% of US48 generation"
-                        + (
-                            f"; weather-energy score {weather_energy:.2f}"
-                            if weather_energy is not None
-                            else ""
-                        )
-                    ),
-                    confidence=gas_conf,
-                    evidence={"gas_pct": gas_pct, "weather_energy": weather_energy},
-                )
-            )
-
-        coal_pct = next((f.share_pct for f in fuel_mix if f.fuel_code == "COL"), 0.0)
-        if coal_pct >= 15:
-            signals.append({
-                "sector": "Coal / Thermal",
-                "tickers": ["XLU", "BTU", "ARCH"],
-                "bias": "NEUTRAL",
-                "reason": f"Coal still {coal_pct:.0f}% of US48 hourly generation",
-            })
-
-        signals.append({
-            "sector": "Utilities / Grid Infrastructure",
-            "tickers": self.pipeline_watchlist_symbols(["XLU", "CEG", "DUK", "SO"]),
-            "bias": "NEUTRAL",
-            "reason": "EIA Grid Monitor US48 overview — baseline utility exposure",
-        })
-
+        signals = power_grid_market_impact_signals(
+            grid_stress=grid_stress,
+            stress_label=stress_label,
+            renewable_pct=renewable_pct,
+            gas_pct=gas_pct,
+            weather_energy=meteorology_energy_score(),
+            peak_load_mw=peak_load_mw,
+            source="electricity",
+        )
         return self._adjust_market_signals(signals)
 
     def analyze(self) -> ElectricityReport:
@@ -545,7 +494,14 @@ class EiaGridMonitorAnalyst(BaseExpert):
             stress_label=stress_label,
             expert_summary=summary,
             electrical_assessment=assessment,
-            market_signals=self._market_signals(fuel_mix, renewable_pct, gas_pct),
+            market_signals=self._market_signals(
+                fuel_mix,
+                renewable_pct,
+                gas_pct,
+                grid_stress=balance_score,
+                stress_label=stress_label,
+                peak_load_mw=demand if demand > 0 else None,
+            ),
             recommendations=recs,
             data_sources=sources,
         )

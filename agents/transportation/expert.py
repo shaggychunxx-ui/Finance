@@ -361,72 +361,27 @@ class CivilTransportationAnalyst(BaseExpert):
         bridge_states: list[StateBridgeProfile],
         traffic_weeks: list[TrafficWeek],
         truck_leaders: list[dict[str, Any]],
+        *,
+        infrastructure_stress: float,
+        stress_label: str,
+        freight_score: float,
+        unknown_design_pct: float,
     ) -> list[dict[str, Any]]:
-        from agent_signal_logic import build_market_signal, freight_logistics_confidence
+        from agent_signal_logic import transportation_market_impact_signals
 
-        signals: list[dict[str, Any]] = []
         truck_avg = statistics.mean(w.truck_chg for w in traffic_weeks[:4]) if traffic_weeks else 0.0
-        freight_proxy = 0.5 + min(max(truck_avg / 8.0, -0.15), 0.25)
-
-        if abs(truck_avg) >= 1.5:
-            bias = "BULLISH" if truck_avg >= 3 else "BEARISH" if truck_avg <= -2 else "NEUTRAL"
-            signals.append(
-                build_market_signal(
-                    sector="Freight & Trucking",
-                    tickers=["JBHT", "XRT", "ODFL", "KNX"],
-                    bias=bias,
-                    reason=f"Weekly truck traffic change avg {truck_avg:+.1f}% from DOT volume data",
-                    confidence=freight_logistics_confidence(freight_proxy),
-                    evidence={"truck_chg_avg_pct": round(truck_avg, 2)},
-                )
-            )
-
-        top = bridge_states[:3]
-        if top and top[0].bridge_count >= 3000:
-            tickers: list[str] = []
-            for s in top:
-                tickers.extend(STATE_INFRA_TICKERS.get(s.state, [])[:2])
-            deduped = list(dict.fromkeys(tickers))[:5]
-            signals.append(
-                build_market_signal(
-                    sector="Rail / Heavy Civil",
-                    tickers=deduped or ["UNP", "CSX", "CAT"],
-                    bias="NEUTRAL",
-                    reason=(
-                        f"Top bridge-density states: {', '.join(s.state for s in top)} "
-                        f"({top[0].bridge_count:,} structures in {top[0].state})"
-                    ),
-                    confidence=0.48,
-                )
-            )
-
-        if truck_leaders:
-            lead = truck_leaders[0]
-            if int(lead.get("inspections", 0) or 0) >= 5000:
-                signals.append(
-                    build_market_signal(
-                        sector="Construction Materials",
-                        tickers=["VMC", "MLM", "CAT", "URI"],
-                        bias="NEUTRAL",
-                        reason=(
-                            f"High inspection activity in {lead['state']} "
-                            f"({lead['inspections']:,} commercial vehicle inspections)"
-                        ),
-                        confidence=0.46,
-                    )
-                )
-
-        if not signals:
-            signals.append(
-                build_market_signal(
-                    sector="Infrastructure Baseline",
-                    tickers=["UNP", "CSX"],
-                    bias="NEUTRAL",
-                    reason="DOT freight data shows no strong directional tilt",
-                    confidence=0.42,
-                )
-            )
-
+        passenger_avg = (
+            statistics.mean(w.all_vehicles_chg for w in traffic_weeks[:4]) if traffic_weeks else None
+        )
+        signals = transportation_market_impact_signals(
+            infrastructure_stress=infrastructure_stress,
+            stress_label=stress_label,
+            freight_score=freight_score,
+            truck_chg_avg_pct=truck_avg,
+            passenger_chg_avg_pct=passenger_avg,
+            unknown_bridge_design_pct=unknown_design_pct,
+            source="transportation",
+        )
         return self._adjust_market_signals(signals)
 
     def analyze(self) -> TransportationReport:
@@ -490,7 +445,15 @@ class CivilTransportationAnalyst(BaseExpert):
             stress_label=stress_label,
             expert_summary=summary,
             civil_assessment=civil,
-            market_signals=self._market_signals(bridge_states, traffic_weeks, truck_leaders),
+            market_signals=self._market_signals(
+                bridge_states,
+                traffic_weeks,
+                truck_leaders,
+                infrastructure_stress=stress_score,
+                stress_label=stress_label,
+                freight_score=freight_score,
+                unknown_design_pct=unknown_pct,
+            ),
             recommendations=recs,
             data_sources=sources,
         )
