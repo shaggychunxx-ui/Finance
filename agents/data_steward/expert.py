@@ -170,6 +170,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "trading-economics",
+        "agent": "Trading Economics Macro Expert",
+        "primary_output": "trading_economics.json",
+        "sidecars": ["trading_economics_resources.json"],
+        "sources": ["Trading Economics guest API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

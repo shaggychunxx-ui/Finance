@@ -25,6 +25,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Trading Economics Macro Expert** | `run.bat trading-economics` | [Trading Economics API](https://github.com/tradingeconomics/tradingeconomics) (guest tier) |
 
 ## Quick start
 
@@ -48,6 +49,7 @@ run.bat sales-analytics
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat trading-economics
 ```
 
 Or with options:
@@ -397,6 +399,21 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Trading Economics Macro Expert
+
+Macro analysis from the [Trading Economics API](https://github.com/tradingeconomics/tradingeconomics), covering the five countries available on the free `guest:guest` API key (Mexico, Sweden, New Zealand, Thailand, Switzerland):
+
+- **GDP growth, inflation, interest rate, unemployment, and trade balance** per country
+- Per-country macro regime classification (tightening / neutral / easing) from rate momentum, inflation, and growth
+- Composite global policy-stance score across the guest-tier country set
+- Sector/FX signals (EWW, EWD, ENZL, THD, EWL and USD cross rates)
+- Calibrated proxy fallback when the API is unavailable
+
+Outputs:
+
+- `output/trading_economics.json` — full analysis with market signals and recommendations
+- `output/trading_economics_resources.json` — API resource catalog
 
 ## Requirements
 

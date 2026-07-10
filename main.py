@@ -28,6 +28,7 @@ from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
+from agents.trading_economics import run_trading_economics_analysis
 from agents.transportation import run_transportation_analysis
 from historical_simulation import run_accuracy_benchmark_cli, run_historical_simulation_cli
 
@@ -244,6 +245,27 @@ def _print_geopolitics(data: dict[str, Any]) -> None:
                 f"  • {t.get('name')}: risk {t.get('risk_score')} "
                 f"({t.get('article_count')} articles)"
             )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_trading_economics(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('countries_analyzed', 0)} countries")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Composite: {metrics.get('composite_label')} ({metrics.get('composite_score')})")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for c in data.get("countries", []):
+        print(f"  • {c.get('country')}: {c.get('regime')} (score {c.get('regime_score')})")
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -1049,6 +1071,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
     "theoretical-probability": _print_theoretical_probability,
+    "trading-economics": _print_trading_economics,
     "transportation": _print_transportation,
 }
 
@@ -1074,6 +1097,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
+    "trading-economics": run_trading_economics_analysis,
     "transportation": run_transportation_analysis,
 }
 
