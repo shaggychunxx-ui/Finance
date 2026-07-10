@@ -4,6 +4,9 @@ Market Analyst Expert Agent
 Expert US market analysis from Yahoo Finance public APIs.
 
 Dashboard: https://finance.yahoo.com/
+Supplementary data source: https://www.investing.com/ (indices, commodities,
+currencies, and most-active views referenced for cross-checking; investing.com
+is DNS-blocked in this sandbox, so only static resource metadata is cataloged).
 """
 
 from __future__ import annotations
@@ -44,6 +47,37 @@ CYCLICAL = {"XLE", "XLI", "XLY", "XLF", "XLB"}
 GROWTH_PROXY = "QQQ"
 VALUE_PROXY = "IWM"
 COMMODITIES = {"CL=F": "Crude Oil", "GC=F": "Gold"}
+
+# Supplementary data source (reference only): investing.com is DNS-blocked in
+# this sandbox, so these views are cataloged as static metadata for
+# cross-checking rather than fetched live.
+INVESTING_COM_URL = "https://www.investing.com/"
+INVESTING_COM_VIEWS: list[dict[str, Any]] = [
+    {
+        "id": "indices",
+        "name": "World Indices",
+        "url": f"{INVESTING_COM_URL}indices/major-indices",
+        "description": "Major global equity index quotes and daily change",
+    },
+    {
+        "id": "commodities",
+        "name": "Commodities",
+        "url": f"{INVESTING_COM_URL}commodities/",
+        "description": "Crude oil, gold, and other commodity futures pricing",
+    },
+    {
+        "id": "currencies",
+        "name": "Currencies",
+        "url": f"{INVESTING_COM_URL}currencies/",
+        "description": "Major FX pair quotes and daily change",
+    },
+    {
+        "id": "most_active",
+        "name": "Most Active Stocks",
+        "url": f"{INVESTING_COM_URL}equities/most-active-stocks",
+        "description": "Highest volume equities on the day",
+    },
+]
 
 
 @dataclass
@@ -554,8 +588,10 @@ class MarketAnalystExpert(BaseExpert):
                 "dashboard": DASHBOARD_URL,
                 "analyzed_at": report.analyzed_at,
                 "data_source": report.data_source,
+                "supplementary_data_source": INVESTING_COM_URL,
                 "expert_summary": report.expert_summary,
             },
+            "supplementary_views": INVESTING_COM_VIEWS,
             "assessment": {
                 "regime": a.regime,
                 "breadth_signal": a.breadth_signal,
@@ -609,6 +645,11 @@ class MarketAnalystExpert(BaseExpert):
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+            views_path = output.parent / "investing_com_views.json"
+            views_path.write_text(
+                json.dumps(INVESTING_COM_VIEWS, indent=2),
+                encoding="utf-8",
+            )
         return result
 
 

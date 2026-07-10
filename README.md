@@ -195,12 +195,17 @@ Outputs:
 
 ## Market Analyst Expert
 
-Live US market analysis from Yahoo Finance:
+Live US market analysis from Yahoo Finance, with [investing.com](https://www.investing.com/) cataloged as a supplementary data source (indices, commodities, currencies, and most-active views):
 
 - Major indices (^GSPC, ^DJI, ^IXIC, ^RUT) and VIX
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+Outputs:
+
+- `output/markets.json` — full market analysis with supplementary source metadata
+- `output/investing_com_views.json` — investing.com supplementary view catalog
 
 ## Geopolitics Expert
 
