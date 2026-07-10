@@ -4,7 +4,7 @@ World Events Tracker Agent
 Fetches live global headlines, classifies market-relevant events,
 and exports JSON compatible with the web tracker (index.html).
 
-Data: BBC World / NPR RSS feeds.
+Data: BBC World / NPR / DW / CNA RSS feeds.
 """
 
 from __future__ import annotations
@@ -27,6 +27,11 @@ HEADERS = {"User-Agent": "Finance-WorldEvents-Tracker/1.0 (shaggychunxx@gmail.co
 NEWS_FEEDS = [
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("NPR World", "https://feeds.npr.org/1004/rss.xml"),
+    ("DW News", "https://rss.dw.com/xml/rss-en-all"),
+    (
+        "CNA World",
+        "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311",
+    ),
 ]
 
 CATEGORIES = {

@@ -3,7 +3,7 @@ Geopolitics Expert Agent
 ========================
 Expert geopolitical risk analysis from global news feeds and theater monitoring.
 
-Primary data: BBC World RSS, GDELT DOC API (rate-limited, optional).
+Primary data: BBC World, NPR, DW, and CNA RSS feeds, GDELT DOC API (rate-limited, optional).
 """
 
 from __future__ import annotations
@@ -27,6 +27,11 @@ GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 NEWS_FEEDS = [
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("NPR World", "https://feeds.npr.org/1004/rss.xml"),
+    ("DW News", "https://rss.dw.com/xml/rss-en-all"),
+    (
+        "CNA World",
+        "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311",
+    ),
 ]
 
 THEATERS = {

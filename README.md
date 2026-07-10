@@ -10,12 +10,12 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
-| **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
+| **World Events Tracker** | `run.bat events` | BBC World / NPR / DW / CNA RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
-| **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
+| **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR / DW / CNA RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
@@ -129,7 +129,7 @@ Open `index.html` in any modern browser (or run `open_tracker.bat`). No build st
 
 ### Python agent
 
-Fetches live headlines from BBC World and NPR, classifies each event by category, region, and market impact, and exports JSON reports:
+Fetches live headlines from BBC World, NPR, DW, and CNA, classifies each event by category, region, and market impact, and exports JSON reports:
 
 ```bat
 run.bat events -o output/world_events.json
