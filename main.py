@@ -27,6 +27,7 @@ from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
+from agents.sec_filings import run_sec_filings_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 from historical_simulation import run_accuracy_benchmark_cli, run_historical_simulation_cli
@@ -850,6 +851,45 @@ def _print_patents(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_sec_filings(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_tracked', 0)} resources, "
+        f"{meta.get('filings_count', 0)} filings"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Activity: {summary.get('activity_label')} "
+        f"(score {summary.get('filing_activity_score')})"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print(f"  Dashboard: {meta.get('dashboard', 'https://www.sec.gov/edgar/search/#')}")
+    print()
+    print("  Filing categories:")
+    for category, count in sorted(
+        summary.get("by_category", {}).items(), key=lambda x: -x[1]
+    )[:5]:
+        print(f"    • {category.replace('-', ' ').title()}: {count}")
+    print()
+    print("  Recent filings:")
+    for f in data.get("filings", [])[:8]:
+        print(
+            f"    • [{f.get('category', '?')}] {f.get('title', '')[:68]} "
+            f"— {f.get('form', '')} ({f.get('filed_date', '')})"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_logistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1048,6 +1088,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
+    "sec-filings": _print_sec_filings,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
@@ -1073,6 +1114,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
+    "sec-filings": run_sec_filings_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
@@ -1131,6 +1173,10 @@ def main() -> int:
                 catalog = args.output.parent / "patent_resources.json"
                 if catalog.exists():
                     print(f"  Resource catalog: {catalog}")
+            if args.agent == "sec-filings":
+                catalog = args.output.parent / "sec_edgar_resources.json"
+                if catalog.exists():
+                    print(f"  EDGAR resource catalog: {catalog}")
             if args.agent == "transportation":
                 catalog = args.output.parent / "dot_resources.json"
                 if catalog.exists():

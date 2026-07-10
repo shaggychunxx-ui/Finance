@@ -10,6 +10,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
+| **SEC EDGAR Filings Analyst** | `run.bat sec-filings` | [SEC EDGAR Full Text Search](https://www.sec.gov/edgar/search/#) |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
@@ -33,6 +34,7 @@ run.bat electricity
 run.bat grid
 run.bat transportation
 run.bat patents
+run.bat sec-filings
 run.bat events
 run.bat datascience
 run.bat finance
@@ -57,6 +59,7 @@ run.bat electricity -o output/electricity.json
 run.bat grid -o output/grid.json
 run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
+run.bat sec-filings -o output/sec_filings.json
 run.bat events -o output/world_events.json
 run.bat finance -o output/finance.json
 run.bat geopolitics --json
@@ -111,6 +114,21 @@ Tracks global patent databases, APIs, and monitoring resources while surfacing r
 - Innovation velocity score and sector market signals
 
 Optional: copy `config.example.json` to `config.json` and set `uspto_api_key` from [data.uspto.gov](https://data.uspto.gov/) for live US application search.
+
+## SEC EDGAR Filings Analyst
+
+Securities/regulatory analysis of live corporate disclosures via [SEC EDGAR Full Text Search](https://www.sec.gov/edgar/search/#):
+
+- **7 EDGAR data sources** cataloged (Full Text Search, Company Submissions, XBRL Company Facts, XBRL Frames, Daily Index, Form 4, 13F-HR)
+- Watches material filing themes: M&A, earnings guidance, share buybacks, insider buying, restatements, bankruptcy, CEO transitions
+- Filing categorization by form type (8-K, 10-K, 4, 13F-HR) and disclosure theme
+- Filing activity score and category-level market signals
+- Calibrated proxy fallback when the EDGAR API is unavailable
+
+Outputs:
+
+- `output/sec_filings.json` — full analysis with market signals and recommendations
+- `output/sec_edgar_resources.json` — EDGAR data source catalog
 
 ## World Events Tracker
 
