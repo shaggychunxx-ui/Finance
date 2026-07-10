@@ -235,7 +235,7 @@ class CensusEconomicAnalyst(BaseExpert):
         rows = self._census_get("timeseries/eits/resconst", {
             "get": "cell_value,data_type_code,seasonally_adj",
             "for": "us:*",
-            "data_type_code": "TOTAL",
+            "data_type_code": "STARTS",
             "time": "from 2024",
         })
         rows = rows or FALLBACK_HOUSING_ROWS
