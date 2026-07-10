@@ -19,7 +19,6 @@ if str(ROOT) not in sys.path:
 from etrade_api.client import ETradeClient
 from etrade_api.config import get_selected_account, load_config
 from etrade_api.oauth import is_expired_for_day, load_tokens, needs_renewal, renew_access_token
-from finance_runners import load_finance_runners
 from strategy_engine import (
     PLAN_FILE,
     StrategyPlan,
@@ -362,8 +361,7 @@ def _run_pipeline(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bo
         return False
 
     _log("Running Finance agent pipeline...")
-    runners = load_finance_runners()
-    ok = run_agent_pipeline(runners, on_progress=_log, check_remote=False)
+    ok = run_agent_pipeline(on_progress=_log, check_remote=False, reload_runners=True)
     state["last_pipeline_at"] = time.time()
     save_worker_state(state)
     _log(f"Pipeline complete - {ok} agent reports updated.")

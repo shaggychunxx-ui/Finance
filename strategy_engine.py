@@ -885,6 +885,13 @@ def _run_platform_agent(
         except Exception as exc:
             if on_progress:
                 on_progress(f"Archive skipped for {label}: {exc}")
+
+        try:
+            loaded = json.loads(out_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                result["agent_data"] = loaded
+        except (OSError, json.JSONDecodeError):
+            pass
     except Exception as exc:
         result["error"] = _format_pipeline_exception(exc)
         result["traceback"] = traceback.format_exc()
@@ -984,8 +991,14 @@ def run_agent_pipeline(
     on_progress: Callable[[str], None] | None = None,
     *,
     check_remote: bool = True,
+    reload_runners: bool = True,
 ) -> int:
     from agents.platform_catalog import active_agent_sources, log_catalog_changes, resolve_runner
+
+    if runners is None:
+        from finance_runners import load_finance_runners
+
+        runners = load_finance_runners(reload=reload_runners)
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
     try:
@@ -1040,7 +1053,10 @@ def run_agent_pipeline(
             try:
                 from agents.pipeline_memory import register_same_cycle_agent_output
 
-                if out_path.exists():
+                agent_data = outcome.get("agent_data")
+                if isinstance(agent_data, dict):
+                    register_same_cycle_agent_output(aid, agent_data)
+                elif out_path.exists():
                     loaded = json.loads(out_path.read_text(encoding="utf-8"))
                     if isinstance(loaded, dict):
                         register_same_cycle_agent_output(aid, loaded)
@@ -1085,7 +1101,23 @@ def run_agent_pipeline(
     try:
         from etrade_market_enhancer import run_etrade_enhancement
 
-        run_etrade_enhancement(on_progress=on_progress)
+        etrade_stats = run_etrade_enhancement(on_progress=on_progress)
+        try:
+            from agents.pipeline_memory import sync_same_cycle_from_disk
+
+            sync_same_cycle_from_disk(sources)
+            if on_progress and isinstance(etrade_stats, dict) and etrade_stats.get("agent_files_updated"):
+                on_progress(
+                    f"Synced {etrade_stats['agent_files_updated']} E*TRADE-enhanced agent file(s) to pipeline memory."
+                )
+        except Exception:
+            pass
+        try:
+            from agents.pipeline_memory import restore_same_cycle_agent_outputs
+
+            restore_same_cycle_agent_outputs(sources)
+        except Exception:
+            pass
     except Exception as exc:
         if on_progress:
             on_progress(f"E*TRADE enhancement skipped: {exc}")
@@ -1148,6 +1180,12 @@ def run_agent_pipeline(
         except Exception:
             cycle_id = None
     try:
+        from agents.pipeline_memory import restore_same_cycle_agent_outputs
+
+        restore_same_cycle_agent_outputs(sources)
+    except Exception:
+        pass
+    try:
         from analysis_history import archive_pipeline_cycle
 
         archive_pipeline_cycle(cycle_id=cycle_id, refresh_context=False)
@@ -1197,6 +1235,20 @@ def run_agent_pipeline(
                 benchmark=bench,
             )
             _reapply_pipeline_patches(sources)
+            try:
+                from agents.pipeline_memory import (
+                    restore_same_cycle_agent_outputs,
+                    sync_same_cycle_from_disk,
+                )
+
+                sync_same_cycle_from_disk(sources)
+                restored_final = restore_same_cycle_agent_outputs(sources)
+                if restored_final and on_progress:
+                    on_progress(
+                        f"Finalized {restored_final} agent output(s) with market-impact signals."
+                    )
+            except Exception:
+                pass
             if on_progress:
                 on_progress("Pipeline memory updated — future runs will use this cycle.")
                 if agent_failures or not predictor_ok:

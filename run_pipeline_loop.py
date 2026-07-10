@@ -48,7 +48,6 @@ def _log(message: str) -> None:
 
 
 def run_loop(*, target: int, start_from: int | None = None) -> int:
-    from finance_runners import load_finance_runners
     from strategy_engine import run_agent_pipeline
 
     state = _load_state()
@@ -62,7 +61,6 @@ def run_loop(*, target: int, start_from: int | None = None) -> int:
         }
         _save_state(state)
 
-    runners = load_finance_runners()
     begin = max(1, int(start_from or state.get("completed", 0) + 1))
     failures = 0
 
@@ -72,7 +70,11 @@ def run_loop(*, target: int, start_from: int | None = None) -> int:
         started = time.perf_counter()
         _log(f"Run {run_index}/{target} — starting full pipeline")
         try:
-            ok = run_agent_pipeline(runners, on_progress=lambda msg: _log(f"  {msg}"), check_remote=False)
+            ok = run_agent_pipeline(
+                on_progress=lambda msg: _log(f"  {msg}"),
+                check_remote=False,
+                reload_runners=True,
+            )
             elapsed = time.perf_counter() - started
             entry = {
                 "run": run_index,

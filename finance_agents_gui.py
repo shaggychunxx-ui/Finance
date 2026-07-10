@@ -1118,7 +1118,13 @@ class FinanceAgentsApp(tk.Frame):
             def on_progress(msg: str) -> None:
                 self._schedule_ui(self._set_status, msg, WARN)
 
-            ok = run_agent_pipeline(self._runners, on_progress=on_progress, check_remote=False)
+            ok = run_agent_pipeline(on_progress=on_progress, check_remote=False, reload_runners=True)
+            try:
+                from finance_runners import load_finance_runners
+
+                self._runners = load_finance_runners(reload=True)
+            except Exception:
+                pass
             for agent in AGENT_CATALOG:
                 self._schedule_ui(self._refresh_agent, agent["id"])
             self._schedule_ui(self.refresh_agent_statuses)

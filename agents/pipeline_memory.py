@@ -70,6 +70,116 @@ def same_cycle_agent_outputs() -> dict[str, dict[str, Any]]:
     return dict(_same_cycle_outputs)
 
 
+def _has_market_impact_signals(data: dict[str, Any]) -> bool:
+    return any(
+        isinstance(sig, dict) and str(sig.get("impact_scope") or "") == "market"
+        for sig in (data.get("market_signals") or [])
+    )
+
+
+def _load_output_json(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
+def _apply_disk_enhancements(target: dict[str, Any], disk: dict[str, Any]) -> None:
+    """Layer E*TRADE / personality / learning patches from disk onto memory output."""
+    for key in ("enhance_symbols",):
+        if disk.get(key) is not None:
+            target[key] = disk[key]
+
+    disk_meta = disk.get("meta")
+    if not isinstance(disk_meta, dict):
+        return
+    target_meta = target.setdefault("meta", {})
+    if not isinstance(target_meta, dict):
+        target_meta = {}
+        target["meta"] = target_meta
+    for key in (
+        "personality",
+        "learning",
+        "etrade_enhancement_applied_at",
+        "preferred_horizon",
+        "pipeline_memory",
+        "domain_constraints",
+    ):
+        if disk_meta.get(key) is not None:
+            target_meta[key] = disk_meta[key]
+
+    _merge_etrade_enhanced_nodes(target, disk)
+
+
+def _merge_etrade_enhanced_nodes(target: Any, disk: Any) -> None:
+    if isinstance(target, dict) and isinstance(disk, dict):
+        if "etrade_enhanced" in disk and "etrade_enhanced" not in target:
+            target["etrade_enhanced"] = disk["etrade_enhanced"]
+            if disk.get("price") is not None and "price" not in target:
+                target["price"] = disk["price"]
+        for key, value in disk.items():
+            if key in {"etrade_enhanced", "enhance_symbols", "quotes", "candidates"}:
+                continue
+            if key in target:
+                _merge_etrade_enhanced_nodes(target[key], value)
+    elif isinstance(target, list) and isinstance(disk, list):
+        for index, disk_item in enumerate(disk):
+            if index < len(target):
+                _merge_etrade_enhanced_nodes(target[index], disk_item)
+
+
+def merge_agent_output_for_restore(
+    memory: dict[str, Any],
+    disk: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Prefer in-memory market-impact signals when disk looks like a stale overwrite."""
+    if not disk:
+        return dict(memory)
+
+    mem_impact = _has_market_impact_signals(memory)
+    disk_impact = _has_market_impact_signals(disk)
+    if mem_impact and not disk_impact:
+        merged = dict(memory)
+        _apply_disk_enhancements(merged, disk)
+        return merged
+    if disk_impact or not mem_impact:
+        return dict(disk)
+    return dict(memory)
+
+
+def sync_same_cycle_from_disk(
+    sources: list[dict[str, str]] | None = None,
+    *,
+    agent_ids: set[str] | None = None,
+) -> int:
+    """Refresh in-memory outputs from disk (e.g. after E*TRADE quote enhancement)."""
+    from app_paths import OUTPUT
+
+    if sources is None:
+        from agents.platform_catalog import active_agent_sources
+
+        sources = active_agent_sources(check_remote=False)
+
+    synced = 0
+    for src in sources:
+        aid = str(src.get("id") or "")
+        if agent_ids is not None and aid not in agent_ids:
+            continue
+        disk = _load_output_json(OUTPUT / str(src.get("file") or ""))
+        if not isinstance(disk, dict):
+            continue
+        memory = _same_cycle_outputs.get(aid)
+        if isinstance(memory, dict):
+            _same_cycle_outputs[aid] = merge_agent_output_for_restore(memory, disk)
+        else:
+            _same_cycle_outputs[aid] = disk
+        synced += 1
+    return synced
+
+
 def restore_same_cycle_agent_outputs(
     sources: list[dict[str, str]] | None = None,
 ) -> int:
@@ -92,14 +202,16 @@ def restore_same_cycle_agent_outputs(
     restored = 0
     for src in sources:
         aid = str(src.get("id") or "")
-        data = outputs.get(aid)
-        if not isinstance(data, dict):
+        memory = outputs.get(aid)
+        if not isinstance(memory, dict):
             continue
         out_path = OUTPUT / str(src.get("file") or "")
         if not out_path.name.endswith(".json"):
             continue
+        merged = merge_agent_output_for_restore(memory, _load_output_json(out_path))
+        _same_cycle_outputs[aid] = merged
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        out_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
         restored += 1
     return restored
 

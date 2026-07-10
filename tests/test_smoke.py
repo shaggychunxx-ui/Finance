@@ -708,6 +708,25 @@ def test_pipeline_memory_bundle_and_steering() -> None:
         clear_pipeline_memory()
 
 
+def test_merge_agent_output_for_restore_prefers_memory_impact() -> None:
+    from agents.pipeline_memory import merge_agent_output_for_restore
+
+    memory = {
+        "market_signals": [
+            {"sector": "Broad Market", "tickers": ["SPY"], "impact_scope": "market"},
+        ],
+    }
+    legacy = {
+        "market_signals": [
+            {"sector": "Dry Bulk Shipping", "tickers": ["BDRY"], "bias": "NEUTRAL"},
+        ],
+        "meta": {"learning": {"accuracy_pct": 58.1}},
+    }
+    merged = merge_agent_output_for_restore(memory, legacy)
+    assert merged["market_signals"][0]["impact_scope"] == "market"
+    assert merged["meta"]["learning"]["accuracy_pct"] == 58.1
+
+
 def test_restore_same_cycle_agent_outputs() -> None:
     import tempfile
 
@@ -747,6 +766,7 @@ def _run_all() -> None:
         test_prediction_hit_logic,
         test_import_core_modules,
         test_pipeline_memory_bundle_and_steering,
+        test_merge_agent_output_for_restore_prefers_memory_impact,
         test_restore_same_cycle_agent_outputs,
         test_agent_signal_logic_thresholds,
         test_live_accuracy_merge_prefers_live_samples,

@@ -21,7 +21,6 @@ from tkinter import messagebox, ttk
 import tkinter as tk
 
 from app_paths import ICON_FILE, OUTPUT, ROOT, ensure_app_path
-from finance_runners import load_finance_runners
 from gui_theme import (
     ACCENT,
     ACCENT2,
@@ -3979,7 +3978,6 @@ class ETradeTraderApp(tk.Frame):
                 self._schedule(self._log_line, "[bg] Pipeline skipped - headless worker is already running.")
                 return
             lock_ok = True
-            runners = load_finance_runners()
 
             def progress(msg: str) -> None:
                 if background:
@@ -3994,9 +3992,9 @@ class ETradeTraderApp(tk.Frame):
                 self._schedule(self._set_status, "Running agent pipeline…", WARN)
 
             ok = run_agent_pipeline(
-                runners,
                 on_progress=progress,
                 check_remote=not background,
+                reload_runners=True,
             )
             self._last_pipeline_at = time.time()
             self._schedule(self._refresh_reports_ui, select_latest=True)
