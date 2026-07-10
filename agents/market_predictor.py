@@ -11,8 +11,17 @@ from typing import Any
 from agents.platform_catalog import active_agent_sources
 
 BIAS_SCORES = {"BULLISH": 1.0, "NEUTRAL": 0.15, "BEARISH": -1.0}
-HORIZON_RETURN_SCALE = {"24h": 0.35, "1wk": 0.55, "1mo": 1.0, "1yr": 2.5}
+HORIZON_RETURN_SCALE = {
+    "1m": 0.015,
+    "1h": 0.08,
+    "24h": 0.35,
+    "1wk": 0.55,
+    "1mo": 1.0,
+    "1yr": 2.5,
+}
 TOP_N = 25
+INTRADAY_TOP_N = 12
+PREDICTION_HORIZONS = ("1m", "1h", "24h", "1wk", "1mo", "1yr")
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -246,15 +255,17 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
 def _build_horizon_rows(
     ranked: list[tuple[str, dict[str, Any]]],
     horizon: str,
+    *,
+    limit: int = TOP_N,
 ) -> list[dict[str, Any]]:
-    scale = HORIZON_RETURN_SCALE[horizon]
+    scale = HORIZON_RETURN_SCALE.get(horizon, HORIZON_RETURN_SCALE["24h"])
     rows: list[dict[str, Any]] = []
     horizon_ranked = sorted(
         ranked,
         key=lambda item: _horizon_adjusted_score(item[0], item[1], horizon),
         reverse=True,
     )
-    for rank, (symbol, row) in enumerate(horizon_ranked[:TOP_N], start=1):
+    for rank, (symbol, row) in enumerate(horizon_ranked[:limit], start=1):
         score = _horizon_adjusted_score(symbol, row, horizon)
         direction = _direction(score)
         base_return = min(12.0, max(0.4, abs(score) * 4.5)) * scale
@@ -278,6 +289,7 @@ def _build_horizon_rows(
         }
         if row.get("price") is not None:
             entry["price_at_prediction"] = row["price"]
+        entry["preferred_horizon"] = horizon
         rows.append(entry)
     return rows
 
@@ -301,8 +313,12 @@ def run_market_predictor_analysis(
         movers.extend(negative[: max(0, 8 - len(movers))])
 
     predictions = {
-        horizon: _build_horizon_rows(movers, horizon)
-        for horizon in ("24h", "1wk", "1mo", "1yr")
+        horizon: _build_horizon_rows(
+            movers,
+            horizon,
+            limit=INTRADAY_TOP_N if horizon in {"1m", "1h"} else TOP_N,
+        )
+        for horizon in PREDICTION_HORIZONS
     }
 
     sources_used = [src["file"] for src in active_agent_sources() if (output_dir / src["file"]).exists()]

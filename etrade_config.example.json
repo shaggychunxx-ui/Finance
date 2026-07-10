@@ -92,9 +92,19 @@
   },
   "pipeline_benchmark": {
     "enabled": true,
-    "target_trials": 10000,
-    "max_symbols": 400,
-    "full": true
+    "target_trials": 2500,
+    "max_symbols": 250,
+    "full": true,
+    "run_during_market_hours": false,
+    "daily_calibration": {
+      "enabled": true,
+      "hour": 6,
+      "minute": 0,
+      "timezone": "America/New_York",
+      "target_trials": 10000,
+      "max_symbols": 400,
+      "full": true
+    }
   },
   "market_data_enhancement": {
     "enabled": true,
@@ -116,7 +126,8 @@
     "paused": false,
     "dry_run": false,
     "pipeline_interval_minutes": 5,
-    "accuracy_interval_minutes": 15,
+    "accuracy_interval_minutes": 5,
+    "pipeline_market_hours_only": true,
     "live_accuracy": {
       "enabled": true,
       "min_live_samples_full": 25,

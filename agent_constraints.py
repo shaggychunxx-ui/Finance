@@ -18,9 +18,11 @@ DEFAULT_DOMAIN_CONSTRAINTS = {
     "strict_horizon_for_specialists": False,
 }
 
-HORIZON_ORDER = ("24h", "1wk", "1mo", "1yr")
+HORIZON_ORDER = ("1m", "1h", "24h", "1wk", "1mo", "1yr")
 ADJACENT_HORIZONS: dict[str, frozenset[str]] = {
-    "24h": frozenset({"1wk"}),
+    "1m": frozenset({"1h"}),
+    "1h": frozenset({"1m", "24h"}),
+    "24h": frozenset({"1h", "1wk"}),
     "1wk": frozenset({"24h", "1mo"}),
     "1mo": frozenset({"1wk", "1yr"}),
     "1yr": frozenset({"1mo"}),

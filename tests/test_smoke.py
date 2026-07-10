@@ -708,6 +708,28 @@ def test_pipeline_memory_bundle_and_steering() -> None:
         clear_pipeline_memory()
 
 
+def test_intraday_prediction_horizons() -> None:
+    from agents.market_predictor import HORIZON_RETURN_SCALE, PREDICTION_HORIZONS
+    from prediction_accuracy import HORIZON_HOURS, horizon_timedelta
+
+    assert "1m" in PREDICTION_HORIZONS
+    assert "1h" in PREDICTION_HORIZONS
+    assert HORIZON_RETURN_SCALE["1m"] < HORIZON_RETURN_SCALE["1h"]
+    assert horizon_timedelta("1m").total_seconds() == 60
+    assert horizon_timedelta("1h").total_seconds() == 3600
+    assert HORIZON_HOURS["1h"] == 1
+
+
+def test_resolve_pipeline_benchmark_profiles() -> None:
+    from historical_simulation import resolve_pipeline_benchmark
+
+    skip = resolve_pipeline_benchmark("skip")
+    assert skip.get("enabled") is False
+    daily = resolve_pipeline_benchmark("daily")
+    assert daily.get("profile") == "daily"
+    assert int(daily.get("target_trials", 0)) >= 1000
+
+
 def test_merge_agent_output_for_restore_prefers_memory_impact() -> None:
     from agents.pipeline_memory import merge_agent_output_for_restore
 
@@ -766,6 +788,8 @@ def _run_all() -> None:
         test_prediction_hit_logic,
         test_import_core_modules,
         test_pipeline_memory_bundle_and_steering,
+        test_intraday_prediction_horizons,
+        test_resolve_pipeline_benchmark_profiles,
         test_merge_agent_output_for_restore_prefers_memory_impact,
         test_restore_same_cycle_agent_outputs,
         test_agent_signal_logic_thresholds,

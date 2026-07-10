@@ -980,20 +980,66 @@ def pipeline_benchmark_config() -> dict[str, Any]:
         symbols = int(section.get("max_symbols", DEFAULT_PIPELINE_BENCHMARK_SYMBOLS))
     except (TypeError, ValueError):
         symbols = DEFAULT_PIPELINE_BENCHMARK_SYMBOLS
+    run_during_market = section.get("run_during_market_hours", False)
+    if isinstance(run_during_market, str):
+        run_during_market = run_during_market.strip().lower() not in {"0", "false", "no", "off"}
+    daily = section.get("daily_calibration") if isinstance(section.get("daily_calibration"), dict) else {}
+    daily_enabled = daily.get("enabled", True)
+    if isinstance(daily_enabled, str):
+        daily_enabled = daily_enabled.strip().lower() not in {"0", "false", "no", "off"}
     return {
         "enabled": bool(enabled),
         "target_trials": max(100, trials),
         "max_symbols": max(20, symbols),
         "full": bool(section.get("full", True)),
+        "run_during_market_hours": bool(run_during_market),
+        "daily_calibration": {
+            "enabled": bool(daily_enabled),
+            "hour": int(daily.get("hour", 6) or 6),
+            "minute": int(daily.get("minute", 0) or 0),
+            "timezone": str(daily.get("timezone") or "America/New_York"),
+            "target_trials": max(100, int(daily.get("target_trials", 10000) or 10000)),
+            "max_symbols": max(20, int(daily.get("max_symbols", 400) or 400)),
+            "full": bool(daily.get("full", True)),
+        },
     }
+
+
+def resolve_pipeline_benchmark(profile: str = "routine") -> dict[str, Any]:
+    """Map pipeline benchmark profile to concrete settings."""
+    cfg = pipeline_benchmark_config()
+    profile = str(profile or "routine").strip().lower()
+    if profile in {"skip", "off", "none", "disabled"}:
+        resolved = dict(cfg)
+        resolved["enabled"] = False
+        resolved["profile"] = "skip"
+        return resolved
+    if profile in {"daily", "full", "calibration"}:
+        daily = dict(cfg.get("daily_calibration") or {})
+        resolved = dict(cfg)
+        resolved.update(
+            {
+                "enabled": bool(daily.get("enabled", True)),
+                "target_trials": int(daily.get("target_trials", 10000)),
+                "max_symbols": int(daily.get("max_symbols", 400)),
+                "full": bool(daily.get("full", True)),
+                "profile": "daily",
+            }
+        )
+        return resolved
+    resolved = dict(cfg)
+    resolved["profile"] = "routine"
+    return resolved
 
 
 def run_pipeline_accuracy_benchmark(
     *,
     on_progress: Any | None = None,
+    profile: str = "routine",
+    settings: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Run the walk-forward backtest used by the agent pipeline."""
-    settings = pipeline_benchmark_config()
+    settings = settings or resolve_pipeline_benchmark(profile)
     if not settings.get("enabled"):
         return None
     trials = int(settings["target_trials"])

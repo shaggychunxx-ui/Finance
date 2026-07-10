@@ -43,7 +43,8 @@ DEFAULT_WORKER = {
     "dry_run": False,
     "paused": False,
     "pipeline_interval_minutes": 5,
-    "accuracy_interval_minutes": 15,
+    "accuracy_interval_minutes": 5,
+    "pipeline_market_hours_only": True,
     "plan_interval_minutes": 30,
     "execute_min_interval_minutes": 15,
     "day_trading_interval_minutes": 5,
@@ -313,6 +314,53 @@ def _resolve_account(client: ETradeClient, config_path: Path = CONFIG_PATH) -> d
     return None
 
 
+def _pipeline_benchmark_settings(config_path: Path = CONFIG_PATH) -> dict[str, Any]:
+    try:
+        from historical_simulation import pipeline_benchmark_config
+
+        return pipeline_benchmark_config()
+    except Exception:
+        return {"enabled": True, "run_during_market_hours": False}
+
+
+def _daily_calibration_due(
+    state: dict[str, Any],
+    *,
+    config_path: Path = CONFIG_PATH,
+    now: datetime | None = None,
+) -> bool:
+    settings = _pipeline_benchmark_settings(config_path)
+    daily = settings.get("daily_calibration") if isinstance(settings.get("daily_calibration"), dict) else {}
+    if not daily.get("enabled", True):
+        return False
+    tz = ZoneInfo(str(daily.get("timezone") or "America/New_York"))
+    now = now or datetime.now(tz)
+    target_hour = int(daily.get("hour", 6) or 6)
+    target_minute = int(daily.get("minute", 0) or 0)
+    today = now.date().isoformat()
+    if state.get("last_daily_calibration_date") == today:
+        return False
+    target = dt_time(target_hour, target_minute)
+    return now.time() >= target
+
+
+def _pipeline_benchmark_profile(
+    *,
+    config_path: Path = CONFIG_PATH,
+    state: dict[str, Any] | None = None,
+    now: datetime | None = None,
+) -> str:
+    state = state or load_worker_state()
+    if _daily_calibration_due(state, config_path=config_path, now=now):
+        return "daily"
+    settings = _pipeline_benchmark_settings(config_path)
+    if not settings.get("enabled", True):
+        return "skip"
+    if is_us_market_open(now) and not settings.get("run_during_market_hours", False):
+        return "skip"
+    return "routine"
+
+
 def _run_live_scoring(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bool:
     """Score matured predictions between full pipeline runs."""
     settings = worker_settings(config_path)
@@ -356,13 +404,45 @@ def _run_live_scoring(*, force: bool = False, config_path: Path = CONFIG_PATH) -
 def _run_pipeline(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bool:
     state = load_worker_state()
     settings = worker_settings(config_path)
-    if not _interval_due(state.get("last_pipeline_at"), settings["pipeline_interval_minutes"], force=force):
-        _log("Pipeline skipped - not due yet.")
+    calibration_due = _daily_calibration_due(state, config_path=config_path)
+    market_open = is_us_market_open()
+    if not force and not calibration_due and not market_open:
+        _log("Pipeline skipped - US market closed (daily calibration already done today).")
         return False
+    if not _interval_due(state.get("last_pipeline_at"), settings["pipeline_interval_minutes"], force=force):
+        if not (force or calibration_due):
+            _log("Pipeline skipped - not due yet.")
+            return False
+
+    benchmark_profile = _pipeline_benchmark_profile(
+        config_path=config_path,
+        state=state,
+    )
+    if calibration_due:
+        benchmark_profile = "daily"
+        _log("Daily calibration due — running full walk-forward backtest.")
+    elif benchmark_profile == "skip":
+        _log("Intraday pipeline — agents and predictor only (backtest skipped during market hours).")
+    else:
+        _log(f"Pipeline backtest profile: {benchmark_profile}.")
 
     _log("Running Finance agent pipeline...")
-    ok = run_agent_pipeline(on_progress=_log, check_remote=False, reload_runners=True)
+    ok = run_agent_pipeline(
+        on_progress=_log,
+        check_remote=False,
+        reload_runners=True,
+        benchmark_profile=benchmark_profile,
+    )
     state["last_pipeline_at"] = time.time()
+    if calibration_due:
+        tz = ZoneInfo(
+            str(
+                (_pipeline_benchmark_settings(config_path).get("daily_calibration") or {}).get("timezone")
+                or "America/New_York"
+            )
+        )
+        state["last_daily_calibration_date"] = datetime.now(tz).date().isoformat()
+    state["last_benchmark_profile"] = benchmark_profile
     save_worker_state(state)
     _log(f"Pipeline complete - {ok} agent reports updated.")
     return True

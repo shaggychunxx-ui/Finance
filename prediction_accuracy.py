@@ -13,10 +13,38 @@ HISTORY_ROOT = OUTPUT / "history"
 PENDING_FILE = HISTORY_ROOT / "prediction_pending.json"
 ACCURACY_FILE = HISTORY_ROOT / "prediction_accuracy.json"
 
-HORIZON_HOURS = {"24h": 24, "1wk": 168, "1mo": 720, "1yr": 8760}
-HORIZON_MOVE_PCT = {"24h": 0.5, "1wk": 1.5, "1mo": 3.0, "1yr": 8.0}
-MAGNITUDE_TOLERANCE_PCT = {"24h": 1.0, "1wk": 2.5, "1mo": 5.0, "1yr": 12.0}
+HORIZON_HOURS = {
+    "1m": 1 / 60,
+    "1h": 1,
+    "24h": 24,
+    "1wk": 168,
+    "1mo": 720,
+    "1yr": 8760,
+}
+HORIZON_MOVE_PCT = {
+    "1m": 0.03,
+    "1h": 0.12,
+    "24h": 0.5,
+    "1wk": 1.5,
+    "1mo": 3.0,
+    "1yr": 8.0,
+}
+MAGNITUDE_TOLERANCE_PCT = {
+    "1m": 0.05,
+    "1h": 0.2,
+    "24h": 1.0,
+    "1wk": 2.5,
+    "1mo": 5.0,
+    "1yr": 12.0,
+}
+INTRADAY_HORIZONS = frozenset({"1m", "1h"})
 DEFAULT_HORIZON = "24h"
+
+
+def horizon_timedelta(horizon: str) -> timedelta:
+    """Wall-clock maturity window for a prediction horizon."""
+    hours = HORIZON_HOURS.get(str(horizon or DEFAULT_HORIZON), 24)
+    return timedelta(hours=hours)
 MAX_PENDING = 4000
 MAX_SCORED = 2500
 MIN_SAMPLES_FOR_WEIGHT = 25
@@ -428,13 +456,13 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
     for pred in pending:
         recorded = _parse_iso(pred.get("recorded_at"))
         horizon = str(pred.get("horizon") or DEFAULT_HORIZON)
-        hours = HORIZON_HOURS.get(horizon, 24)
-        if not recorded or (now - recorded) < timedelta(hours=hours):
+        maturity = horizon_timedelta(horizon)
+        if not recorded or (now - recorded) < maturity:
             remaining.append(pred)
             continue
 
         sym = str(pred.get("symbol", "")).upper()
-        horizon_end = recorded + timedelta(hours=hours)
+        horizon_end = recorded + maturity
         start_price = pred.get("price_at_prediction")
         latest_quote = quotes.get(sym)
         try:

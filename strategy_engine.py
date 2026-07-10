@@ -992,6 +992,7 @@ def run_agent_pipeline(
     *,
     check_remote: bool = True,
     reload_runners: bool = True,
+    benchmark_profile: str = "routine",
 ) -> int:
     from agents.platform_catalog import active_agent_sources, log_catalog_changes, resolve_runner
 
@@ -1125,7 +1126,10 @@ def run_agent_pipeline(
     try:
         from historical_simulation import run_pipeline_accuracy_benchmark
 
-        bench = run_pipeline_accuracy_benchmark(on_progress=on_progress)
+        bench = run_pipeline_accuracy_benchmark(
+            on_progress=on_progress,
+            profile=benchmark_profile,
+        )
         if on_progress and isinstance(bench, dict):
             metrics = bench.get("metrics") or {}
             board = bench.get("leaderboard") or []
