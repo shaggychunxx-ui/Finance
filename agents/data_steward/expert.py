@@ -51,6 +51,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "census",
+        "agent": "Census Bureau Economic Analyst",
+        "primary_output": "census.json",
+        "sidecars": ["census_resources.json"],
+        "sources": ["api.census.gov (MRTS, RESCONST, BFS, PEP)"],
+        "owner": "platform",
+    },
+    {
         "command": "patents",
         "agent": "Patent Landscape Analyst",
         "primary_output": "patents.json",
@@ -214,6 +222,16 @@ DATA_SOURCES: list[dict[str, Any]] = [
         "refresh_policy": "weekly",
         "pii": False,
         "sla_hours": 168,
+    },
+    {
+        "id": "census_api",
+        "name": "Census Bureau API",
+        "type": "economic_indicators",
+        "url": "https://www.census.gov/en.html",
+        "format": "json",
+        "refresh_policy": "monthly",
+        "pii": False,
+        "sla_hours": 720,
     },
     {
         "id": "openalex",

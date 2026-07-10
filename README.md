@@ -9,6 +9,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **EIA Grid Monitor Analyst** | `run.bat electricity` | [EIA Grid Monitor US48](https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overview/US48/US48) |
 | **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
+| **Census Bureau Economic Analyst** | `run.bat census` | [Census Bureau](https://www.census.gov/en.html) API (MRTS, RESCONST, BFS, PEP) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
@@ -32,6 +33,7 @@ Intelligence agents for financial market analysis and a client-side world events
 run.bat electricity
 run.bat grid
 run.bat transportation
+run.bat census
 run.bat patents
 run.bat events
 run.bat datascience
@@ -99,6 +101,19 @@ Civil engineering analysis of U.S. DOT open data from [data.transportation.gov](
 - FHWA commercial vehicle inspection volume by state
 - Infrastructure stress score, freight momentum, and civil assessment
 - Sector signals for rails, freight, and construction materials
+
+## Census Bureau Economic Analyst
+
+Economic and demographic analysis of U.S. Census Bureau open data from [census.gov](https://www.census.gov/en.html):
+
+- **8 Census resources** cataloged (MRTS, RESCONST, BFS, PEP, M3, CBP, international trade, ACS)
+- Monthly retail sales momentum (MoM/YoY) from the Monthly Retail Trade Survey
+- New residential construction (housing starts) trend from RESCONST
+- Business Formation Statistics — startup/entrepreneurship momentum
+- State-level population growth leaders from the Population Estimates Program
+- Consumer, housing, and entrepreneurship scores with an overall economic label
+- Sector signals for retail, homebuilders, small caps, and regional real estate/utilities
+- Calibrated fallback data when the Census API is unavailable
 
 ## Patent Landscape Analyst
 
