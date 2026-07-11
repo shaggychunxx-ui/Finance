@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
+| **Market Predictor** | `run.bat market-predictor` | Fuses all agent outputs into multi-horizon predictions |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
@@ -45,6 +46,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat sales-analytics
+run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
@@ -397,6 +399,66 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Market Predictor
+
+Fuses signals from all Finance agents into ranked, multi-horizon market predictions:
+
+- **6 prediction horizons** — `1m`, `1h`, `24h`, `1wk`, `1mo`, `1yr`
+- **Accuracy-weighted fusion** — blends markets, finance, datascience, financial-data, geopolitics, sales-analytics
+- **Per-ticker ranking** — predicted direction (up/down/flat), predicted return %, and confidence
+- **Rationale** — sourced from composite agent signals and notes
+
+### Standalone run
+
+```bat
+run.bat market-predictor -o output/market_predictions.json
+open_market_predictions_dashboard.bat
+```
+
+Run the underlying data agents first so the predictor has signals to fuse:
+
+```bat
+run.bat markets
+run.bat finance
+run.bat datascience
+run.bat financial-data
+run.bat geopolitics
+run.bat sales-analytics
+run.bat market-predictor -o output/market_predictions.json
+```
+
+Outputs:
+
+- `output/market_predictions.json` — ranked mover predictions per horizon
+
+### Continuous predictions loop
+
+`run_market_predictor_loop.py` re-runs the signal agents and fuses predictions on a
+configurable interval (default 30 minutes). It logs progress to
+`output/history/market_predictor_loop.log` and saves state to
+`output/history/market_predictor_loop_state.json`.
+
+```bat
+REM Double-click to start:
+Start Market Predictor Loop.bat
+
+REM Or run directly:
+python run_market_predictor_loop.py --interval-minutes 15
+python run_market_predictor_loop.py --once
+```
+
+Press **Ctrl+C** (or send SIGTERM) to stop cleanly after the current cycle completes.
+
+### Predictions dashboard
+
+Open `market_predictions_dashboard.html` in any browser (or double-click
+`open_market_predictions_dashboard.bat`) for a live, tab-per-horizon table of top
+predicted gainers and losers with sortable columns and color-coded rows.
+
+```bat
+open_market_predictions_dashboard.bat
+```
 
 ## Requirements
 
