@@ -460,6 +460,37 @@ predicted gainers and losers with sortable columns and color-coded rows.
 open_market_predictions_dashboard.bat
 ```
 
+## Constant Backtesting
+
+Every full pipeline cycle already scores a walk-forward backtest
+(`historical_simulation.run_accuracy_benchmark`) and feeds the results into
+`output/history/agent_learning.json`, so agents learn from the past to predict the
+future. `run_backtest_loop.py` lets that backtest run continuously and
+independently of the full pipeline — useful when you just want agents to keep
+re-scoring their historical predictions on a set cadence.
+
+It re-runs the walk-forward accuracy benchmark on a configurable interval
+(default 60 minutes), rebuilding agent learning after every cycle. It logs
+progress to `output/history/backtest_loop.log` and saves state to
+`output/history/backtest_loop_state.json`.
+
+```bat
+REM Double-click to start:
+Start Backtest Loop.bat
+
+REM Or run directly:
+python run_backtest_loop.py --interval-minutes 30
+python run_backtest_loop.py --once
+python run_backtest_loop.py --target-trials 2000 --max-symbols 60
+```
+
+Press **Ctrl+C** (or send SIGTERM) to stop cleanly after the current cycle completes.
+
+Outputs:
+
+- `output/history/accuracy_benchmark.json` — walk-forward backtest report
+- `output/history/agent_learning.json` — adaptive bias/confidence learned from the backtest
+
 ## Requirements
 
 - Python 3.10+
