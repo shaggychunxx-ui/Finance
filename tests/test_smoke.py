@@ -835,6 +835,49 @@ def test_market_predictor_loop_cycle_no_crash() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_backtest_loop_cycle_no_crash() -> None:
+    """run_backtest_cycle must complete without raising, even if the benchmark fails."""
+    import unittest.mock as mock
+
+    import run_backtest_loop as loop_mod
+
+    with mock.patch(
+        "historical_simulation.run_accuracy_benchmark",
+        return_value={
+            "metrics": {"total_trials": 42},
+            "leaderboard": [{"agent_id": "markets", "accuracy_pct": 55.0}],
+        },
+    ):
+        entry = loop_mod.run_backtest_cycle(target_trials=10, max_symbols=5, full=False)
+    assert isinstance(entry, dict), "run_backtest_cycle must return a dict"
+    assert entry["backtest_ok"] is True
+    assert entry["trials"] == 42
+    assert entry["top_agent"] == "markets"
+    assert "finished_at" in entry
+
+    with mock.patch(
+        "historical_simulation.run_accuracy_benchmark",
+        side_effect=RuntimeError("boom"),
+    ):
+        failed_entry = loop_mod.run_backtest_cycle(target_trials=10, max_symbols=5, full=False)
+    assert failed_entry["backtest_ok"] is False
+    assert failed_entry["status"] == "error"
+
+
+def test_backtest_loop_cli_argument_validation() -> None:
+    """CLI rejects non-positive interval/target-trials/max-symbols values."""
+    import unittest.mock as mock
+
+    import run_backtest_loop as loop_mod
+
+    with mock.patch.object(sys, "argv", ["run_backtest_loop.py", "--interval-minutes", "0"]):
+        assert loop_mod.main() == 2
+    with mock.patch.object(sys, "argv", ["run_backtest_loop.py", "--target-trials", "0"]):
+        assert loop_mod.main() == 2
+    with mock.patch.object(sys, "argv", ["run_backtest_loop.py", "--max-symbols", "0"]):
+        assert loop_mod.main() == 2
+
+
 def _run_all() -> None:
     tests = [
         test_app_paths_consistent,
@@ -864,6 +907,8 @@ def _run_all() -> None:
         test_trading_gate_cluster_and_eligibility,
         test_market_predictor_cli_registered,
         test_market_predictor_loop_cycle_no_crash,
+        test_backtest_loop_cycle_no_crash,
+        test_backtest_loop_cli_argument_validation,
     ]
     for test in tests:
         test()
