@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Market Predictions Dashboard – Finance</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1a1d27 0%, #1e2a3a 100%);
+      border-bottom: 1px solid #2d3748;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    header .brand h1 { font-size: 1.5rem; font-weight: 700; color: #68d391; }
+    header .brand .subtitle { color: #718096; font-size: 0.875rem; display: block; margin-top: 0.25rem; }
+
+    header .actions { display: flex; gap: 0.75rem; align-items: center; }
+
+    .btn {
+      background: #2d3748;
+      border: 1px solid #4a5568;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .btn:hover { background: #4a5568; border-color: #68d391; }
+    .btn-primary { background: #276749; border-color: #38a169; }
+    .btn-primary:hover { background: #38a169; }
+
+    main { max-width: 1300px; margin: 1.5rem auto; padding: 0 1.5rem 3rem; }
+
+    .status-bar {
+      background: #1a1d27;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.85rem;
+      color: #a0aec0;
+    }
+    .status-bar.loaded { border-color: #38a169; color: #c6f6d5; }
+    .status-bar.error { border-color: #e53e3e; color: #fed7d7; }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .kpi-card { background: #1a1d27; border: 1px solid #2d3748; border-radius: 10px; padding: 1.25rem; }
+    .kpi-card .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #718096; margin-bottom: 0.5rem; }
+    .kpi-card .value { font-size: 1.6rem; font-weight: 700; color: #68d391; }
+    .kpi-card .delta { font-size: 0.85rem; margin-top: 0.35rem; color: #a0aec0; }
+
+    /* Horizon tabs */
+    .horizon-tabs {
+      display: flex;
+      gap: 0.4rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      background: #1a1d27;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      color: #a0aec0;
+      padding: 0.45rem 1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { border-color: #68d391; color: #e2e8f0; }
+    .tab-btn.active { background: #276749; border-color: #38a169; color: #c6f6d5; font-weight: 600; }
+
+    .horizon-panel { display: none; }
+    .horizon-panel.active { display: block; }
+
+    .panel {
+      background: #1a1d27;
+      border: 1px solid #2d3748;
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .panel h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #a0aec0;
+      margin-bottom: 1rem;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th {
+      text-align: left;
+      padding: 0.6rem 0.5rem;
+      color: #718096;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      border-bottom: 1px solid #2d3748;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover { color: #e2e8f0; }
+    th .sort-arrow { margin-left: 4px; opacity: 0.4; }
+    th.sorted .sort-arrow { opacity: 1; }
+
+    td { padding: 0.6rem 0.5rem; border-bottom: 1px solid #1e2433; vertical-align: top; }
+    tr:hover td { background: #1e2433; }
+
+    .row-up td { border-left: 3px solid #38a169; }
+    .row-down td { border-left: 3px solid #e53e3e; }
+    .row-flat td { border-left: 3px solid #4a5568; }
+
+    .positive { color: #68d391; }
+    .negative { color: #fc8181; }
+    .neutral { color: #a0aec0; }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+    }
+    .badge-up { background: #276749; color: #c6f6d5; }
+    .badge-down { background: #9b2c2c; color: #fed7d7; }
+    .badge-flat { background: #4a5568; color: #e2e8f0; }
+
+    .conf-bar-wrap { display: flex; align-items: center; gap: 0.5rem; min-width: 90px; }
+    .conf-bar-track { flex: 1; height: 8px; background: #0f1117; border-radius: 4px; overflow: hidden; }
+    .conf-bar-fill { height: 100%; border-radius: 4px; background: #38a169; }
+    .conf-label { font-size: 0.75rem; color: #a0aec0; white-space: nowrap; }
+
+    .sources { font-size: 0.7rem; color: #718096; }
+    .rationale { font-size: 0.75rem; color: #a0aec0; max-width: 260px; }
+
+    .empty-msg { color: #718096; font-size: 0.875rem; padding: 1.5rem 0; }
+
+    #import-input { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>Market Predictions Dashboard</h1>
+    <span class="subtitle">Multi-horizon ranked mover predictions · fused from all Finance agents</span>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btn-refresh" type="button">Refresh</button>
+    <button class="btn btn-primary" id="btn-import" type="button">Load JSON</button>
+    <input type="file" id="import-input" accept=".json,application/json" />
+  </div>
+</header>
+
+<main>
+  <div id="status-bar" class="status-bar">Loading market_predictions.json …</div>
+
+  <section class="kpi-grid" id="kpi-grid"></section>
+
+  <div class="horizon-tabs" id="horizon-tabs"></div>
+
+  <div id="horizon-panels"></div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  const HORIZONS = ['1m', '1h', '24h', '1wk', '1mo', '1yr'];
+  const HORIZON_LABELS = { '1m': '1 Minute', '1h': '1 Hour', '24h': '24 Hours', '1wk': '1 Week', '1mo': '1 Month', '1yr': '1 Year' };
+
+  const $ = (sel) => document.querySelector(sel);
+  const statusEl = $('#status-bar');
+
+  let _data = null;
+  let _sortState = {};  // horizon -> { col, asc }
+
+  function setStatus(msg, cls) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status-bar ' + (cls || '');
+  }
+
+  function fmtPct(v) {
+    if (v == null || Number.isNaN(+v)) return '—';
+    const n = +v;
+    return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+  }
+
+  function pctClass(v) {
+    if (v == null) return 'neutral';
+    return +v >= 0 ? 'positive' : 'negative';
+  }
+
+  function directionBadge(dir) {
+    if (dir === 'up') return '<span class="badge badge-up">▲ UP</span>';
+    if (dir === 'down') return '<span class="badge badge-down">▼ DOWN</span>';
+    return '<span class="badge badge-flat">— FLAT</span>';
+  }
+
+  function rowClass(dir) {
+    if (dir === 'up') return 'row-up';
+    if (dir === 'down') return 'row-down';
+    return 'row-flat';
+  }
+
+  function confBar(conf) {
+    const pct = Math.round((conf || 0) * 100);
+    return (
+      '<div class="conf-bar-wrap">' +
+      '<div class="conf-bar-track"><div class="conf-bar-fill" style="width:' + pct + '%"></div></div>' +
+      '<span class="conf-label">' + pct + '%</span>' +
+      '</div>'
+    );
+  }
+
+  function renderKPIs(meta) {
+    const grid = $('#kpi-grid');
+    if (!meta) { grid.innerHTML = ''; return; }
+    const items = [
+      { label: 'Tickers Scored', value: meta.tickers_scored ?? '—', delta: 'from agent fusion' },
+      { label: 'Sources Fused', value: (meta.source_files || []).length, delta: 'agent report files' },
+      { label: 'Horizons', value: (meta.horizons || HORIZONS).length, delta: (meta.horizons || HORIZONS).join(', ') },
+      { label: 'Analyzed', value: meta.analyzed_at ? meta.analyzed_at.replace('T', ' ').slice(0, 19) + ' UTC' : '—', delta: 'last refresh' },
+    ];
+    grid.innerHTML = items.map(function (k) {
+      return (
+        '<div class="kpi-card">' +
+        '<div class="label">' + k.label + '</div>' +
+        '<div class="value">' + k.value + '</div>' +
+        '<div class="delta">' + k.delta + '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  var COL_DEFS = [
+    { key: 'rank', label: '#', sortKey: function (r) { return r.rank; } },
+    { key: 'symbol', label: 'Symbol', sortKey: function (r) { return r.symbol; } },
+    { key: 'predicted_direction', label: 'Direction', sortKey: function (r) { return r.predicted_direction; } },
+    { key: 'predicted_return_pct', label: 'Predicted Return', sortKey: function (r) { return r.predicted_return_pct; } },
+    { key: 'confidence', label: 'Confidence', sortKey: function (r) { return r.confidence; } },
+    { key: 'sources', label: 'Sources', sortKey: function (r) { return (r.sources || []).length; } },
+    { key: 'rationale', label: 'Rationale', sortKey: null },
+  ];
+
+  function renderCell(col, row) {
+    switch (col.key) {
+      case 'rank': return '<strong>#' + row.rank + '</strong>';
+      case 'symbol': return '<strong>' + escHtml(row.symbol || '—') + '</strong>';
+      case 'predicted_direction': return directionBadge(row.predicted_direction);
+      case 'predicted_return_pct': return '<span class="' + pctClass(row.predicted_return_pct) + '">' + fmtPct(row.predicted_return_pct) + '</span>';
+      case 'confidence': return confBar(row.confidence);
+      case 'sources': return '<span class="sources">' + escHtml((row.sources || []).join(', ')) + '</span>';
+      case 'rationale': return '<span class="rationale">' + escHtml(row.rationale || '—') + '</span>';
+      default: return escHtml(String(row[col.key] ?? '—'));
+    }
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderTable(horizon, rows, panelEl) {
+    if (!rows || !rows.length) {
+      panelEl.innerHTML = '<p class="empty-msg">No predictions for this horizon — run data agents first, then <code>run.bat market-predictor</code>.</p>';
+      return;
+    }
+
+    var sort = _sortState[horizon] || { col: 'predicted_return_pct', asc: false };
+
+    var sorted = rows.slice().sort(function (a, b) {
+      var colDef = COL_DEFS.find(function (c) { return c.key === sort.col; });
+      if (!colDef || !colDef.sortKey) return 0;
+      var av = colDef.sortKey(a);
+      var bv = colDef.sortKey(b);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === 'string') return sort.asc ? av.localeCompare(bv) : bv.localeCompare(av);
+      return sort.asc ? av - bv : bv - av;
+    });
+
+    var thead = '<thead><tr>' + COL_DEFS.map(function (col) {
+      var arrow = sort.col === col.key ? (sort.asc ? ' ▲' : ' ▼') : ' ↕';
+      var cls = sort.col === col.key ? 'sorted' : '';
+      return '<th class="' + cls + '" data-col="' + col.key + '">' + col.label + '<span class="sort-arrow">' + arrow + '</span></th>';
+    }).join('') + '</tr></thead>';
+
+    var tbody = '<tbody>' + sorted.map(function (row) {
+      return '<tr class="' + rowClass(row.predicted_direction) + '">' +
+        COL_DEFS.map(function (col) { return '<td>' + renderCell(col, row) + '</td>'; }).join('') +
+        '</tr>';
+    }).join('') + '</tbody>';
+
+    panelEl.innerHTML = '<table>' + thead + tbody + '</table>';
+
+    // Wire up sort clicks
+    panelEl.querySelectorAll('th[data-col]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var col = this.dataset.col;
+        var colDef = COL_DEFS.find(function (c) { return c.key === col; });
+        if (!colDef || !colDef.sortKey) return;
+        var prev = _sortState[horizon] || { col: 'predicted_return_pct', asc: false };
+        _sortState[horizon] = { col: col, asc: prev.col === col ? !prev.asc : false };
+        renderTable(horizon, rows, panelEl);
+      });
+    });
+  }
+
+  function renderAll(data) {
+    _data = data;
+    var meta = data.meta || {};
+    var predictions = data.predictions || {};
+    var horizons = meta.horizons || HORIZONS;
+
+    renderKPIs(meta);
+
+    // Build tabs
+    var tabsEl = $('#horizon-tabs');
+    var panelsEl = $('#horizon-panels');
+    tabsEl.innerHTML = '';
+    panelsEl.innerHTML = '';
+
+    horizons.forEach(function (h, i) {
+      var rows = predictions[h] || [];
+
+      var tab = document.createElement('button');
+      tab.className = 'tab-btn' + (i === 0 ? ' active' : '');
+      tab.dataset.horizon = h;
+      var count = rows.length;
+      tab.textContent = (HORIZON_LABELS[h] || h) + (count ? ' (' + count + ')' : '');
+      tabsEl.appendChild(tab);
+
+      var panel = document.createElement('div');
+      panel.className = 'horizon-panel' + (i === 0 ? ' active' : '');
+      panel.id = 'panel-' + h;
+
+      var inner = document.createElement('div');
+      inner.className = 'panel';
+      inner.innerHTML = '<h2>Predictions — ' + (HORIZON_LABELS[h] || h) + '</h2>';
+      var tableWrap = document.createElement('div');
+      renderTable(h, rows, tableWrap);
+      inner.appendChild(tableWrap);
+      panel.appendChild(inner);
+      panelsEl.appendChild(panel);
+    });
+
+    // Tab switching
+    tabsEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      var h = btn.dataset.horizon;
+      tabsEl.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      panelsEl.querySelectorAll('.horizon-panel').forEach(function (p) { p.classList.remove('active'); });
+      var target = document.getElementById('panel-' + h);
+      if (target) target.classList.add('active');
+    });
+
+    var tickers = meta.tickers_scored || 0;
+    var sources = (meta.source_files || []).length;
+    setStatus(
+      'Loaded ' + tickers + ' tickers scored from ' + sources + ' source(s) — analyzed ' + (meta.analyzed_at || '—'),
+      'loaded'
+    );
+  }
+
+  function loadFromJson(text) {
+    try {
+      var data = JSON.parse(text);
+      renderAll(data);
+    } catch (e) {
+      setStatus('Error parsing JSON: ' + e.message, 'error');
+    }
+  }
+
+  function fetchPredictions() {
+    setStatus('Loading output/market_predictions.json …');
+    fetch('output/market_predictions.json')
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(loadFromJson)
+      .catch(function (e) {
+        setStatus(
+          'Could not auto-load predictions (' + e.message + '). ' +
+          'Use "Load JSON" to open output/market_predictions.json manually, ' +
+          'or run: run.bat market-predictor',
+          'error'
+        );
+      });
+  }
+
+  // Import button
+  $('#btn-import').addEventListener('click', function () { $('#import-input').click(); });
+  $('#import-input').addEventListener('change', function () {
+    var file = this.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (e) { loadFromJson(e.target.result); };
+    reader.readAsText(file);
+    this.value = '';
+  });
+
+  // Refresh button
+  $('#btn-refresh').addEventListener('click', fetchPredictions);
+
+  // Auto-load on startup
+  fetchPredictions();
+})();
+</script>
+</body>
+</html>

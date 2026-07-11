@@ -29,6 +29,7 @@ from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
+from agents.market_predictor import run_market_predictor_analysis
 from historical_simulation import run_accuracy_benchmark_cli, run_historical_simulation_cli
 
 
@@ -1027,6 +1028,52 @@ def _print_sales_analytics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_market_predictor(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    predictions = data.get("predictions", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Market Predictor')} — Multi-Horizon Predictions")
+    print("=" * 60)
+    print(f"  Analyzed: {meta.get('analyzed_at', '—')}")
+    print(f"  Tickers scored: {meta.get('tickers_scored', 0)} | Sources fused: {len(meta.get('source_files', []))}")
+    horizons = meta.get("horizons") or list(predictions.keys())
+    print(f"  Horizons: {', '.join(horizons)}")
+    print()
+    for horizon in horizons:
+        rows = predictions.get(horizon, [])
+        if not rows:
+            print(f"  [{horizon}] No predictions (run data agents first)")
+            print()
+            continue
+        gainers = [r for r in rows if r.get("predicted_direction") == "up"]
+        losers = [r for r in rows if r.get("predicted_direction") == "down"]
+        print(f"  [{horizon}] Top predicted gainers:")
+        for r in gainers[:3]:
+            pct = r.get("predicted_return_pct", 0)
+            conf = r.get("confidence", 0)
+            rationale = r.get("rationale", "")[:60]
+            print(
+                f"    #{r.get('rank')} {r.get('symbol')}: "
+                f"+{pct:.2f}% (conf {conf:.0%}) — {rationale}"
+            )
+        if not gainers:
+            print("    (none)")
+        print(f"  [{horizon}] Top predicted losers:")
+        for r in losers[:3]:
+            pct = r.get("predicted_return_pct", 0)
+            conf = r.get("confidence", 0)
+            rationale = r.get("rationale", "")[:60]
+            print(
+                f"    #{r.get('rank')} {r.get('symbol')}: "
+                f"{pct:.2f}% (conf {conf:.0%}) — {rationale}"
+            )
+        if not losers:
+            print("    (none)")
+        print()
+    _print_recs(data.get("recommendations", []))
+
+
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
     "combined-conditional": _print_combined_conditional,
@@ -1042,6 +1089,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "grid": _print_grid,
     "logistics": _print_logistics,
     "markets": _print_markets,
+    "market-predictor": _print_market_predictor,
     "meteorology": _print_meteorology,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
@@ -1067,6 +1115,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
+    "market-predictor": run_market_predictor_analysis,
     "meteorology": run_meteorology_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
@@ -1183,6 +1232,8 @@ def main() -> int:
                 if panels.exists():
                     print(f"  Dashboard panels: {panels}")
                 print(f"  Open dashboard: open_sales_dashboard.bat")
+            if args.agent == "market-predictor":
+                print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":
                 catalog = args.output.parent / "data_catalog.json"
                 if catalog.exists():
