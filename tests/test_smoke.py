@@ -780,6 +780,61 @@ def test_restore_same_cycle_agent_outputs() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_market_predictor_cli_registered() -> None:
+    """market-predictor must appear in RUNNERS and PRINTERS and round-trip without error."""
+    import tempfile
+
+    import app_paths
+    from main import PRINTERS, RUNNERS
+
+    assert "market-predictor" in RUNNERS, "market-predictor missing from RUNNERS"
+    assert "market-predictor" in PRINTERS, "market-predictor missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    try:
+        out_file = out_dir / "market_predictions.json"
+        result = RUNNERS["market-predictor"](output=out_file)
+        assert isinstance(result, dict), "run_market_predictor_analysis must return a dict"
+        assert "predictions" in result, "result must contain 'predictions'"
+        assert "meta" in result, "result must contain 'meta'"
+        # Printer must not raise on empty/no-data result
+        PRINTERS["market-predictor"](result)
+    finally:
+        app_paths.OUTPUT = original_output
+
+
+def test_market_predictor_loop_cycle_no_crash() -> None:
+    """run_predictor_cycle must complete without raising even with no agent data."""
+    import tempfile
+    import unittest.mock as mock
+
+    import app_paths
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    try:
+        import run_market_predictor_loop as loop_mod
+
+        original_log = loop_mod.OUTPUT
+        loop_mod.OUTPUT = out_dir
+        try:
+            # Patch _run_signal_agent to skip network calls
+            with mock.patch.object(loop_mod, "_run_signal_agent", return_value=True):
+                entry = loop_mod.run_predictor_cycle()
+            assert isinstance(entry, dict), "run_predictor_cycle must return a dict"
+            assert "predictor_ok" in entry
+            assert "finished_at" in entry
+        finally:
+            loop_mod.OUTPUT = original_log
+    finally:
+        app_paths.OUTPUT = original_output
+
+
 def _run_all() -> None:
     tests = [
         test_app_paths_consistent,
@@ -807,6 +862,8 @@ def _run_all() -> None:
         test_agent_disagreement_contested_symbol,
         test_base_expert_watchlist_and_memory,
         test_trading_gate_cluster_and_eligibility,
+        test_market_predictor_cli_registered,
+        test_market_predictor_loop_cycle_no_crash,
     ]
     for test in tests:
         test()
