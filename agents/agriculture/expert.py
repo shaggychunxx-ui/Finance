@@ -1096,7 +1096,7 @@ class AgricultureExpert(BaseExpert):
         assessment = self._production_assessment(states, drought_risk_score)
         ranked = sorted(states, key=lambda s: s.production_trend_score, reverse=True)
         top_gainers = ranked[:3]
-        top_decliners = list(reversed(ranked[-3:])) if len(ranked) > 3 else list(reversed(ranked))
+        top_decliners = list(reversed(ranked[-3:]))
         sources = sorted({s.data_source for s in states if s.data_source})
 
         summary = self._expert_summary(
