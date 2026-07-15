@@ -17,6 +17,7 @@ from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
+from agents.ftse100 import run_ftse100_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
@@ -101,6 +102,39 @@ def _print_markets(data: dict[str, Any]) -> None:
     if gainers:
         print("  Top gainers: " + ", ".join(
             f"{g.get('symbol')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
+        ))
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_ftse100(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Regime: {metrics.get('trend_label')} (sentiment {metrics.get('sentiment_score')})")
+    print(f"  Breadth: {metrics.get('breadth_score')}  |  Momentum: {metrics.get('momentum_score')}")
+    print()
+    index = data.get("index")
+    if index:
+        wk = f" / 1w {index.get('week_chg_pct'):+.2f}%" if index.get("week_chg_pct") is not None else ""
+        print(f"  • {index.get('symbol')}: {index.get('day_chg_pct'):+.2f}%{wk}")
+        print()
+    print("  Sector leaders:")
+    for s in data.get("sectors", [])[:5]:
+        print(f"    #{s.get('rank')} {s.get('sector')}: {s.get('day_chg_pct'):+.2f}%")
+    print()
+    gainers = data.get("top_gainers", [])[:5]
+    if gainers:
+        print("  Top gainers: " + ", ".join(
+            f"{g.get('name')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
         ))
         print()
     _print_signals(data.get("market_signals", []))
@@ -1085,6 +1119,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
+    "ftse100": _print_ftse100,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
@@ -1111,6 +1146,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
+    "ftse100": run_ftse100_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,

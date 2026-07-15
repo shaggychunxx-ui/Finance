@@ -15,6 +15,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
+| **FTSE 100 Index Analyst** | `run.bat ftse100` | [London Stock Exchange FTSE 100](https://www.londonstockexchange.com/indices/ftse-100), Yahoo Finance API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
@@ -39,6 +40,7 @@ run.bat datascience
 run.bat finance
 run.bat financial-data
 run.bat markets
+run.bat ftse100
 run.bat geopolitics
 run.bat logistics
 run.bat theoretical-probability
@@ -203,6 +205,19 @@ Live US market analysis from Yahoo Finance:
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+## FTSE 100 Index Analyst
+
+Live UK equity market analysis from the [London Stock Exchange FTSE 100](https://www.londonstockexchange.com/indices/ftse-100), via Yahoo Finance:
+
+- FTSE 100 index (`^FTSE`) level, day/week change, and GBP/USD FX context
+- 15 major LSE-listed constituents (Shell, AstraZeneca, HSBC, Unilever, BP, Rio Tinto, GSK, and more) grouped into 7 sectors
+- Sector rotation ranking, breadth, and top gainers/losers among constituents
+- Risk-on/risk-off sentiment regime, momentum score, and UK market signals
+
+Outputs:
+
+- `output/ftse100.json` — full analysis with market signals and recommendations
 
 ## Geopolitics Expert
 

@@ -780,6 +780,43 @@ def test_restore_same_cycle_agent_outputs() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_ftse100_cli_registered() -> None:
+    """ftse100 must appear in RUNNERS and PRINTERS and round-trip without error (no network)."""
+    import tempfile
+
+    import app_paths
+    from main import PRINTERS, RUNNERS
+
+    assert "ftse100" in RUNNERS, "ftse100 missing from RUNNERS"
+    assert "ftse100" in PRINTERS, "ftse100 missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    try:
+        out_file = out_dir / "ftse100.json"
+        result = RUNNERS["ftse100"](output=out_file)
+        assert isinstance(result, dict), "run_ftse100_analysis must return a dict"
+        assert "meta" in result, "result must contain 'meta'"
+        assert result["meta"]["dashboard"] == "https://www.londonstockexchange.com/indices/ftse-100"
+        assert "market_signals" in result
+        assert "recommendations" in result
+        # Printer must not raise on empty/no-data result (no network in test env)
+        PRINTERS["ftse100"](result)
+        assert out_file.exists()
+    finally:
+        app_paths.OUTPUT = original_output
+
+
+def test_ftse100_agent_registered_in_data_steward() -> None:
+    """ftse100 must be listed in the Data Steward AGENT_REGISTRY."""
+    from agents.data_steward.expert import AGENT_REGISTRY
+
+    commands = {entry["command"] for entry in AGENT_REGISTRY}
+    assert "ftse100" in commands, "ftse100 missing from Data Steward AGENT_REGISTRY"
+
+
 def test_market_predictor_cli_registered() -> None:
     """market-predictor must appear in RUNNERS and PRINTERS and round-trip without error."""
     import tempfile

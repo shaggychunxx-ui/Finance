@@ -99,6 +99,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "ftse100",
+        "agent": "FTSE 100 Index Analyst",
+        "primary_output": "ftse100.json",
+        "sidecars": [],
+        "sources": ["Yahoo Finance API (^FTSE + LSE constituents)"],
+        "owner": "platform",
+    },
+    {
         "command": "geopolitics",
         "agent": "Geopolitics Expert",
         "primary_output": "geopolitics.json",
