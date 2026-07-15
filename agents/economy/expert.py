@@ -353,7 +353,7 @@ class GlobalEconomicAnalyst(BaseExpert):
                 {
                     "sector": "FX / Multinationals",
                     "tickers": ["UUP", "EEM"],
-                    "bias": "BEARISH" if scores["dollar_score"] >= 1.0 else "NEUTRAL",
+                    "bias": "BEARISH",
                     "reason": assessment.dollar_trend,
                     "confidence": 0.55,
                 }
