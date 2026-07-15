@@ -189,6 +189,15 @@
       "contrarian": 0.35,
       "defensive_bias": 0.45,
       "volatility_tolerance": 0.5
+    },
+    "economy": {
+      "label": "The Macro Strategist",
+      "risk_appetite": 0.5,
+      "conviction": 0.7,
+      "patience": 0.72,
+      "contrarian": 0.4,
+      "defensive_bias": 0.5,
+      "volatility_tolerance": 0.45
     }
   }
 }

@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Global Economic Analyst** | `run.bat economy` | [economy.com](https://www.economy.com/) (Moody's Analytics) + Yahoo Finance macro proxies |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat economy
 ```
 
 Or with options:
@@ -399,6 +401,24 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Global Economic Analyst
+
+Macro-economic regime analyst modeled on Moody's Analytics [economy.com](https://www.economy.com/):
+
+- **8 economy.com resources** cataloged (Free Lunch dashboard, U.S./state Precis reports, Data Buffet, economic calendar, country rankings, credit analytics, forecasts)
+- Live macro-proxy read from Yahoo Finance (SPY, TLT/SHY, UUP, GLD, USO, VIXY) since economy.com is a subscription service
+- Growth, rate-cycle, dollar, inflation, and risk scores combined into an economic regime label (Expansion / Late-Cycle Growth / Slowdown / Recession Risk)
+- Sector signals for broad market, rates/duration, FX/multinationals, and inflation hedges
+
+```bat
+run.bat economy -o output/economy.json
+```
+
+Outputs:
+
+- `output/economy.json` — full analysis with macro indicators, market signals, and recommendations
+- `output/economy_com_resources.json` — economy.com resource catalog
 
 ## Market Predictor
 

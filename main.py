@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agents.datascience import run_datascience_analysis
+from agents.economy import run_economy_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
@@ -592,6 +593,47 @@ def _print_events(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_economy(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("assessment", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_cataloged', 0)} economy.com resources"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Regime: {meta.get('regime_label')}")
+    print(f"  Rate cycle: {assessment.get('rate_cycle_signal')}")
+    print(f"  Dollar: {assessment.get('dollar_trend')}  |  Inflation: {assessment.get('inflation_pressure')}")
+    print(f"  Risk backdrop: {assessment.get('risk_backdrop')}")
+    print(
+        f"  Scores — growth {metrics.get('growth_score')}, rate-cycle {metrics.get('rate_cycle_score')}, "
+        f"dollar {metrics.get('dollar_score')}, inflation {metrics.get('inflation_score')}, "
+        f"risk {metrics.get('risk_score')}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Macro indicators:")
+    for ind in data.get("indicators", [])[:8]:
+        price = ind.get("price")
+        month_chg = ind.get("month_chg_pct")
+        if price is None:
+            continue
+        print(
+            f"    • {ind.get('symbol')} ({ind.get('label')}): {price:.2f} "
+            f"(1mo {month_chg if month_chg is not None else 0:+.2f}%)"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_grid(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1080,6 +1122,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
+    "economy": _print_economy,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
     "events": _print_events,
@@ -1106,6 +1149,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
+    "economy": run_economy_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
     "events": run_events_analysis,
@@ -1180,6 +1224,10 @@ def main() -> int:
                 catalog = args.output.parent / "patent_resources.json"
                 if catalog.exists():
                     print(f"  Resource catalog: {catalog}")
+            if args.agent == "economy":
+                catalog = args.output.parent / "economy_com_resources.json"
+                if catalog.exists():
+                    print(f"  economy.com resource catalog: {catalog}")
             if args.agent == "transportation":
                 catalog = args.output.parent / "dot_resources.json"
                 if catalog.exists():
