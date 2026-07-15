@@ -17,6 +17,7 @@ from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
+from agents.fred import run_fred_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
@@ -217,6 +218,61 @@ def _print_finance(data: dict[str, Any]) -> None:
     if assessment:
         print("  Trader assessment:")
         for key in ("regime", "sector_rotation", "mathematical_edge", "crypto_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_fred(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("macro_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — FRED Macroeconomic Dashboard")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Fed funds: {metrics.get('fed_funds_rate_pct')}% | "
+        f"CPI YoY: {metrics.get('cpi_yoy_pct')}% | "
+        f"Unemployment: {metrics.get('unemployment_rate_pct')}%"
+    )
+    print(
+        f"  10Y-2Y spread: {metrics.get('yield_curve_spread_pp'):+.2f}pp | "
+        f"10Y yield: {metrics.get('ten_year_yield_pct')}% | "
+        f"30Y mortgage: {metrics.get('mortgage_rate_pct')}%"
+    )
+    print(
+        f"  Recession risk: {metrics.get('recession_risk_label')} "
+        f"({metrics.get('recession_risk_score')})"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Series observations:")
+    for o in data.get("observations", [])[:8]:
+        change_txt = f" (Δ{o.get('change'):+.2f})" if o.get("change") is not None else ""
+        print(
+            f"    • {o.get('label')}: {o.get('value'):,.2f}{o.get('unit')}{change_txt} "
+            f"— {o.get('date')}"
+        )
+    print()
+    if assessment:
+        print("  Macro assessment:")
+        for key in (
+            "policy_stance",
+            "inflation_regime",
+            "yield_curve",
+            "housing_conditions",
+            "liquidity_conditions",
+            "rates_backdrop",
+            "recession_outlook",
+            "dashboard_note",
+        ):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -1085,6 +1141,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
+    "fred": _print_fred,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
@@ -1111,6 +1168,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
+    "fred": run_fred_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
@@ -1204,6 +1262,10 @@ def main() -> int:
                 catalog = args.output.parent / "google_finance_views.json"
                 if catalog.exists():
                     print(f"  Google Finance views: {catalog}")
+            if args.agent == "fred":
+                catalog = args.output.parent / "fred_series_views.json"
+                if catalog.exists():
+                    print(f"  FRED series views: {catalog}")
             if args.agent == "theoretical-probability":
                 catalog = args.output.parent / "probability_models.json"
                 if catalog.exists():

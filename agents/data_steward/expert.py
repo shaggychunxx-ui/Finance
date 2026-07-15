@@ -83,6 +83,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "fred",
+        "agent": "FRED Macroeconomic Analyst",
+        "primary_output": "fred.json",
+        "sidecars": ["fred_series_views.json"],
+        "sources": ["FRED API (St. Louis Fed)"],
+        "owner": "platform",
+    },
+    {
         "command": "financial-data",
         "agent": "Yahoo Finance Statistical Analyst",
         "primary_output": "financial_data.json",

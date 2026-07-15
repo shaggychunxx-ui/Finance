@@ -13,6 +13,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
+| **FRED Macroeconomic Analyst** | `run.bat fred` | [FRED (Federal Reserve Economic Data)](https://fred.stlouisfed.org/) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
@@ -37,6 +38,7 @@ run.bat patents
 run.bat events
 run.bat datascience
 run.bat finance
+run.bat fred
 run.bat financial-data
 run.bat markets
 run.bat geopolitics
@@ -172,6 +174,29 @@ Outputs:
 
 - `output/finance.json` — full analysis with trading opportunities and market signals
 - `output/google_finance_views.json` — dashboard view catalog
+
+## FRED Macroeconomic Analyst
+
+Economist analysis of [FRED (Federal Reserve Economic Data)](https://fred.stlouisfed.org/):
+
+- **Policy rate** — effective federal funds rate and recent hike/cut direction
+- **Inflation** — CPI (YoY) and inflation regime read
+- **Labor market** — unemployment rate and trend
+- **Growth** — GDP level
+- **Yield curve** — 10Y-2Y Treasury spread, 10-year Treasury yield
+- **Housing & liquidity** — 30-year fixed mortgage rate, M2 money supply
+- Recession risk score derived from the yield curve and labor market momentum
+- Calibrated proxy fallback when the FRED API is unavailable or rate-limited
+- Requires a free `fred_api_key` in `config.json` for live FRED API data
+
+```bat
+run.bat fred -o output/fred.json
+```
+
+Outputs:
+
+- `output/fred.json` — full analysis with macro assessment and market signals
+- `output/fred_series_views.json` — dashboard view catalog
 
 ## Yahoo Finance Statistical Analyst
 
