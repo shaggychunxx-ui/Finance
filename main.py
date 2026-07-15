@@ -13,6 +13,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.cpi import run_cpi_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -220,6 +221,39 @@ def _print_finance(data: dict[str, Any]) -> None:
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_cpi(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    supplementary = data.get("supplementary_data_source", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('series_tracked', 0)} series")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Headline CPI: {summary.get('headline_yoy_pct')}% YoY "
+        f"({summary.get('headline_mom_pct')}% MoM)  |  Core: {summary.get('core_yoy_pct')}% YoY"
+    )
+    print(f"  Regime: {summary.get('regime_label')}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Series:")
+    for s in data.get("series", []):
+        print(
+            f"    • {s.get('label')}: {s.get('yoy_pct')}% YoY, "
+            f"{s.get('mom_pct')}% MoM (as of {s.get('latest_period')})"
+        )
+    if supplementary:
+        print()
+        print(f"  Supplementary reference: {supplementary.get('name')} ({supplementary.get('provider')})")
+    print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -1077,6 +1111,7 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
     "combined-conditional": _print_combined_conditional,
+    "cpi": _print_cpi,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1103,6 +1138,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
     "combined-conditional": run_combined_conditional_analysis,
+    "cpi": run_cpi_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
@@ -1180,6 +1216,10 @@ def main() -> int:
                 catalog = args.output.parent / "patent_resources.json"
                 if catalog.exists():
                     print(f"  Resource catalog: {catalog}")
+            if args.agent == "cpi":
+                catalog = args.output.parent / "bls_cpi_series.json"
+                if catalog.exists():
+                    print(f"  BLS CPI series catalog: {catalog}")
             if args.agent == "transportation":
                 catalog = args.output.parent / "dot_resources.json"
                 if catalog.exists():

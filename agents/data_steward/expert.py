@@ -170,6 +170,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "cpi",
+        "agent": "CPI Inflation Analyst",
+        "primary_output": "cpi.json",
+        "sidecars": ["bls_cpi_series.json"],
+        "sources": ["BLS CPI Public API", "FINRA investor education (supplementary)"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

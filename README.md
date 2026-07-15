@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **CPI Inflation Analyst** | `run.bat cpi` | [BLS CPI](https://www.bls.gov/cpi/) API (+ FINRA key economic indicators reference) |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat cpi
 ```
 
 Or with options:
@@ -399,6 +401,16 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## CPI Inflation Analyst
+
+Tracks U.S. CPI-U inflation series from the BLS CPI API (https://www.bls.gov/cpi/):
+
+- Headline, core, food, energy, and shelter CPI — YoY and MoM % change
+- Inflation regime classification (below-target, on-target, elevated, high, very-high)
+- Sector signals (inflation hedges, duration bonds, staples vs. discretionary, rate-sensitive growth)
+- Supplementary context from FINRA's [Key Economic Indicators Every Investor Should Know](https://www.finra.org/investors/insights/key-economic-indicators-every-investor-should-know)
+- `bls_cpi_series.json` sidecar catalogs the tracked BLS series and the FINRA reference
 
 ## Market Predictor
 
