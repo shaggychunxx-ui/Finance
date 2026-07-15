@@ -201,18 +201,18 @@ class FTSE100Expert(BaseExpert):
         if index_quote and index_quote.week_chg_pct is not None:
             wpct = index_quote.week_chg_pct
             if abs(wpct) > 2.5:
-                vol_ctx = f"elevated weekly swing ({wpct:+.2f}%)"
+                volatility_context = f"elevated weekly swing ({wpct:+.2f}%)"
             else:
-                vol_ctx = f"normal weekly range ({wpct:+.2f}%)"
+                volatility_context = f"normal weekly range ({wpct:+.2f}%)"
         else:
-            vol_ctx = "volatility context unavailable"
+            volatility_context = "volatility context unavailable"
 
         return FTSEAssessment(
             regime=regime,
             breadth_signal=breadth_signal,
             sector_rotation=sector_rotation,
             fx_context=fx_context,
-            volatility_context=vol_ctx,
+            volatility_context=volatility_context,
         )
 
     def _expert_summary(
