@@ -26,7 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
-| **Agriculture Expert** | `run.bat agriculture` | [USDA NASS](https://www.nass.usda.gov/Statistics_by_State/Nevada/index.php) Quick Stats (optional key) |
+| **Agriculture Expert** | `run.bat agriculture` | [USDA NASS](https://www.nass.usda.gov/Statistics_by_State/index.php) Quick Stats (optional key) |
 
 ## Quick start
 
@@ -404,11 +404,12 @@ Analyzes US weather hazards and hub forecasts:
 
 ## Agriculture Expert
 
-Tracks and forecasts state-level agricultural production from [USDA NASS Statistics by State](https://www.nass.usda.gov/Statistics_by_State/Nevada/index.php):
+Tracks and forecasts state-level agricultural production from [USDA NASS Statistics by State](https://www.nass.usda.gov/Statistics_by_State/index.php):
 
-- **5 states** monitored — **Nevada** (primary — cattle, hay), Iowa (corn, soybeans), Kansas (wheat, cattle), California (milk, almonds), Texas (cattle, cotton)
+- **All 50 U.S. states** monitored, each with representative commodities (e.g. Iowa corn/soybeans, Kansas wheat/cattle, California milk/almonds, Texas cattle/cotton, Nevada cattle/hay, Florida citrus/sugarcane, Georgia peanuts/poultry, and more)
 - Multi-year commodity history with least-squares trend and next-year production forecast per commodity
 - Production trend, drought-risk, and forecast-confidence scores
+- Top-gaining and top-declining states surfaced each run, alongside the full 50-state trend breakdown
 - Cross-agent drought context from the Meteorology Expert's synoptic agricultural-risk read
 - Grain, livestock/dairy, drought-impact, food-inflation, and export-demand signals
 - Calibrated proxy fallback when `quickstats.nass.usda.gov` is unreachable

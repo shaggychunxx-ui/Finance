@@ -870,18 +870,23 @@ def _print_agriculture(data: dict[str, Any]) -> None:
     print(f"  Forecast confidence: {metrics.get('forecast_confidence')}")
     print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
     print()
-    primary = data.get("primary_state")
-    if primary:
-        print(f"  Primary state — {primary.get('name')} ({primary.get('dashboard')}):")
-        for c in primary.get("commodities", []):
-            print(
-                f"    • {c.get('name')}: {c.get('latest_value')} {c.get('unit')} "
-                f"({c.get('trend_pct'):+.1f}%), {c.get('forecast_year')} forecast {c.get('forecast_value')}"
-            )
+
+    def _print_state_group(title: str, states: list[dict[str, Any]]) -> None:
+        if not states:
+            return
+        print(f"  {title}:")
+        for s in states:
+            print(f"    • {s.get('name')} ({s.get('dashboard')}):")
+            for c in s.get("commodities", []):
+                print(
+                    f"        - {c.get('name')}: {c.get('latest_value')} {c.get('unit')} "
+                    f"({c.get('trend_pct'):+.1f}%), {c.get('forecast_year')} forecast {c.get('forecast_value')}"
+                )
         print()
+
+    _print_state_group("Top gaining states", data.get("top_gainers", []))
+    _print_state_group("Top declining states", data.get("top_decliners", []))
     for s in data.get("states", []):
-        if s.get("primary"):
-            continue
         print(f"  • {s.get('name')}: production trend {s.get('production_trend_score')}")
     print()
     _print_signals(data.get("market_signals", []))
