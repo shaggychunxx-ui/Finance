@@ -375,7 +375,7 @@ def test_earthdata_market_impact_signals() -> None:
         settings=load_domain_constraint_settings(),
     )
     assert steered["market_signals"]
-    assert "SPY" in steered["market_signals"][0]["tickers"] or steered["market_signals"][0]["tickers"]
+    assert steered["market_signals"][0]["tickers"]
 
 
 def test_earthdata_cli_registered() -> None:
