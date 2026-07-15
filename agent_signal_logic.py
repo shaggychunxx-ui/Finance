@@ -1209,6 +1209,152 @@ def sales_consumer_market_impact_signals(
     return signals
 
 
+def agricultural_supply_confidence(
+    *,
+    production_trend_score: float,
+    drought_risk_score: float | None = None,
+    forecast_confidence: float | None = None,
+) -> float:
+    """USDA NASS production trend / drought stress signal strength."""
+    trend_factor = _clamp(abs(float(production_trend_score or 0.5) - 0.5) * 2.0, 0.0, 1.0)
+    drought_factor = (
+        _clamp((float(drought_risk_score or 0.0) - 0.4) / 0.4, 0.0, 1.0)
+        if drought_risk_score is not None
+        else 0.3
+    )
+    forecast_factor = (
+        _clamp(float(forecast_confidence or 0.0), 0.0, 1.0)
+        if forecast_confidence is not None
+        else 0.35
+    )
+    return round(
+        _clamp(0.38 + 0.26 * trend_factor + 0.18 * drought_factor + 0.1 * forecast_factor),
+        3,
+    )
+
+
+def agriculture_market_impact_signals(
+    *,
+    production_trend_score: float,
+    trend_label: str = "",
+    drought_risk_score: float = 0.4,
+    forecast_confidence: float | None = None,
+    grain_output_strong: bool = False,
+    livestock_output_strong: bool = False,
+    food_inflation_pressure: bool = False,
+    source: str = "agriculture",
+) -> list[dict[str, Any]]:
+    """Translate USDA NASS production trend / forecast readings into broad market picks."""
+    signals: list[dict[str, Any]] = []
+    trend = float(production_trend_score or 0.5)
+    drought = float(drought_risk_score or 0.0)
+    label = str(trend_label or "").strip()
+    evidence_base: dict[str, Any] = {
+        "production_trend_score": round(trend, 3),
+        "drought_risk_score": round(drought, 3),
+        "source": source,
+    }
+    if forecast_confidence is not None:
+        evidence_base["forecast_confidence"] = round(float(forecast_confidence), 3)
+
+    conf = agricultural_supply_confidence(
+        production_trend_score=trend,
+        drought_risk_score=drought,
+        forecast_confidence=forecast_confidence,
+    )
+
+    supply_shortfall = trend <= 0.4 and drought >= 0.55
+    supply_expansion = trend >= 0.62 and drought <= 0.4
+
+    if supply_shortfall or food_inflation_pressure:
+        signals.append(
+            build_market_impact_signal(
+                sector="Staples / Food Inflation",
+                tickers=["XLP", "GLD"],
+                bias="BULLISH" if drought >= 0.65 else "NEUTRAL",
+                reason=(
+                    f"Production trend {label.lower() or 'weak'} (score {trend:.2f}) with "
+                    f"drought risk {drought:.2f} — crop/livestock supply tightness supports "
+                    "food prices and inflation hedges"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="supply_shortfall",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Rates / Inflation Sensitivity",
+                tickers=["TLT"],
+                bias="BEARISH" if drought >= 0.65 else "NEUTRAL",
+                reason="Elevated agricultural drought stress raises food-inflation pass-through risk",
+                confidence=max(0.44, conf - 0.04),
+                evidence=evidence_base,
+                domain_context="supply_shortfall",
+            )
+        )
+
+    if supply_expansion:
+        signals.append(
+            build_market_impact_signal(
+                sector="Agribusiness / Materials",
+                tickers=["XLB", "SPY"],
+                bias="BULLISH" if trend >= 0.72 else "NEUTRAL",
+                reason=(
+                    f"Production trend strong (score {trend:.2f}) with contained drought risk "
+                    f"({drought:.2f}) — favorable input/output flow for fertilizer and equipment"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="supply_expansion",
+            )
+        )
+
+    if grain_output_strong and not supply_shortfall:
+        signals.append(
+            build_market_impact_signal(
+                sector="Grain Belt / Emerging Markets Trade",
+                tickers=["EEM", "SPY"],
+                bias="NEUTRAL",
+                reason="Strong grain output supports export volume and EM agri-trade flow",
+                confidence=max(0.42, conf - 0.05),
+                evidence=evidence_base,
+                domain_context="grain_export",
+            )
+        )
+
+    if livestock_output_strong and not supply_shortfall:
+        signals.append(
+            build_market_impact_signal(
+                sector="Staples / Protein Supply",
+                tickers=["XLP"],
+                bias="NEUTRAL",
+                reason="Strong livestock output keeps protein supply chains well-stocked",
+                confidence=max(0.42, conf - 0.05),
+                evidence=evidence_base,
+                domain_context="livestock_supply",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=(
+                    f"USDA NASS production trend balanced ({label.lower() or 'neutral'}) — "
+                    "no acute macro tilt"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
+
 def load_peer_agent_output(filename: str) -> dict[str, Any] | None:
     path = OUTPUT / filename
     if not path.exists():
@@ -1239,6 +1385,24 @@ def meteorology_energy_score() -> float | None:
     if "moderate" in text:
         return 0.55
     return 0.4
+
+
+def meteorology_agricultural_risk_score() -> float | None:
+    """Read prior-cycle meteorology agricultural-risk read for crop/livestock stress context."""
+    data = load_peer_agent_output("meteorology.json")
+    if not data:
+        return None
+    synoptic = data.get("synoptic") if isinstance(data.get("synoptic"), dict) else {}
+    text = str(synoptic.get("agricultural_risk") or "").lower()
+    if not text:
+        return None
+    if "flood" in text or "heat/drought" in text or "drought" in text:
+        return 0.72
+    if "freeze" in text:
+        return 0.6
+    if "normal" in text:
+        return 0.38
+    return 0.45
 
 
 def retail_signal_confidence(

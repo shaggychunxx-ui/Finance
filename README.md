@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Agriculture Expert** | `run.bat agriculture` | [USDA NASS](https://www.nass.usda.gov/Statistics_by_State/Nevada/index.php) Quick Stats (optional key) |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat agriculture
 ```
 
 Or with options:
@@ -399,6 +401,27 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Agriculture Expert
+
+Tracks and forecasts state-level agricultural production from [USDA NASS Statistics by State](https://www.nass.usda.gov/Statistics_by_State/Nevada/index.php):
+
+- **5 states** monitored — **Nevada** (primary — cattle, hay), Iowa (corn, soybeans), Kansas (wheat, cattle), California (milk, almonds), Texas (cattle, cotton)
+- Multi-year commodity history with least-squares trend and next-year production forecast per commodity
+- Production trend, drought-risk, and forecast-confidence scores
+- Cross-agent drought context from the Meteorology Expert's synoptic agricultural-risk read
+- Grain, livestock/dairy, drought-impact, food-inflation, and export-demand signals
+- Calibrated proxy fallback when `quickstats.nass.usda.gov` is unreachable
+- Optional `nass_api_key` in `config.json` for live USDA NASS Quick Stats API data
+
+```bat
+run.bat agriculture -o output/agriculture.json
+```
+
+Writes:
+
+- `output/agriculture.json` — full analysis with market signals and recommendations
+- `output/nass_state_catalog.json` — monitored state/commodity catalog
 
 ## Market Predictor
 

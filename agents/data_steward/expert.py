@@ -123,6 +123,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "agriculture",
+        "agent": "Agriculture Expert",
+        "primary_output": "agriculture.json",
+        "sidecars": ["nass_state_catalog.json"],
+        "sources": ["USDA NASS Quick Stats API"],
+        "owner": "platform",
+    },
+    {
         "command": "theoretical-probability",
         "agent": "Theoretical Probability Expert",
         "primary_output": "theoretical_probability.json",
@@ -255,6 +263,17 @@ DATA_SOURCES: list[dict[str, Any]] = [
         "pii": False,
         "sla_hours": 1,
         "config_key": "marinetraffic_api_key",
+    },
+    {
+        "id": "nass_quickstats",
+        "name": "USDA NASS Quick Stats",
+        "type": "agriculture",
+        "url": "https://www.nass.usda.gov/Statistics_by_State/Nevada/index.php",
+        "format": "api",
+        "refresh_policy": "annual",
+        "pii": False,
+        "sla_hours": 24,
+        "config_key": "nass_api_key",
     },
 ]
 

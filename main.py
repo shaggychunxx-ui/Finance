@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.agriculture import run_agriculture_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -851,6 +852,42 @@ def _print_patents(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_agriculture(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('states_monitored', 0)} states")
+    print("=" * 60)
+    print(f"  {meta.get('national_headline', '')}")
+    print()
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Trend: {metrics.get('trend_label')} ({metrics.get('production_trend_score')})")
+    print(f"  Drought risk: {metrics.get('drought_risk_score')}")
+    print(f"  Forecast confidence: {metrics.get('forecast_confidence')}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    primary = data.get("primary_state")
+    if primary:
+        print(f"  Primary state — {primary.get('name')} ({primary.get('dashboard')}):")
+        for c in primary.get("commodities", []):
+            print(
+                f"    • {c.get('name')}: {c.get('latest_value')} {c.get('unit')} "
+                f"({c.get('trend_pct'):+.1f}%), {c.get('forecast_year')} forecast {c.get('forecast_value')}"
+            )
+        print()
+    for s in data.get("states", []):
+        if s.get("primary"):
+            continue
+        print(f"  • {s.get('name')}: production trend {s.get('production_trend_score')}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_logistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1076,6 +1113,7 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
+    "agriculture": _print_agriculture,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
@@ -1102,6 +1140,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
+    "agriculture": run_agriculture_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
@@ -1196,6 +1235,10 @@ def main() -> int:
                 catalog = args.output.parent / "marine_traffic_corridors.json"
                 if catalog.exists():
                     print(f"  MarineTraffic corridor catalog: {catalog}")
+            if args.agent == "agriculture":
+                catalog = args.output.parent / "nass_state_catalog.json"
+                if catalog.exists():
+                    print(f"  NASS state catalog: {catalog}")
             if args.agent == "financial-data":
                 catalog = args.output.parent / "yahoo_finance_views.json"
                 if catalog.exists():

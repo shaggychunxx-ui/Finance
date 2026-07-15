@@ -117,6 +117,15 @@
       "defensive_bias": 0.48,
       "volatility_tolerance": 0.5
     },
+    "agriculture": {
+      "label": "The Harvest Forecaster",
+      "risk_appetite": 0.42,
+      "conviction": 0.58,
+      "patience": 0.72,
+      "contrarian": 0.32,
+      "defensive_bias": 0.56,
+      "volatility_tolerance": 0.42
+    },
     "theoretical-probability": {
       "label": "The Theorist",
       "risk_appetite": 0.48,
