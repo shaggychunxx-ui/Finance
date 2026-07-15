@@ -15,6 +15,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
+| **Nikkei Stock Average Analyst** | `run.bat nikkei` | [Nikkei Indexes (nkave)](https://indexes.nikkei.co.jp/en/nkave/) |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
@@ -39,6 +40,7 @@ run.bat datascience
 run.bat finance
 run.bat financial-data
 run.bat markets
+run.bat nikkei
 run.bat geopolitics
 run.bat logistics
 run.bat theoretical-probability
@@ -203,6 +205,26 @@ Live US market analysis from Yahoo Finance:
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+## Nikkei Stock Average Analyst
+
+Mathematician/trader analysis of the [Nikkei Stock Average (Nikkei 225)](https://indexes.nikkei.co.jp/en/nkave/), Japan's premier price-weighted equity benchmark:
+
+- **Nikkei 225** index level, day/week change, and 5-day z-score
+- **Japan market context** — USD/JPY, Nikkei 225 futures (CME), Japan ETFs (EWJ, DXJ), Hang Seng and S&P 500 overnight leads
+- **Top constituents** by index weight — Advantest, Tokyo Electron, Fast Retailing, SoftBank Group, TDK, Fanuc, Shin-Etsu Chemical
+- Sector weight breakdown (Technology, Consumer Goods, Materials, Financials, etc.)
+- Yen-sensitivity and futures-basis signals, regional risk-appetite alignment
+- Calibrated proxy fallback when live quotes are unavailable
+
+```bat
+run.bat nikkei -o output/nikkei.json
+```
+
+Outputs:
+
+- `output/nikkei.json` — full analysis with constituent moves and market signals
+- `output/nikkei_views.json` — Nikkei dashboard view catalog
 
 ## Geopolitics Expert
 

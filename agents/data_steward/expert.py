@@ -99,6 +99,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "nikkei",
+        "agent": "Nikkei Stock Average Analyst",
+        "primary_output": "nikkei.json",
+        "sidecars": ["nikkei_views.json"],
+        "sources": ["Nikkei Stock Average (indexes.nikkei.co.jp)", "Yahoo Finance API"],
+        "owner": "platform",
+    },
+    {
         "command": "geopolitics",
         "agent": "Geopolitics Expert",
         "primary_output": "geopolitics.json",

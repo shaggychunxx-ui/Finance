@@ -22,6 +22,7 @@ from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
+from agents.nikkei import run_nikkei_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
@@ -217,6 +218,60 @@ def _print_finance(data: dict[str, Any]) -> None:
     if assessment:
         print("  Trader assessment:")
         for key in ("regime", "sector_rotation", "mathematical_edge", "crypto_signal"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_nikkei(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("nikkei_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — Nikkei Stock Average")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Tape: {metrics.get('trend_label')} "
+        f"(opportunity {metrics.get('opportunity_score')})"
+    )
+    print(
+        f"  Momentum: {metrics.get('momentum_score')} | "
+        f"FX sensitivity: {metrics.get('fx_sensitivity_score')} | "
+        f"Breadth: {metrics.get('breadth_score')}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    index = data.get("index")
+    if index:
+        print(
+            f"  Nikkei 225: {index.get('price')} "
+            f"({index.get('day_chg_pct'):+.2f}% day, {index.get('week_chg_pct'):+.2f}% week)"
+        )
+        print()
+    print("  Japan market context:")
+    for c in data.get("context", [])[:6]:
+        print(
+            f"    • {c.get('name')}: {c.get('price')} "
+            f"({c.get('day_chg_pct'):+.2f}%)"
+        )
+    print()
+    print("  Top constituents:")
+    for c in sorted(data.get("constituents", []), key=lambda x: -(x.get("day_chg_pct") or -999))[:5]:
+        print(
+            f"    • {c.get('symbol')} {c.get('name')}: "
+            f"{c.get('day_chg_pct'):+.2f}% day | z {c.get('z_score_5d')}"
+        )
+    print()
+    if assessment:
+        print("  Nikkei assessment:")
+        for key in ("regime", "fx_signal", "futures_signal", "regional_signal", "mathematical_edge"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -1091,6 +1146,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "market-predictor": _print_market_predictor,
     "meteorology": _print_meteorology,
+    "nikkei": _print_nikkei,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
     "records-management": _print_records_management,
@@ -1117,6 +1173,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "market-predictor": run_market_predictor_analysis,
     "meteorology": run_meteorology_analysis,
+    "nikkei": run_nikkei_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
     "records-management": run_records_management_analysis,
@@ -1204,6 +1261,10 @@ def main() -> int:
                 catalog = args.output.parent / "google_finance_views.json"
                 if catalog.exists():
                     print(f"  Google Finance views: {catalog}")
+            if args.agent == "nikkei":
+                catalog = args.output.parent / "nikkei_views.json"
+                if catalog.exists():
+                    print(f"  Nikkei views: {catalog}")
             if args.agent == "theoretical-probability":
                 catalog = args.output.parent / "probability_models.json"
                 if catalog.exists():
