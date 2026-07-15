@@ -52,8 +52,9 @@ CPI_SERIES: list[dict[str, Any]] = [
     },
 ]
 
-# Approximate annual growth calibration per component, used only when the
-# live BLS API is unreachable (e.g. bls.gov DNS blocked in this sandbox).
+# Approximate annual growth calibration per component (based on 2024 BLS CPI
+# historical averages), used only when the live BLS API is unreachable
+# (e.g. bls.gov DNS blocked in this sandbox).
 _PROXY_ANNUAL_GROWTH = {
     "headline": 0.029,
     "core": 0.032,
@@ -142,6 +143,8 @@ class CPIInflationAnalyst(BaseExpert):
             points: list[tuple[str, float]] = []
             for row in series.get("data", []):
                 period = str(row.get("period", ""))
+                # BLS periods are "M01".."M12" for months and "M13" for the
+                # annual average — skip M13 and keep only monthly points.
                 if not period.startswith("M") or period == "M13":
                     continue
                 year = str(row.get("year", ""))
@@ -254,6 +257,9 @@ class CPIInflationAnalyst(BaseExpert):
 
         signals: list[dict[str, Any]] = []
         distance_from_target = abs(headline_yoy - 2.0)
+        # Confidence scales with how far headline CPI sits from the Fed's 2%
+        # target: 0.45 baseline + 0.09 per point of distance, capped at 0.88
+        # so a single data point never dominates cross-agent signal blending.
         confidence = round(min(0.88, 0.45 + distance_from_target * 0.09), 3)
 
         if regime_label in ("elevated", "high", "very-high"):
