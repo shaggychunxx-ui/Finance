@@ -268,7 +268,7 @@ DATA_SOURCES: list[dict[str, Any]] = [
         "id": "nass_quickstats",
         "name": "USDA NASS Quick Stats",
         "type": "agriculture",
-        "url": "https://www.nass.usda.gov/Statistics_by_State/Nevada/index.php",
+        "url": "https://www.nass.usda.gov/Statistics_by_State/index.php",
         "format": "api",
         "refresh_policy": "annual",
         "pii": False,
