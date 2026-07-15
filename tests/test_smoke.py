@@ -336,6 +336,74 @@ def test_remaining_specialist_market_impact_signals() -> None:
         assert "SPY" in steered["market_signals"][0]["tickers"]
 
 
+def test_earthdata_market_impact_signals() -> None:
+    from agent_constraints import apply_agent_constraints_to_result, load_domain_constraint_settings
+    from agent_signal_logic import MARKET_IMPACT_TICKERS, earthdata_market_impact_signals
+
+    stressed = earthdata_market_impact_signals(
+        environmental_stress=78.0,
+        stress_label="Elevated environmental stress",
+        wildfire_signal=0.72,
+        drought_signal=0.63,
+        sst_anomaly_signal=0.6,
+        flood_signal=0.58,
+        anomaly_count=4,
+        collections_online=8,
+    )
+    assert stressed and all(sig.get("impact_scope") == "market" for sig in stressed)
+    tickers = {t for sig in stressed for t in sig.get("tickers", [])}
+    assert "XLU" in tickers
+    assert "XLE" in tickers
+    assert all(t in MARKET_IMPACT_TICKERS for t in tickers)
+
+    quiet = earthdata_market_impact_signals(
+        environmental_stress=20.0,
+        stress_label="Quiet / baseline conditions",
+        wildfire_signal=0.1,
+        drought_signal=0.15,
+        sst_anomaly_signal=0.1,
+        flood_signal=0.1,
+        anomaly_count=0,
+        collections_online=6,
+    )
+    assert quiet and quiet[0]["bias"] == "NEUTRAL"
+    assert "SPY" in quiet[0]["tickers"]
+
+    steered = apply_agent_constraints_to_result(
+        {"meta": {}, "market_signals": stressed},
+        "earthdata",
+        settings=load_domain_constraint_settings(),
+    )
+    assert steered["market_signals"]
+    assert "SPY" in steered["market_signals"][0]["tickers"] or steered["market_signals"][0]["tickers"]
+
+
+def test_earthdata_cli_registered() -> None:
+    """earthdata must appear in RUNNERS and PRINTERS and round-trip without error."""
+    import tempfile
+
+    import app_paths
+    from main import PRINTERS, RUNNERS
+
+    assert "earthdata" in RUNNERS, "earthdata missing from RUNNERS"
+    assert "earthdata" in PRINTERS, "earthdata missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    try:
+        out_file = out_dir / "earthdata.json"
+        result = RUNNERS["earthdata"](output=out_file)
+        assert isinstance(result, dict)
+        assert "meta" in result
+        assert "market_signals" in result
+        assert (out_dir / "earthdata_resources.json").exists()
+        PRINTERS["earthdata"](result)
+    finally:
+        app_paths.OUTPUT = original_output
+
+
 def test_power_grid_market_impact_signals() -> None:
     from agent_constraints import apply_agent_constraints_to_result, load_domain_constraint_settings
     from agent_signal_logic import MARKET_IMPACT_TICKERS, power_grid_market_impact_signals
@@ -895,6 +963,8 @@ def _run_all() -> None:
         test_temperature_stabilized_by_posture_and_accuracy,
         test_transportation_and_meteorology_market_impact_signals,
         test_remaining_specialist_market_impact_signals,
+        test_earthdata_market_impact_signals,
+        test_earthdata_cli_registered,
         test_power_grid_market_impact_signals,
         test_agent_domain_and_horizon_constraints,
         test_accuracy_measurement_horizon_and_regime,

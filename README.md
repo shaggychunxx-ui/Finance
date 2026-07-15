@@ -10,6 +10,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
+| **NASA Earthdata Analyst** | `run.bat earthdata` | [NASA Earthdata catalog](https://www.earthdata.nasa.gov/data/catalog), NASA CMR Search API |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
@@ -34,6 +35,7 @@ run.bat electricity
 run.bat grid
 run.bat transportation
 run.bat patents
+run.bat earthdata
 run.bat events
 run.bat datascience
 run.bat finance
@@ -59,6 +61,7 @@ run.bat electricity -o output/electricity.json
 run.bat grid -o output/grid.json
 run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
+run.bat earthdata -o output/earthdata.json
 run.bat events -o output/world_events.json
 run.bat finance -o output/finance.json
 run.bat geopolitics --json
@@ -113,6 +116,16 @@ Tracks global patent databases, APIs, and monitoring resources while surfacing r
 - Innovation velocity score and sector market signals
 
 Optional: copy `config.example.json` to `config.json` and set `uspto_api_key` from [data.uspto.gov](https://data.uspto.gov/) for live US application search.
+
+## NASA Earthdata Analyst
+
+Catalogs NASA's Earth science data holdings ([earthdata.nasa.gov/data/catalog](https://www.earthdata.nasa.gov/data/catalog)) and surfaces environmental anomaly signals with market implications:
+
+- **10 Earthdata resources** cataloged (CMR Search, VIIRS/MODIS FIRMS, SMAP, GRACE-FO, GPM IMERG, MUR SST, NASA POWER, Landsat, Worldview, etc.)
+- Resource health checks (online / restricted / offline)
+- Live collection counts from the NASA CMR (Common Metadata Repository) Search API, with a calibrated fallback feed
+- Wildfire, drought, sea-surface-temperature anomaly, and flood signal strengths
+- Environmental stress score and sector market signals (utilities/insurance, agriculture inputs, energy/commodities, industrials)
 
 ## World Events Tracker
 

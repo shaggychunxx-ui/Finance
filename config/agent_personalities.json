@@ -188,6 +188,15 @@
       "contrarian": 0.35,
       "defensive_bias": 0.45,
       "volatility_tolerance": 0.5
+    },
+    "earthdata": {
+      "label": "The Earth Observer",
+      "risk_appetite": 0.42,
+      "conviction": 0.6,
+      "patience": 0.7,
+      "contrarian": 0.28,
+      "defensive_bias": 0.6,
+      "volatility_tolerance": 0.45
     }
   }
 }

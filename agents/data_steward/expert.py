@@ -59,6 +59,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "earthdata",
+        "agent": "NASA Earthdata Analyst",
+        "primary_output": "earthdata.json",
+        "sidecars": ["earthdata_resources.json"],
+        "sources": ["NASA Earthdata catalog", "NASA CMR Search API"],
+        "owner": "platform",
+    },
+    {
         "command": "events",
         "agent": "World Events Tracker",
         "primary_output": "world_events.json",
