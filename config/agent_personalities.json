@@ -63,6 +63,15 @@
       "defensive_bias": 0.62,
       "volatility_tolerance": 0.38
     },
+    "consumer-sentiment": {
+      "label": "The Mood Reader",
+      "risk_appetite": 0.42,
+      "conviction": 0.6,
+      "patience": 0.55,
+      "contrarian": 0.35,
+      "defensive_bias": 0.55,
+      "volatility_tolerance": 0.4
+    },
     "patents": {
       "label": "The Innovation Scout",
       "risk_appetite": 0.7,

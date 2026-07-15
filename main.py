@@ -13,6 +13,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.consumer_sentiment import run_consumer_sentiment_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -809,6 +810,36 @@ def _print_transportation(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_consumer_sentiment(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {metrics.get('latest_month', '')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  ICS: {metrics.get('latest_ics')}  |  ICC: {metrics.get('latest_icc')}  |  "
+        f"ICE: {metrics.get('latest_ice')}"
+    )
+    print(
+        f"  Regime: {metrics.get('regime_label')}  |  "
+        f"Momentum: {metrics.get('momentum_pct')}%  |  "
+        f"Sentiment score: {metrics.get('sentiment_score')}"
+    )
+    print(
+        f"  Resources online: {meta.get('resources_online', 0)}/"
+        f"{meta.get('resources_cataloged', 0)}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_patents(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     summary = data.get("summary", {})
@@ -1077,6 +1108,7 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
     "combined-conditional": _print_combined_conditional,
+    "consumer-sentiment": _print_consumer_sentiment,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1103,6 +1135,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
     "combined-conditional": run_combined_conditional_analysis,
+    "consumer-sentiment": run_consumer_sentiment_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
@@ -1220,6 +1253,10 @@ def main() -> int:
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():
                     print(f"  Statistical methods catalog: {catalog}")
+            if args.agent == "consumer-sentiment":
+                catalog = args.output.parent / "sca_resources.json"
+                if catalog.exists():
+                    print(f"  SCA resource catalog: {catalog}")
             if args.agent == "order-execution":
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():

@@ -11,6 +11,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
 | **Patent Landscape Analyst** | `run.bat patents` | OpenAlex, IPWatchdog RSS, USPTO feeds |
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
+| **Consumer Sentiment Analyst** | `run.bat consumer-sentiment` | [University of Michigan Surveys of Consumers](https://www.sca.isr.umich.edu/) |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
@@ -35,6 +36,7 @@ run.bat grid
 run.bat transportation
 run.bat patents
 run.bat events
+run.bat consumer-sentiment
 run.bat datascience
 run.bat finance
 run.bat financial-data
@@ -141,6 +143,19 @@ Outputs:
 
 - `output/world_events.json` — full analysis with market signals and recommendations
 - `output/world_events_tracker.json` — web-import format for `index.html`
+
+## Consumer Sentiment Analyst
+
+Tracks the [University of Michigan Surveys of Consumers](https://www.sca.isr.umich.edu/) — the Index of Consumer Sentiment (ICS), Current Economic Conditions (ICC), and Index of Consumer Expectations (ICE):
+
+- **6 SCA/FRED resources** cataloged (tables page, data archive, chart, press release, FRED UMCSENT mirror)
+- Monthly ICS/ICC/ICE series with 3-month momentum and sentiment regime (distressed / weak / neutral / improving / robust)
+- Consumer-facing sector signals: Discretionary, Staples, Retail, Travel & Leisure
+- Calibrated proxy series fallback if the live SCA data archive is unreachable
+
+```bat
+run.bat consumer-sentiment -o output/consumer_sentiment.json
+```
 
 ## Data Science Expert
 

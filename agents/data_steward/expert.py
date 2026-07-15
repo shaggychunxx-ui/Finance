@@ -67,6 +67,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "consumer-sentiment",
+        "agent": "Consumer Sentiment Analyst",
+        "primary_output": "consumer_sentiment.json",
+        "sidecars": ["sca_resources.json"],
+        "sources": ["sca.isr.umich.edu", "data.sca.isr.umich.edu", "FRED UMCSENT"],
+        "owner": "platform",
+    },
+    {
         "command": "datascience",
         "agent": "Data Science Expert",
         "primary_output": "datascience.json",
