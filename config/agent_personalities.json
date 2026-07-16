@@ -162,6 +162,51 @@
       "defensive_bias": 0.6,
       "volatility_tolerance": 0.25
     },
+    "htb-dynamics": {
+      "label": "The Locate Desk",
+      "risk_appetite": 0.28,
+      "conviction": 0.78,
+      "patience": 0.55,
+      "contrarian": 0.3,
+      "defensive_bias": 0.65,
+      "volatility_tolerance": 0.4
+    },
+    "squeeze-mechanics": {
+      "label": "The Cascade Watcher",
+      "risk_appetite": 0.34,
+      "conviction": 0.72,
+      "patience": 0.35,
+      "contrarian": 0.42,
+      "defensive_bias": 0.72,
+      "volatility_tolerance": 0.68
+    },
+    "ftd-regsho": {
+      "label": "The Settlement Auditor",
+      "risk_appetite": 0.25,
+      "conviction": 0.82,
+      "patience": 0.75,
+      "contrarian": 0.28,
+      "defensive_bias": 0.7,
+      "volatility_tolerance": 0.3
+    },
+    "bear-thesis": {
+      "label": "The Dedicated Bear",
+      "risk_appetite": 0.55,
+      "conviction": 0.85,
+      "patience": 0.65,
+      "contrarian": 0.75,
+      "defensive_bias": 0.45,
+      "volatility_tolerance": 0.5
+    },
+    "risk-mitigation": {
+      "label": "The Risk Guardian",
+      "risk_appetite": 0.2,
+      "conviction": 0.8,
+      "patience": 0.7,
+      "contrarian": 0.2,
+      "defensive_bias": 0.85,
+      "volatility_tolerance": 0.22
+    },
     "data-steward": {
       "label": "The Steward",
       "risk_appetite": 0.4,

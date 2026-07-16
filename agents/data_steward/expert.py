@@ -170,6 +170,46 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "htb-dynamics",
+        "agent": "Hard-to-Borrow (HTB) Microstructure Expert",
+        "primary_output": "htb_dynamics.json",
+        "sidecars": ["htb_rate_matrix.json"],
+        "sources": ["Yahoo Finance Chart API", "SEC Regulation SHO Rule 203(b)(1)"],
+        "owner": "platform",
+    },
+    {
+        "command": "squeeze-mechanics",
+        "agent": "Squeeze Evolution & Liquidation Cascade Expert",
+        "primary_output": "squeeze_mechanics.json",
+        "sidecars": ["squeeze_cascade_stages.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
+        "command": "ftd-regsho",
+        "agent": "Failure-to-Deliver (FTD) & Regulation SHO Protocol Expert",
+        "primary_output": "ftd_regsho.json",
+        "sidecars": ["regsho_threshold_criteria.json"],
+        "sources": ["Yahoo Finance Chart API", "DTCC/NSCC", "Regulation SHO Rule 203(c)(6)"],
+        "owner": "platform",
+    },
+    {
+        "command": "bear-thesis",
+        "agent": "Institutional Dedicated Bear Thesis Expert",
+        "primary_output": "bear_thesis.json",
+        "sidecars": ["valuation_disconnect_table.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
+        "command": "risk-mitigation",
+        "agent": "Institutional Short Risk Mitigation Expert",
+        "primary_output": "risk_mitigation.json",
+        "sidecars": ["risk_mitigation_framework.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

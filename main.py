@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.bear_thesis import run_bear_thesis_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -17,8 +18,10 @@ from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
+from agents.ftd_regsho import run_ftd_regsho_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
+from agents.htb_dynamics import run_htb_dynamics_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
@@ -26,7 +29,9 @@ from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
+from agents.risk_mitigation import run_risk_mitigation_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
+from agents.squeeze_mechanics import run_squeeze_mechanics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 from agents.market_predictor import run_market_predictor_analysis
@@ -929,6 +934,85 @@ def _print_order_execution(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_generic_short_agent(
+    data: dict[str, Any],
+    *,
+    profiles_key: str,
+    assessment_key: str,
+    line_fields: list[str],
+) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get(assessment_key, {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    if metrics:
+        print(f"  Metrics: {metrics}")
+        print()
+    print("  Symbols:")
+    for s in data.get(profiles_key, [])[:8]:
+        line = " | ".join(f"{f}={s.get(f)}" for f in line_fields if f in s)
+        print(f"    • {s.get('symbol')}: {line}")
+    print()
+    if assessment.get("conclusion"):
+        print("  Assessment:")
+        print(f"    • {assessment['conclusion']}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_htb_dynamics(data: dict[str, Any]) -> None:
+    _print_generic_short_agent(
+        data,
+        profiles_key="symbol_borrow_profiles",
+        assessment_key="htb_assessment",
+        line_fields=["rate_tier", "estimated_borrow_apr_pct", "estimated_rebate_pct"],
+    )
+
+
+def _print_squeeze_mechanics(data: dict[str, Any]) -> None:
+    _print_generic_short_agent(
+        data,
+        profiles_key="symbol_squeeze_profiles",
+        assessment_key="squeeze_assessment",
+        line_fields=["cascade_stage", "squeeze_risk_score", "margin_call_proxy_pct"],
+    )
+
+
+def _print_ftd_regsho(data: dict[str, Any]) -> None:
+    _print_generic_short_agent(
+        data,
+        profiles_key="symbol_ftd_profiles",
+        assessment_key="ftd_assessment",
+        line_fields=["ftd_risk_proxy_score", "threshold_security_proxy_flag"],
+    )
+
+
+def _print_bear_thesis(data: dict[str, Any]) -> None:
+    _print_generic_short_agent(
+        data,
+        profiles_key="symbol_bear_profiles",
+        assessment_key="bear_assessment",
+        line_fields=["priced_for_perfection_score", "priced_for_perfection_flag"],
+    )
+
+
+def _print_risk_mitigation(data: dict[str, Any]) -> None:
+    _print_generic_short_agent(
+        data,
+        profiles_key="symbol_risk_profiles",
+        assessment_key="risk_assessment",
+        line_fields=["defensive_priority", "max_position_size_usd", "vwap_stop_trigger_price"],
+    )
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1076,6 +1160,7 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
+    "bear-thesis": _print_bear_thesis,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
@@ -1085,8 +1170,10 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
+    "ftd-regsho": _print_ftd_regsho,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
+    "htb-dynamics": _print_htb_dynamics,
     "logistics": _print_logistics,
     "markets": _print_markets,
     "market-predictor": _print_market_predictor,
@@ -1095,13 +1182,16 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "patents": _print_patents,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
+    "risk-mitigation": _print_risk_mitigation,
     "sales-analytics": _print_sales_analytics,
+    "squeeze-mechanics": _print_squeeze_mechanics,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
+    "bear-thesis": run_bear_thesis_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
@@ -1111,8 +1201,10 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
+    "ftd-regsho": run_ftd_regsho_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
+    "htb-dynamics": run_htb_dynamics_analysis,
     "logistics": run_logistics_analysis,
     "markets": run_markets_analysis,
     "market-predictor": run_market_predictor_analysis,
@@ -1121,7 +1213,9 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "patents": run_patents_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
+    "risk-mitigation": run_risk_mitigation_analysis,
     "sales-analytics": run_sales_analytics_analysis,
+    "squeeze-mechanics": run_squeeze_mechanics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
 }
@@ -1224,6 +1318,26 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "htb-dynamics":
+                catalog = args.output.parent / "htb_rate_matrix.json"
+                if catalog.exists():
+                    print(f"  HTB borrow-rate matrix: {catalog}")
+            if args.agent == "squeeze-mechanics":
+                catalog = args.output.parent / "squeeze_cascade_stages.json"
+                if catalog.exists():
+                    print(f"  Squeeze cascade stages: {catalog}")
+            if args.agent == "ftd-regsho":
+                catalog = args.output.parent / "regsho_threshold_criteria.json"
+                if catalog.exists():
+                    print(f"  Reg SHO threshold criteria: {catalog}")
+            if args.agent == "bear-thesis":
+                catalog = args.output.parent / "valuation_disconnect_table.json"
+                if catalog.exists():
+                    print(f"  Valuation disconnect table: {catalog}")
+            if args.agent == "risk-mitigation":
+                catalog = args.output.parent / "risk_mitigation_framework.json"
+                if catalog.exists():
+                    print(f"  Risk mitigation framework: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():

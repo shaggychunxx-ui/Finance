@@ -26,6 +26,11 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Hard-to-Borrow (HTB) Microstructure Expert** | `run.bat htb-dynamics` | Yahoo Finance (3mo daily OHLCV) — borrow-rate proxy |
+| **Squeeze Evolution & Liquidation Cascade Expert** | `run.bat squeeze-mechanics` | Yahoo Finance (3mo daily OHLCV) — cascade-risk proxy |
+| **Failure-to-Deliver (FTD) & Regulation SHO Protocol Expert** | `run.bat ftd-regsho` | Yahoo Finance (3mo daily OHLCV) — settlement-friction proxy |
+| **Institutional Dedicated Bear Thesis Expert** | `run.bat bear-thesis` | Yahoo Finance (3mo daily OHLCV) — valuation-disconnect proxy |
+| **Institutional Short Risk Mitigation Expert** | `run.bat risk-mitigation` | Yahoo Finance (3mo daily OHLCV) — VWAP/position-sizing proxy |
 
 ## Quick start
 
@@ -50,6 +55,11 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat htb-dynamics
+run.bat squeeze-mechanics
+run.bat ftd-regsho
+run.bat bear-thesis
+run.bat risk-mitigation
 ```
 
 Or with options:
@@ -399,6 +409,53 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Hard-to-Borrow (HTB) Microstructure Expert
+
+Models the institutional locate/borrow-fee mechanics that trigger once a stock's
+float is tightly held:
+
+- SEC Regulation SHO Rule 203(b)(1) locate requirement
+- Borrow-rate tier matrix (General Collateral through Extreme/Squeeze-Grade HTB)
+- Collateral mechanics (102% posted collateral, positive vs. negative rebate)
+- Per-symbol borrow-rate/rebate proxy derived from realized volatility and dollar volume
+
+## Squeeze Evolution & Liquidation Cascade Expert
+
+Models the mechanical short-squeeze unwind driven by risk-management algorithms
+and clearinghouse collateral demands:
+
+- The 5-stage cascade (price spike → margin violation → forced buy-to-cover → float
+  illiquidity → price acceleration)
+- Maintenance Margin Requirement (MMR) thresholds
+- Gamma Exposure (GEX) / gamma-squeeze feedback loop
+- Per-symbol cascade-stage and margin-call proxy from momentum/volume data
+
+## Failure-to-Deliver (FTD) & Regulation SHO Protocol Expert
+
+Models NSCC clearinghouse settlement mechanics for short sales:
+
+- Threshold Security List criteria (Rule 203(c)(6))
+- Rule 204 mandatory close-out timelines (long T+3, short T+2)
+- Naked shorting vs. legitimate operational friction
+- Per-symbol settlement-friction proxy from volume-spike/gap frequency
+
+## Institutional Dedicated Bear Thesis Expert
+
+Screens for systemic vulnerabilities behind a professional bear thesis:
+
+- Macro/micro disconnects, forensic accounting scrubbing, flawed capital allocation
+- Valuation Disconnect Table (cash burn runway, asset quality, product obsolescence)
+- Per-symbol "priced-for-perfection" proxy from extended momentum/volatility
+
+## Institutional Short Risk Mitigation Expert
+
+Applies defensive risk parameters for short exposure:
+
+- Position sizing caps (0.5%–1% of portfolio risk)
+- Synthetic shorts (long puts / bear put spreads) vs. borrowing equity
+- Hard VWAP-anchored stop-loss triggers
+- Per-symbol position-size cap and VWAP stop level
 
 ## Market Predictor
 
