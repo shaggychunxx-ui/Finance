@@ -53,7 +53,9 @@ MIN_SAMPLES_FOR_MAGNITUDE = 8
 BENCHMARK_SOURCE = "walk_forward_benchmark"
 DIRECTION_WEIGHT = 0.6
 MAGNITUDE_WEIGHT = 0.4
-SKIP_SOURCES = frozenset({"etrade", "history", "market-predictor"})
+from agent_fusion import DIRECTIONAL_SCORING_SKIP
+
+SKIP_SOURCES = DIRECTIONAL_SCORING_SKIP
 RETURN_SOURCE_MIGRATION_CUTOFF = "2026-07-08T22:00:00+00:00"
 
 
@@ -454,6 +456,9 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
     newly_scored = 0
 
     for pred in pending:
+        aid = str(pred.get("agent_id") or "")
+        if aid in SKIP_SOURCES:
+            continue
         recorded = _parse_iso(pred.get("recorded_at"))
         horizon = str(pred.get("horizon") or DEFAULT_HORIZON)
         maturity = horizon_timedelta(horizon)
@@ -659,6 +664,8 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
     for row in scored:
         aid = str(row.get("agent_id") or "")
         if not aid:
+            continue
+        if aid in SKIP_SOURCES:
             continue
         bucket = live_agents.setdefault(
             aid,

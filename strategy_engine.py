@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 import traceback
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,6 +30,9 @@ DEFAULT_SMALL_ACCOUNT_THRESHOLD_USD = 500.0
 DEFAULT_SMALL_ACCOUNT_MAX_HOLDINGS = 6
 DEFAULT_SMALL_ACCOUNT_MIN_HOLDINGS = 3
 DEFAULT_PREFER_AFFORDABLE_TICKERS = True
+AGENT_RUN_TIMEOUT_SEC = max(60, int(os.environ.get("FINANCE_AGENT_TIMEOUT_SEC", "180")))
+ETRADE_ENHANCE_TIMEOUT_SEC = max(60, int(os.environ.get("FINANCE_ETRADE_ENHANCE_TIMEOUT_SEC", "120")))
+BENCHMARK_TIMEOUT_SEC = max(120, int(os.environ.get("FINANCE_BENCHMARK_TIMEOUT_SEC", "900")))
 
 
 @dataclass
@@ -823,7 +828,27 @@ def _format_pipeline_exception(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def _run_platform_agent(
+def _run_timed_pipeline_step(
+    fn: Callable[[], Any],
+    *,
+    timeout_sec: int,
+    label: str,
+    on_progress: Callable[[str], None] | None,
+) -> Any:
+    """Run a pipeline sub-step with a hard wall-clock timeout."""
+    pool = ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(fn)
+    try:
+        return future.result(timeout=timeout_sec)
+    except FuturesTimeoutError:
+        if on_progress:
+            on_progress(f"{label} timed out after {timeout_sec}s — skipped.")
+        return None
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _run_platform_agent_body(
     *,
     runner: Callable[..., Any],
     agent_id: str,
@@ -833,7 +858,7 @@ def _run_platform_agent(
     cycle_id: str | None,
     on_progress: Callable[[str], None] | None,
 ) -> dict[str, Any]:
-    """Execute one platform agent with validation and non-silent error reporting."""
+    """Inner agent execution used under a wall-clock timeout guard."""
     result: dict[str, Any] = {
         "agent_id": agent_id,
         "label": label,
@@ -898,6 +923,46 @@ def _run_platform_agent(
         if on_progress:
             on_progress(f"Agent failed: {label} — {result['error']}")
     return result
+
+
+def _run_platform_agent(
+    *,
+    runner: Callable[..., Any],
+    agent_id: str,
+    label: str,
+    out_path: Path,
+    started_at: datetime,
+    cycle_id: str | None,
+    on_progress: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """Execute one platform agent with validation and non-silent error reporting."""
+    pool = ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(
+        _run_platform_agent_body,
+        runner=runner,
+        agent_id=agent_id,
+        label=label,
+        out_path=out_path,
+        started_at=started_at,
+        cycle_id=cycle_id,
+        on_progress=on_progress,
+    )
+    try:
+        return future.result(timeout=AGENT_RUN_TIMEOUT_SEC)
+    except FuturesTimeoutError:
+        msg = f"timed out after {AGENT_RUN_TIMEOUT_SEC}s"
+        if on_progress:
+            on_progress(f"Agent timed out: {label} — {msg}")
+        return {
+            "agent_id": agent_id,
+            "label": label,
+            "ok": False,
+            "degraded": False,
+            "error": msg,
+            "traceback": "",
+        }
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def _run_market_predictor(
@@ -1102,7 +1167,14 @@ def run_agent_pipeline(
     try:
         from etrade_market_enhancer import run_etrade_enhancement
 
-        etrade_stats = run_etrade_enhancement(on_progress=on_progress)
+        etrade_stats = _run_timed_pipeline_step(
+            lambda: run_etrade_enhancement(on_progress=on_progress),
+            timeout_sec=ETRADE_ENHANCE_TIMEOUT_SEC,
+            label="E*TRADE enhancement",
+            on_progress=on_progress,
+        )
+        if etrade_stats is None:
+            etrade_stats = {"skipped": True, "reason": "timeout"}
         try:
             from agents.pipeline_memory import sync_same_cycle_from_disk
 
@@ -1126,9 +1198,14 @@ def run_agent_pipeline(
     try:
         from historical_simulation import run_pipeline_accuracy_benchmark
 
-        bench = run_pipeline_accuracy_benchmark(
+        bench = _run_timed_pipeline_step(
+            lambda: run_pipeline_accuracy_benchmark(
+                on_progress=on_progress,
+                profile=benchmark_profile,
+            ),
+            timeout_sec=BENCHMARK_TIMEOUT_SEC,
+            label=f"Backtest ({benchmark_profile})",
             on_progress=on_progress,
-            profile=benchmark_profile,
         )
         if on_progress and isinstance(bench, dict):
             metrics = bench.get("metrics") or {}

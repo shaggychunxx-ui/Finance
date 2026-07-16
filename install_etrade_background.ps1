@@ -9,6 +9,9 @@ $scheduledLauncher = Join-Path $root "Scheduled ETrade Worker Run.vbs"
 $liveTradingLauncher = Join-Path $root "Scheduled ETrade Live Trading.vbs"
 $dayTradingLauncher = Join-Path $root "Scheduled ETrade Day Trading.vbs"
 $serviceTask = "Finance ETrade Background Service"
+$watchdogTask = "Finance ETrade Worker Watchdog"
+$watchdogScript = Join-Path $root "ensure_etrade_worker.ps1"
+$watchdogBat = Join-Path $root "Run ETrade Worker Watchdog.bat"
 $scheduledTask = "Finance ETrade Worker"
 $liveTradingTask = "Finance ETrade Live Trading"
 $dayTradingTask = "Finance ETrade Day Trading"
@@ -47,6 +50,19 @@ function Install-StartupShortcut {
     Write-Host "Startup shortcut: $LinkPath"
 }
 
+$runKeyPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$serviceRunCommand = "wscript.exe `"$serviceLauncher`""
+
+function Install-RunKeyStartup {
+    param(
+        [string]$Name,
+        [string]$Command
+    )
+    New-Item -Path $runKeyPath -Force | Out-Null
+    Set-ItemProperty -Path $runKeyPath -Name $Name -Value $Command
+    Write-Host "Run key (logon): $Name"
+}
+
 $taskOk = $false
 try {
     $trigger = New-ScheduledTaskTrigger -AtLogOn
@@ -57,6 +73,21 @@ try {
     Write-Host "Scheduled task (logon): $serviceTask"
 } catch {
     Write-Host "Task Scheduler logon task skipped ($($_.Exception.Message))."
+    try {
+        schtasks /Create /F /TN $serviceTask /TR $serviceRunCommand /SC ONLOGON /RL LIMITED 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $taskOk = $true
+            Write-Host "Scheduled task (schtasks logon): $serviceTask"
+        }
+    } catch {
+        Write-Host "schtasks logon task skipped ($($_.Exception.Message))."
+    }
+}
+
+try {
+    Install-RunKeyStartup -Name "FinanceETradeBackgroundService" -Command $serviceRunCommand
+} catch {
+    Write-Host "Run key install skipped ($($_.Exception.Message))."
 }
 
 Install-StartupShortcut -LinkPath $serviceStartupLink -TargetPath $serviceLauncher `
@@ -76,6 +107,21 @@ if (Test-Path $guiExe) {
         -Arguments "`"$guiArgs`"" -Description "Finance agent strategies applied to E*TRADE account"
 }
 
+$watchdogOk = $false
+if (Test-Path $watchdogScript) {
+    $watchCmd = "`"$watchdogBat`""
+    try {
+        Unregister-ScheduledTask -TaskName $watchdogTask -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+    schtasks /Create /F /TN $watchdogTask /TR $watchCmd /SC MINUTE /MO 5 /RL LIMITED 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $watchdogOk = $true
+        Write-Host "Scheduled task (every 5 min): $watchdogTask"
+    } else {
+        Write-Host "Watchdog task skipped (schtasks exit $LASTEXITCODE)."
+    }
+}
+
 # Remove legacy duplicate tasks — the logon service loop handles all automation.
 foreach ($legacyTask in @($scheduledTask, $liveTradingTask, $dayTradingTask)) {
     try {
@@ -88,6 +134,7 @@ foreach ($legacyTask in @($scheduledTask, $liveTradingTask, $dayTradingTask)) {
 
 Write-Host ""
 Write-Host "Startup installed."
+Write-Host "  Background worker autostart: Startup folder + Run key$(if ($taskOk) { ' + Scheduled task' } else { '' })$(if ($watchdogOk) { ' + 5-min watchdog' } else { '' })"
 Write-Host "  Background worker: agents every 5 min, plan every 30 min, live trading every 15 min"
 Write-Host "  GUI app: opens automatically at Windows login"
 Write-Host "  Log: $(Join-Path $root 'output\etrade_worker.log')"

@@ -22,6 +22,8 @@ HORIZON_RETURN_SCALE = {
 TOP_N = 25
 INTRADAY_TOP_N = 12
 PREDICTION_HORIZONS = ("1m", "1h", "24h", "1wk", "1mo", "1yr")
+SYMBOL_RETURN_HINT_WEIGHT = 0.58
+ENRICH_PRICE_RETURNS_LIMIT = 50
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -48,6 +50,139 @@ def _direction(score: float) -> str:
     if score < -0.08:
         return "down"
     return "flat"
+
+
+def _return_over_closes(closes: list[float], days_back: int) -> float | None:
+    if len(closes) <= days_back:
+        return None
+    old = closes[-1 - days_back]
+    if old <= 0:
+        return None
+    return (closes[-1] - old) / old * 100.0
+
+
+def _enrich_symbol_price_returns(
+    scores: dict[str, dict[str, Any]],
+    symbols: list[str],
+    *,
+    fetch_missing: bool = True,
+) -> None:
+    """Attach per-symbol recent price returns from cached or Yahoo daily bars."""
+    from price_history import bar_closes, fetch_daily_bars, load_daily_bars
+
+    for sym in symbols:
+        row = scores.get(sym)
+        if not isinstance(row, dict):
+            continue
+        if row.get("return_5d_pct") is not None and row.get("return_20d_pct") is not None:
+            continue
+        bars = load_daily_bars(sym)
+        if fetch_missing and len(bars) < 6:
+            bars = fetch_daily_bars(sym, days=90, use_cache=True)
+        closes = bar_closes(bars)
+        if len(closes) < 2:
+            continue
+        for key, days in (("return_1d_pct", 1), ("return_5d_pct", 5), ("return_20d_pct", 20)):
+            if row.get(key) is None:
+                value = _return_over_closes(closes, days)
+                if value is not None:
+                    row[key] = round(value, 3)
+
+
+def _symbol_return_hint(row: dict[str, Any], horizon: str) -> float | None:
+    """Symbol-specific forward return hint (%) for the requested horizon."""
+    hints: list[tuple[float, float]] = []
+
+    def _add(value: Any, weight: float) -> None:
+        if value is None:
+            return
+        try:
+            hints.append((float(value), weight))
+        except (TypeError, ValueError):
+            return
+
+    day = row.get("day_change_pct")
+    week = row.get("week_change_pct")
+    r1 = row.get("return_1d_pct")
+    r5 = row.get("return_5d_pct")
+    r20 = row.get("return_20d_pct")
+    mom = row.get("momentum_score")
+    hist_mom = row.get("history_momentum")
+    hist_avg = row.get("history_avg_score")
+    opp = row.get("opportunity_score")
+
+    if horizon in {"1m", "1h"}:
+        _add(r1, 0.45)
+        _add(day, 0.35)
+        if r5 is not None:
+            _add(float(r5) / 5.0, 0.20)
+    elif horizon == "24h":
+        _add(r1, 0.40)
+        _add(day, 0.30)
+        if r5 is not None:
+            _add(float(r5) / 5.0, 0.20)
+        if mom is not None:
+            _add((float(mom) - 0.5) * 2.0, 0.10)
+    elif horizon == "1wk":
+        _add(r5, 0.50)
+        _add(week, 0.20)
+        if r1 is not None:
+            _add(float(r1) * 3.0, 0.15)
+        if r20 is not None:
+            _add(float(r20) / 4.0, 0.15)
+    elif horizon == "1mo":
+        _add(r20, 0.55)
+        if r5 is not None:
+            _add(float(r5) * 3.5, 0.25)
+        if hist_avg is not None:
+            _add(float(hist_avg) * 0.12, 0.10)
+    elif horizon == "1yr":
+        if r20 is not None:
+            _add(float(r20) * 6.0, 0.55)
+        if r5 is not None:
+            _add(float(r5) * 14.0, 0.20)
+        if hist_avg is not None:
+            _add(float(hist_avg) * 0.35, 0.15)
+        if hist_mom is not None:
+            _add(float(hist_mom), 0.10)
+    if opp is not None:
+        _add(float(opp) * 4.0, 0.08)
+
+    if not hints:
+        return None
+    total_w = sum(weight for _, weight in hints)
+    if total_w <= 0:
+        return None
+    return sum(value * weight for value, weight in hints) / total_w
+
+
+def _predicted_return_pct(
+    row: dict[str, Any],
+    *,
+    score: float,
+    direction: str,
+    horizon: str,
+    rank: int,
+    limit: int,
+) -> float:
+    scale = HORIZON_RETURN_SCALE.get(horizon, HORIZON_RETURN_SCALE["24h"])
+    base = min(12.0, max(0.4, abs(score) * 4.5)) * scale
+    hint = _symbol_return_hint(row, horizon)
+    if hint is not None:
+        hint_mag = min(12.0, max(0.05, abs(hint)))
+        blended = (1.0 - SYMBOL_RETURN_HINT_WEIGHT) * base + SYMBOL_RETURN_HINT_WEIGHT * hint_mag
+        if direction == "down" and hint < 0:
+            blended = (1.0 - SYMBOL_RETURN_HINT_WEIGHT) * base + SYMBOL_RETURN_HINT_WEIGHT * hint_mag
+        elif direction == "up" and hint < 0:
+            blended = max(0.15, base * 0.65 + hint_mag * 0.35)
+    else:
+        blended = base
+    blended += max(0, limit - rank) * 0.01
+    if direction == "down":
+        return -round(blended, 2)
+    if direction == "flat":
+        return 0.0
+    return round(max(0.05, blended), 2)
 
 
 def _horizon_adjusted_score(symbol: str, row: dict[str, Any], horizon: str) -> float:
@@ -155,6 +290,12 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                 confidence=0.65,
                 price=float(last) if last is not None else None,
             )
+            norm = _normalize_symbol(sym)
+            if norm and change is not None:
+                try:
+                    scores[norm]["day_change_pct"] = float(change)
+                except (TypeError, ValueError):
+                    pass
 
     for src in active_agent_sources():
         data = _load_json(output_dir / src["file"])
@@ -185,16 +326,42 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         if source == "finance":
             for opp in data.get("trading_opportunities", []):
                 score_val = float(opp.get("opportunity_score", 0))
+                sym = _normalize_symbol(str(opp.get("symbol", "")))
                 bump(
-                    opp.get("symbol", ""),
+                    sym,
                     min(1.2, score_val * 0.5),
                     source=source,
                     note=opp.get("rationale", opp.get("strategy", "")),
                     confidence=min(0.9, 0.45 + score_val * 0.2),
                     price=opp.get("price"),
                 )
+                if sym:
+                    row = scores[sym]
+                    row["opportunity_score"] = score_val
+                    for key, field in (("day_change_pct", "day_chg_pct"), ("week_change_pct", "week_chg_pct")):
+                        if opp.get(field) is not None:
+                            try:
+                                row[key] = float(opp[field])
+                            except (TypeError, ValueError):
+                                pass
 
         if source == "datascience":
+            for ticker_row in data.get("tickers", []) or []:
+                sym = _normalize_symbol(str(ticker_row.get("symbol", "")))
+                if not sym:
+                    continue
+                row = scores[sym]
+                for key in (
+                    "return_1d_pct",
+                    "return_5d_pct",
+                    "return_20d_pct",
+                    "momentum_score",
+                ):
+                    if ticker_row.get(key) is not None:
+                        try:
+                            row[key] = float(ticker_row[key])
+                        except (TypeError, ValueError):
+                            pass
             for pick in data.get("top_picks", []):
                 bump(
                     pick.get("symbol", ""),
@@ -238,13 +405,19 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         from analysis_history import get_persistent_bullish_tickers
 
         for row in get_persistent_bullish_tickers(top_n=25):
+            sym = _normalize_symbol(str(row.get("symbol", "")))
             bump(
-                row["symbol"],
+                sym,
                 row["composite"] * 0.2,
                 source="history",
                 note=f"Persistent bullish ({row['bullish_hits']} cycles)",
                 confidence=min(0.85, 0.45 + row["avg_score"] * 0.2),
             )
+            if sym:
+                hist = scores[sym]
+                hist["history_composite"] = float(row.get("composite") or 0.0)
+                hist["history_avg_score"] = float(row.get("avg_score") or 0.0)
+                hist["history_momentum"] = float(row.get("momentum") or 0.0)
     except Exception:
         pass
 
@@ -258,7 +431,6 @@ def _build_horizon_rows(
     *,
     limit: int = TOP_N,
 ) -> list[dict[str, Any]]:
-    scale = HORIZON_RETURN_SCALE.get(horizon, HORIZON_RETURN_SCALE["24h"])
     rows: list[dict[str, Any]] = []
     horizon_ranked = sorted(
         ranked,
@@ -268,13 +440,14 @@ def _build_horizon_rows(
     for rank, (symbol, row) in enumerate(horizon_ranked[:limit], start=1):
         score = _horizon_adjusted_score(symbol, row, horizon)
         direction = _direction(score)
-        base_return = min(12.0, max(0.4, abs(score) * 4.5)) * scale
-        if direction == "down":
-            predicted_return = -base_return
-        elif direction == "up":
-            predicted_return = base_return
-        else:
-            predicted_return = 0.0
+        predicted_return = _predicted_return_pct(
+            row,
+            score=score,
+            direction=direction,
+            horizon=horizon,
+            rank=rank,
+            limit=limit,
+        )
 
         confidence = min(0.95, max(0.35, float(row["confidence"] or 0.45) + min(0.25, abs(score) * 0.15)))
         entry: dict[str, Any] = {
@@ -311,6 +484,14 @@ def run_market_predictor_analysis(
     movers = positive[:TOP_N]
     if len(movers) < 8 and negative:
         movers.extend(negative[: max(0, 8 - len(movers))])
+
+    enrich_symbols: list[str] = []
+    seen: set[str] = set()
+    for sym, _row in movers + positive[:ENRICH_PRICE_RETURNS_LIMIT]:
+        if sym and sym not in seen:
+            seen.add(sym)
+            enrich_symbols.append(sym)
+    _enrich_symbol_price_returns(scores, enrich_symbols)
 
     predictions = {
         horizon: _build_horizon_rows(

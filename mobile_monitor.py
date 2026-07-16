@@ -169,12 +169,12 @@ def collect_status() -> dict[str, Any]:
     account_label = ""
     try:
         from etrade_api.config import get_selected_account, load_config
-        from etrade_api.oauth import load_tokens
+        from etrade_api.oauth import is_expired_for_day, load_tokens
 
         cfg = load_config(CONFIG_PATH)
         env = "sandbox" if cfg.sandbox else "production"
         tokens = load_tokens(cfg.token_path, cfg.sandbox)
-        connected = tokens is not None
+        connected = tokens is not None and not is_expired_for_day(tokens)
         acct = get_selected_account(CONFIG_PATH)
         if acct:
             account_label = acct.get("display_label") or acct.get("account_id_key") or ""

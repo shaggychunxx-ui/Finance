@@ -13,4 +13,8 @@ if str(ROOT) not in sys.path:
 from etrade_worker import run_day_trading_cycle
 
 if __name__ == "__main__":
+    from etrade_worker import service_already_running
+
+    if service_already_running():
+        raise SystemExit(0)
     raise SystemExit(run_day_trading_cycle())

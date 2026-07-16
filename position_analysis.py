@@ -16,11 +16,57 @@ ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / "output"
 
 HORIZON_LABELS = {
+    "1m": "1 minute",
+    "1h": "1 hour",
     "24h": "24 hours",
     "1wk": "1 week",
     "1mo": "1 month",
     "1yr": "1 year",
+    "today": "today",
+    "composite": "multi-horizon blend",
 }
+
+
+def merge_portfolio_projection(
+    holding: dict[str, Any] | None,
+    portfolio_row: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Fill missing projection fields on a plan holding from portfolio.json."""
+    if not holding and not portfolio_row:
+        return None
+    merged = dict(holding or portfolio_row or {})
+    if portfolio_row:
+        if merged.get("projected_return_horizon") is None and portfolio_row.get("projected_return_horizon"):
+            merged["projected_return_horizon"] = portfolio_row["projected_return_horizon"]
+            if portfolio_row.get("projected_return_pct") is not None:
+                merged["projected_return_pct"] = portfolio_row["projected_return_pct"]
+        elif merged.get("projected_return_pct") is None and portfolio_row.get("projected_return_pct") is not None:
+            merged["projected_return_pct"] = portfolio_row["projected_return_pct"]
+    return merged
+
+
+def projected_return_compact(holding: dict[str, Any] | None) -> str:
+    """Short label for tables and detail headers, e.g. '+3.70% over 1 week'."""
+    if not holding:
+        return "—"
+    pct = holding.get("projected_return_pct")
+    if pct is None:
+        return "—"
+    horizon = str(holding.get("projected_return_horizon") or "").strip()
+    period = HORIZON_LABELS.get(horizon, horizon.replace("_", " ") if horizon else "")
+    if period:
+        return f"{float(pct):+.2f}% over {period}"
+    return f"{float(pct):+.2f}%"
+
+
+def _projected_return_line(holding: dict[str, Any]) -> str:
+    compact = projected_return_compact(holding)
+    if compact == "—":
+        return ""
+    if " over " in compact:
+        pct_part, period_part = compact.split(" over ", 1)
+        return f"Projected return ({period_part}): {pct_part}"
+    return f"Projected return: {compact}"
 
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Finance/1.0)"}
@@ -590,8 +636,9 @@ def build_position_analysis(
             overview.append(f"Target portfolio weight: {float(holding['weight_pct']):.2f}%")
         if holding.get("allocation_usd") is not None:
             overview.append(f"Target allocation: ${float(holding['allocation_usd']):,.2f}")
-        if holding.get("projected_return_pct") is not None:
-            overview.append(f"Projected return: {float(holding['projected_return_pct']):+.2f}%")
+        projected_line = _projected_return_line(holding)
+        if projected_line:
+            overview.append(projected_line)
         if holding.get("rationale"):
             overview.append(f"Portfolio summary: {holding['rationale']}")
     elif day_position:

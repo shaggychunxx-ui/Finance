@@ -1036,6 +1036,152 @@ def patents_market_impact_signals(
     return signals
 
 
+def agricultural_supply_confidence(
+    *,
+    production_trend_score: float,
+    drought_risk_score: float | None = None,
+    forecast_confidence: float | None = None,
+) -> float:
+    """USDA NASS production trend / drought stress signal strength."""
+    trend_factor = _clamp(abs(float(production_trend_score or 0.5) - 0.5) * 2.0, 0.0, 1.0)
+    drought_factor = (
+        _clamp((float(drought_risk_score or 0.0) - 0.4) / 0.4, 0.0, 1.0)
+        if drought_risk_score is not None
+        else 0.3
+    )
+    forecast_factor = (
+        _clamp(float(forecast_confidence or 0.0), 0.0, 1.0)
+        if forecast_confidence is not None
+        else 0.35
+    )
+    return round(
+        _clamp(0.38 + 0.26 * trend_factor + 0.18 * drought_factor + 0.1 * forecast_factor),
+        3,
+    )
+
+
+def agriculture_market_impact_signals(
+    *,
+    production_trend_score: float,
+    trend_label: str = "",
+    drought_risk_score: float = 0.4,
+    forecast_confidence: float | None = None,
+    grain_output_strong: bool = False,
+    livestock_output_strong: bool = False,
+    food_inflation_pressure: bool = False,
+    source: str = "agriculture",
+) -> list[dict[str, Any]]:
+    """Translate USDA NASS production trend / forecast readings into broad market picks."""
+    signals: list[dict[str, Any]] = []
+    trend = float(production_trend_score or 0.5)
+    drought = float(drought_risk_score or 0.0)
+    label = str(trend_label or "").strip()
+    evidence_base: dict[str, Any] = {
+        "production_trend_score": round(trend, 3),
+        "drought_risk_score": round(drought, 3),
+        "source": source,
+    }
+    if forecast_confidence is not None:
+        evidence_base["forecast_confidence"] = round(float(forecast_confidence), 3)
+
+    conf = agricultural_supply_confidence(
+        production_trend_score=trend,
+        drought_risk_score=drought,
+        forecast_confidence=forecast_confidence,
+    )
+
+    supply_shortfall = trend <= 0.4 and drought >= 0.55
+    supply_expansion = trend >= 0.62 and drought <= 0.4
+
+    if supply_shortfall or food_inflation_pressure:
+        signals.append(
+            build_market_impact_signal(
+                sector="Staples / Food Inflation",
+                tickers=["XLP", "GLD"],
+                bias="BULLISH" if drought >= 0.65 else "NEUTRAL",
+                reason=(
+                    f"Production trend {label.lower() or 'weak'} (score {trend:.2f}) with "
+                    f"drought risk {drought:.2f} — crop/livestock supply tightness supports "
+                    "food prices and inflation hedges"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="supply_shortfall",
+            )
+        )
+        signals.append(
+            build_market_impact_signal(
+                sector="Rates / Inflation Sensitivity",
+                tickers=["TLT"],
+                bias="BEARISH" if drought >= 0.65 else "NEUTRAL",
+                reason="Elevated agricultural drought stress raises food-inflation pass-through risk",
+                confidence=max(0.44, conf - 0.04),
+                evidence=evidence_base,
+                domain_context="supply_shortfall",
+            )
+        )
+
+    if supply_expansion:
+        signals.append(
+            build_market_impact_signal(
+                sector="Agribusiness / Materials",
+                tickers=["XLB", "SPY"],
+                bias="BULLISH" if trend >= 0.72 else "NEUTRAL",
+                reason=(
+                    f"Production trend strong (score {trend:.2f}) with contained drought risk "
+                    f"({drought:.2f}) — favorable input/output flow for fertilizer and equipment"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="supply_expansion",
+            )
+        )
+
+    if grain_output_strong and not supply_shortfall:
+        signals.append(
+            build_market_impact_signal(
+                sector="Grain Belt / Emerging Markets Trade",
+                tickers=["EEM", "SPY"],
+                bias="NEUTRAL",
+                reason="Strong grain output supports export volume and EM agri-trade flow",
+                confidence=max(0.42, conf - 0.05),
+                evidence=evidence_base,
+                domain_context="grain_export",
+            )
+        )
+
+    if livestock_output_strong and not supply_shortfall:
+        signals.append(
+            build_market_impact_signal(
+                sector="Staples / Protein Supply",
+                tickers=["XLP"],
+                bias="NEUTRAL",
+                reason="Strong livestock output keeps protein supply chains well-stocked",
+                confidence=max(0.42, conf - 0.05),
+                evidence=evidence_base,
+                domain_context="livestock_supply",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=(
+                    f"USDA NASS production trend balanced ({label.lower() or 'neutral'}) — "
+                    "no acute macro tilt"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
+
 def sales_consumer_market_impact_signals(
     *,
     consumer_strength: float,
@@ -1218,6 +1364,140 @@ def load_peer_agent_output(filename: str) -> dict[str, Any] | None:
         return data if isinstance(data, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def meteorology_agricultural_risk_score() -> float | None:
+    """Read prior-cycle meteorology assessment for crop/drought risk alignment."""
+    data = load_peer_agent_output("meteorology.json")
+    if not data:
+        return None
+    metrics = data.get("metrics") if isinstance(data.get("metrics"), dict) else {}
+    for key in ("drought_risk_score", "agricultural_stress_score", "heat_stress_score"):
+        if metrics.get(key) is not None:
+            try:
+                return float(metrics[key])
+            except (TypeError, ValueError):
+                continue
+    assessment = data.get("assessment") if isinstance(data.get("assessment"), dict) else {}
+    text = " ".join(str(v) for v in assessment.values()).lower()
+    if "drought" in text or "heat/drought" in text:
+        return 0.72
+    if "flood" in text or "severe" in text:
+        return 0.58
+    if "moderate" in text:
+        return 0.5
+    return 0.4
+
+
+def migration_market_impact_signals(
+    *,
+    pressure_score: float,
+    pressure_label: str,
+    avg_remit_pct: float,
+    dependency_score: float,
+    top_remit: list[dict[str, Any]],
+    most_dependent: dict[str, Any] | None,
+    corridor_tickers: list[str],
+    source: str = "migration",
+) -> list[dict[str, Any]]:
+    """Translate World Bank / MPI migration metrics into market-facing signals."""
+    signals: list[dict[str, Any]] = []
+    pressure = float(pressure_score or 0.0)
+    avg_pct = float(avg_remit_pct or 0.0)
+    dependency = float(dependency_score or 0.0)
+    evidence_base: dict[str, Any] = {
+        "migration_pressure_score": round(pressure, 1),
+        "avg_remittance_pct_gdp": round(avg_pct, 1),
+        "remittance_dependency_score": round(dependency, 1),
+        "pressure_label": pressure_label,
+        "source": source,
+    }
+
+    leader = top_remit[0] if top_remit else {}
+    leader_name = str(leader.get("name") or "")
+    leader_usd = float(leader.get("remittances_usd") or 0.0)
+    pay_tickers = corridor_tickers[:6] or ["WU", "PYPL"]
+    conf = round(_clamp(0.42 + pressure / 200.0 + avg_pct / 50.0), 3)
+
+    if leader_name:
+        signals.append(
+            build_market_signal(
+                sector="Remittances & Cross-Border Payments",
+                tickers=pay_tickers,
+                bias="NEUTRAL",
+                reason=(
+                    f"Top remittance corridor {leader_name} "
+                    f"(${leader_usd / 1e9:.1f}B/yr) — {pressure_label.lower()}"
+                ),
+                confidence=conf,
+                evidence={**evidence_base, "leader_country": leader_name},
+            )
+        )
+
+    em_bias = "BEARISH" if avg_pct >= 10 else "BULLISH" if avg_pct <= 3 and pressure < 35 else "NEUTRAL"
+    signals.append(
+        build_market_impact_signal(
+            sector="Emerging Market Currencies (Remittance-Linked)",
+            tickers=["EEM", "EWW", "INDA", "EWZ"],
+            bias=em_bias,
+            reason=f"Average remittance dependency {avg_pct:.1f}% of GDP across tracked corridors",
+            confidence=round(_clamp(0.4 + avg_pct / 25.0), 3),
+            evidence=evidence_base,
+            domain_context="remittance_dependency",
+        )
+    )
+
+    if pressure >= 55:
+        signals.append(
+            build_market_signal(
+                sector="US Labor Supply (Staffing, Agriculture, Construction)",
+                tickers=["ASGN", "RHI", "MAN", "LEN", "DHI"],
+                bias="BULLISH" if pressure >= 65 else "NEUTRAL",
+                reason=(
+                    f"Migration pressure score {pressure:.0f} — sustained corridor outflows "
+                    "support elastic US labor supply"
+                ),
+                confidence=round(_clamp(0.38 + pressure / 250.0), 3),
+                evidence=evidence_base,
+            )
+        )
+
+    if most_dependent:
+        dep_pct = float(most_dependent.get("remittances_pct_gdp") or 0.0)
+        dep_name = str(most_dependent.get("name") or "")
+        dep_tickers = list(most_dependent.get("tickers") or ["WU"])
+        if dep_pct >= 8:
+            signals.append(
+                build_market_signal(
+                    sector="Single-Corridor Remittance Risk",
+                    tickers=dep_tickers[:4],
+                    bias="BEARISH" if dep_pct >= 15 else "NEUTRAL",
+                    reason=(
+                        f"{dep_name} remittances equal {dep_pct:.1f}% of GDP — "
+                        "high sensitivity to US/Gulf hiring cycles"
+                    ),
+                    confidence=round(_clamp(0.4 + dep_pct / 30.0), 3),
+                    evidence={
+                        **evidence_base,
+                        "country": dep_name,
+                        "remittances_pct_gdp": round(dep_pct, 1),
+                    },
+                )
+            )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=f"Migration metrics balanced — {pressure_label.lower()}",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+    return signals
 
 
 def meteorology_energy_score() -> float | None:

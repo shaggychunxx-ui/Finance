@@ -60,6 +60,7 @@ def main() -> int:
         "github_sync",
         "strategy_engine",
         "trade_guards",
+        "trading_gate",
         "etrade_worker",
     ]
     cmd = [

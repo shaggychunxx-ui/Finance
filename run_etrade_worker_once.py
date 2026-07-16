@@ -5,5 +5,8 @@ from __future__ import annotations
 
 import etrade_worker
 
+
 if __name__ == "__main__":
-    raise SystemExit(etrade_worker.main())
+    if etrade_worker.service_already_running():
+        raise SystemExit(0)
+    raise SystemExit(etrade_worker.run_full_cycle())

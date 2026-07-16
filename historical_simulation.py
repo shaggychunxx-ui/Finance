@@ -987,6 +987,11 @@ def pipeline_benchmark_config() -> dict[str, Any]:
     daily_enabled = daily.get("enabled", True)
     if isinstance(daily_enabled, str):
         daily_enabled = daily_enabled.strip().lower() not in {"0", "false", "no", "off"}
+    off_hours = (
+        section.get("off_hours_calibration")
+        if isinstance(section.get("off_hours_calibration"), dict)
+        else {}
+    )
     return {
         "enabled": bool(enabled),
         "target_trials": max(100, trials),
@@ -1001,6 +1006,11 @@ def pipeline_benchmark_config() -> dict[str, Any]:
             "target_trials": max(100, int(daily.get("target_trials", 10000) or 10000)),
             "max_symbols": max(20, int(daily.get("max_symbols", 400) or 400)),
             "full": bool(daily.get("full", True)),
+        },
+        "off_hours_calibration": {
+            "target_trials": max(100, int(off_hours.get("target_trials", 1500) or 1500)),
+            "max_symbols": max(20, int(off_hours.get("max_symbols", 200) or 200)),
+            "full": bool(off_hours.get("full", False)),
         },
     }
 
@@ -1024,6 +1034,19 @@ def resolve_pipeline_benchmark(profile: str = "routine") -> dict[str, Any]:
                 "max_symbols": int(daily.get("max_symbols", 400)),
                 "full": bool(daily.get("full", True)),
                 "profile": "daily",
+            }
+        )
+        return resolved
+    if profile in {"off_hours", "off-hours", "overnight"}:
+        off = dict(cfg.get("off_hours_calibration") or {})
+        resolved = dict(cfg)
+        resolved.update(
+            {
+                "enabled": bool(cfg.get("enabled", True)),
+                "target_trials": int(off.get("target_trials", 1500)),
+                "max_symbols": int(off.get("max_symbols", 200)),
+                "full": bool(off.get("full", False)),
+                "profile": "off_hours",
             }
         )
         return resolved

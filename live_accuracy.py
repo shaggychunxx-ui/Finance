@@ -67,12 +67,38 @@ def merge_live_and_benchmark(
     live_entry: dict[str, Any] | None,
     benchmark_entry: dict[str, Any] | None,
     *,
+    agent_id: str = "",
     settings: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Build the effective accuracy row used by fusion and trading gates."""
+    from agent_fusion import agent_uses_directional_accuracy
     from prediction_accuracy import BENCHMARK_SOURCE, MIN_SAMPLES_BENCHMARK, MIN_SAMPLES_FOR_WEIGHT
 
     gate = settings or load_live_accuracy_settings()
+    aid = str(
+        agent_id
+        or (live_entry or {}).get("agent_id")
+        or (benchmark_entry or {}).get("agent_id")
+        or ""
+    )
+    if aid and not agent_uses_directional_accuracy(aid):
+        bench_total = int(
+            (benchmark_entry or {}).get("total_scored") or (benchmark_entry or {}).get("total") or 0
+        )
+        if benchmark_entry and bench_total >= MIN_SAMPLES_BENCHMARK:
+            row = dict(benchmark_entry)
+            row["accuracy_source"] = BENCHMARK_SOURCE
+            row["live_scored"] = int((live_entry or {}).get("total_scored") or 0)
+            row["benchmark_scored"] = bench_total
+            row["live_weight"] = 0.0
+            row["directional_scoring"] = False
+            return row
+        if benchmark_entry:
+            row = dict(benchmark_entry)
+            row.setdefault("accuracy_source", BENCHMARK_SOURCE)
+            row["directional_scoring"] = False
+            return row
+        return None
     if not gate.get("enabled", True):
         if live_entry:
             row = dict(live_entry)
@@ -185,12 +211,17 @@ def refresh_merged_agent_accuracy(
 
     merged: dict[str, Any] = {}
     for aid in sorted(set(live_agents) | set(benchmark_agents)):
-        row = merge_live_and_benchmark(live_agents.get(aid), benchmark_agents.get(aid), settings=gate)
+        row = merge_live_and_benchmark(
+            live_agents.get(aid),
+            benchmark_agents.get(aid),
+            agent_id=aid,
+            settings=gate,
+        )
         if row:
             merged[aid] = row
 
     leaderboard: list[dict[str, Any]] = []
-    from prediction_accuracy import MIN_SAMPLES_BENCHMARK, MIN_SAMPLES_FOR_WEIGHT
+    from prediction_accuracy import BENCHMARK_SOURCE, MIN_SAMPLES_BENCHMARK, MIN_SAMPLES_FOR_WEIGHT
 
     min_blend = min_blend_threshold(gate)
     for row in merged.values():

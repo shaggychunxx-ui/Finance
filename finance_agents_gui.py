@@ -521,7 +521,15 @@ class FinanceAgentsApp(tk.Frame):
             self._make_button(
                 actions, "Full Pipeline", self._run_predictor_pipeline, variant="secondary", padx=btn_pad
             )
-            self._make_button(actions, "Dashboard", self._open_related_dashboard, variant="ghost")
+        self._btn_dashboard = self._make_button(
+            actions,
+            "Predictions Dashboard" if self._embedded else "Dashboard",
+            self._open_related_dashboard,
+            variant="ghost",
+            padx=btn_pad,
+        )
+        if self._embedded:
+            self._btn_dashboard.pack_forget()
 
         output_frame = tk.Frame(wrap, bg="#0d1424", highlightbackground=BORDER, highlightthickness=1)
         output_frame.grid(row=2, column=0, sticky="nsew")
@@ -825,8 +833,19 @@ class FinanceAgentsApp(tk.Frame):
 
         self._output.see("1.0")
 
+    def _set_dashboard_button_visible(self, visible: bool) -> None:
+        if not hasattr(self, "_btn_dashboard"):
+            return
+        if visible:
+            if not self._btn_dashboard.winfo_ismapped():
+                btn_pad = (0, self._m.px(4)) if self._embedded else (0, 6)
+                self._btn_dashboard.pack(side=tk.LEFT, padx=btn_pad)
+        else:
+            self._btn_dashboard.pack_forget()
+
     def _load_agent_output(self, agent: dict[str, str]) -> None:
         path = OUTPUT / agent["output"]
+        self._set_dashboard_button_visible(agent.get("id") == "market-predictor")
         if not path.exists():
             self._render_report_text(
                 "No report yet.\n\n"
@@ -835,8 +854,13 @@ class FinanceAgentsApp(tk.Frame):
             )
             return
         try:
+            import importlib
+
+            import agent_report_formatter as report_formatter
+
+            importlib.reload(report_formatter)
             data = json.loads(path.read_text(encoding="utf-8"))
-            self._render_report_text(format_report_summary(data))
+            self._render_report_text(report_formatter.format_report_summary(data))
         except Exception as exc:
             self._render_report_text(f"Could not read {path.name}: {exc}")
 

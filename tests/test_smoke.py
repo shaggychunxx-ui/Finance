@@ -57,6 +57,160 @@ def test_prediction_hit_logic() -> None:
     assert _prediction_hit("flat", "flat") is True
 
 
+def test_market_predictor_symbol_returns_differ() -> None:
+    from agents.market_predictor import _build_horizon_rows, _enrich_symbol_price_returns
+
+    rows = {
+        "AAA": {
+            "score": 0.774,
+            "confidence": 0.8,
+            "sources": {"history"},
+            "notes": ["test"],
+            "return_5d_pct": 4.65,
+            "return_20d_pct": -17.59,
+        },
+        "BBB": {
+            "score": 0.774,
+            "confidence": 0.8,
+            "sources": {"history"},
+            "notes": ["test"],
+            "return_5d_pct": 6.12,
+            "return_20d_pct": 4.42,
+        },
+    }
+    ranked = [("AAA", rows["AAA"]), ("BBB", rows["BBB"])]
+    built = _build_horizon_rows(ranked, "1wk", limit=2)
+    returns = {row["symbol"]: row["predicted_return_pct"] for row in built}
+    assert returns["AAA"] != returns["BBB"]
+
+
+def test_projected_return_shows_horizon() -> None:
+    from position_analysis import _projected_return_line, merge_portfolio_projection, projected_return_compact
+
+    assert projected_return_compact(
+        {"projected_return_pct": 3.7, "projected_return_horizon": "1wk"}
+    ) == "+3.70% over 1 week"
+    assert (
+        _projected_return_line({"projected_return_pct": 1.92, "projected_return_horizon": "1wk"})
+        == "Projected return (1 week): +1.92%"
+    )
+    assert (
+        _projected_return_line({"projected_return_pct": 2.5, "projected_return_horizon": "today"})
+        == "Projected return (today): +2.50%"
+    )
+    assert (
+        _projected_return_line({"projected_return_pct": 4.0})
+        == "Projected return: +4.00%"
+    )
+    merged = merge_portfolio_projection(
+        {"symbol": "ENPH", "projected_return_pct": 1.92},
+        {"symbol": "ENPH", "projected_return_pct": 3.7, "projected_return_horizon": "1wk"},
+    )
+    assert merged is not None
+    assert merged.get("projected_return_horizon") == "1wk"
+    assert merged.get("projected_return_pct") == 3.7
+
+
+def test_external_deposits_excluded_from_profit() -> None:
+    from account_profit import detect_external_flow_events, profit_metrics_for_account
+
+    growth = {
+        "baseline_value": 78.0,
+        "latest_value": 320.65,
+        "accounts": {
+            "acct1": {"opening_balance": 78.0, "opened_at": "2026-07-06"},
+        },
+        "points": [
+            {
+                "at": "2026-07-08T21:29:05+00:00",
+                "total_account_value": 76.29,
+                "cash_buying_power": 30.17,
+                "account_id_key": "acct1",
+            },
+            {
+                "at": "2026-07-10T03:47:15+00:00",
+                "total_account_value": 73.05,
+                "cash_buying_power": 50.08,
+                "account_id_key": "acct1",
+            },
+            {
+                "at": "2026-07-10T10:02:54+00:00",
+                "total_account_value": 323.06,
+                "cash_buying_power": 300.09,
+                "account_id_key": "acct1",
+            },
+            {
+                "at": "2026-07-16T13:56:07+00:00",
+                "total_account_value": 320.65,
+                "cash_buying_power": 23.73,
+                "account_id_key": "acct1",
+            },
+        ],
+    }
+    events = detect_external_flow_events(growth["points"], "acct1")
+    assert len(events) == 1
+    assert events[0]["kind"] == "deposit"
+    assert events[0]["amount"] == 250.01
+
+    metrics = profit_metrics_for_account(growth, "acct1")
+    assert metrics["net_external_flows"] == 250.01
+    assert metrics["invested_capital"] == 328.01
+    assert metrics["profit_amount"] == -7.36
+    assert metrics["profit_pct"] == -2.24
+
+    no_deposit_growth = {
+        "accounts": {"acct1": {"opening_balance": 100.0}},
+        "points": [
+            {"at": "2026-07-08T10:00:00+00:00", "total_account_value": 100.0, "cash_buying_power": 20.0, "account_id_key": "acct1"},
+            {"at": "2026-07-09T10:00:00+00:00", "total_account_value": 105.0, "cash_buying_power": 18.0, "account_id_key": "acct1"},
+        ],
+    }
+    assert detect_external_flow_events(no_deposit_growth["points"], "acct1") == []
+    steady = profit_metrics_for_account(no_deposit_growth, "acct1")
+    assert steady["profit_amount"] == 5.0
+    assert steady["profit_pct"] == 5.0
+
+
+def test_order_execution_skips_directional_scoring() -> None:
+    from agent_fusion import agent_uses_directional_accuracy
+    from agent_learning import rebuild_agent_learning
+    from live_accuracy import merge_live_and_benchmark
+    from prediction_accuracy import _append_prediction
+
+    assert agent_uses_directional_accuracy("markets") is True
+    assert agent_uses_directional_accuracy("order-execution") is False
+
+    pending: list[dict] = []
+    _append_prediction(
+        pending,
+        agent_id="order-execution",
+        symbol="AAPL",
+        horizon="24h",
+        predicted_direction="flat",
+        confidence=0.5,
+        predicted_return_pct=None,
+        price_at_prediction=100.0,
+        cycle_id="test-cycle",
+        recorded_at="2026-07-16T12:00:00+00:00",
+    )
+    assert pending == []
+
+    merged = merge_live_and_benchmark(
+        {"agent_id": "order-execution", "total_scored": 101, "combined_accuracy_pct": 100.0},
+        {"agent_id": "order-execution", "total_scored": 65, "combined_accuracy_pct": 30.8, "accuracy_pct": 30.8},
+        agent_id="order-execution",
+    )
+    assert merged is not None
+    assert merged.get("combined_accuracy_pct") == 30.8
+    assert merged.get("accuracy_source") == "walk_forward_benchmark"
+    assert merged.get("live_weight") == 0.0
+
+    learning = rebuild_agent_learning()
+    row = (learning.get("agents") or {}).get("order-execution") or {}
+    assert row.get("accuracy_pct") == 30.8
+    assert row.get("posture") == "cautious"
+
+
 def test_import_core_modules() -> None:
     import agent_learning  # noqa: F401
     import analysis_history  # noqa: F401
@@ -884,6 +1038,7 @@ def _run_all() -> None:
         test_new_pipeline_cycle_id_format,
         test_record_pipeline_run_upsert,
         test_prediction_hit_logic,
+        test_external_deposits_excluded_from_profit,
         test_import_core_modules,
         test_pipeline_memory_bundle_and_steering,
         test_intraday_prediction_horizons,

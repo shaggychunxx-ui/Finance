@@ -503,12 +503,19 @@ class EmpiricalProbabilityExpert(BaseExpert):
         )
 
     def analyze(self) -> EmpiricalProbabilityReport:
+        from agents.probability_market_data import ProbabilityMarketData
+
+        pmd = ProbabilityMarketData(self)
+        self._pmd = pmd
+        watchlist = pmd.prepare_watchlist(WATCHLIST)
+        pmd.request_enhancement(watchlist)
+
         return_map: dict[str, list[float]] = {}
 
-        for symbol in WATCHLIST:
-            closes = self.fetch_yahoo_closes(symbol, range_="1y")
-            if closes:
-                return_map[symbol] = self._daily_returns(closes)
+        for symbol in watchlist:
+            _closes, returns = pmd.load_series(symbol, range_="1y")
+            if returns:
+                return_map[symbol] = returns
             time.sleep(self.delay_seconds)
 
         if BENCHMARK not in return_map:
@@ -585,6 +592,7 @@ class EmpiricalProbabilityExpert(BaseExpert):
 
         summary = self._expert_summary(assessment, regime_label, evidence_score)
         signals = self._market_signals(frequencies, experiments, all_conditionals, rolling_rates)
+        signals.extend(pmd.live_market_signals())
         recs = self._recommendations(
             assessment, frequencies, rolling_rates, return_bins,
             experiments, bootstrap_results, all_conditionals,
@@ -865,6 +873,8 @@ class EmpiricalProbabilityExpert(BaseExpert):
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
         result = self.to_dict(self.analyze())
+        if getattr(self, "_pmd", None):
+            self._pmd.attach_to_result(result)
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")

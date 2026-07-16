@@ -315,7 +315,9 @@ def rebuild_agent_learning() -> dict[str, Any]:
         aid = src["id"]
         if aid in {"market-predictor", "data-steward", "records-management"}:
             continue
-        entry = accuracy_agents.get(aid)
+        from agent_fusion import agent_uses_directional_accuracy
+
+        entry = accuracy_agents.get(aid) if agent_uses_directional_accuracy(aid) else None
         if not isinstance(entry, dict) and aid in benchmark_agents:
             bench_row = benchmark_agents[aid]
             if isinstance(bench_row, dict):
@@ -527,5 +529,18 @@ def patch_agent_output_learning(path: Path, agent_id: str) -> bool:
 
     meta["learning"] = learning.as_dict()
     meta["preferred_horizon"] = learning.preferred_horizon
+    try:
+        from agent_temperature import apply_temperature_to_result
+
+        data = apply_temperature_to_result(
+            data,
+            agent_id,
+            pipeline_context={
+                "posture": learning.posture,
+                "accuracy_pct": learning.accuracy_pct,
+            },
+        )
+    except Exception:
+        pass
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return True

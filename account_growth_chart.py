@@ -245,6 +245,7 @@ class AccountGrowthChart(tk.Frame):
         self._all_points: list[tuple[str, float]] = []
         self._points: list[tuple[str, float]] = []
         self._baseline: float | None = None
+        self._profit_invested_capital: float | None = None
         self._range_key = default_range if any(k == default_range for k, _ in RANGE_OPTIONS) else "Open"
         self._metric_key = default_metric if any(k == default_metric for k, _ in METRIC_OPTIONS) else "balance"
         self._account_id_key = ""
@@ -446,10 +447,14 @@ class AccountGrowthChart(tk.Frame):
             self._stats.configure(text="")
             return
         open_val = self._account_open_value if self._account_open_value is not None else self._points[0][1]
-        first = self._points[0][1]
         last = self._points[-1][1]
-        delta = last - open_val
-        pct = (delta / open_val * 100) if open_val else 0.0
+        invested = self._profit_invested_capital
+        if invested is not None and invested > 0:
+            delta = last - float(invested)
+            pct = delta / float(invested) * 100
+        else:
+            delta = last - open_val
+            pct = (delta / open_val * 100) if open_val else 0.0
         sign = "+" if delta >= 0 else ""
         color = UP if delta >= 0 else DOWN
         flat_note = " · flat" if abs(delta) < 0.01 else ""
@@ -491,6 +496,7 @@ class AccountGrowthChart(tk.Frame):
         points: list[dict],
         *,
         baseline: float | None = None,
+        profit_invested_capital: float | None = None,
         range_key: str | None = None,
         account_id_key: str = "",
         account_opened_at: str | datetime | None = None,
@@ -524,8 +530,10 @@ class AccountGrowthChart(tk.Frame):
         self._raw_rows = scoped
         if self._metric_key == "balance":
             self._baseline = baseline if baseline is not None else opening_balance
+            self._profit_invested_capital = profit_invested_capital
         else:
             self._baseline = None
+            self._profit_invested_capital = None
         if range_key:
             self._range_key = range_key
             self._sync_range_buttons()

@@ -77,6 +77,8 @@ def _parse_at(value: str | None) -> datetime | None:
 def _daily_balance_metrics(
     points: list[dict[str, Any]],
     latest_f: float | None,
+    *,
+    external_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Compare latest balance to the start of the current UTC trading day."""
     if latest_f is None or latest_f <= 0:
@@ -124,7 +126,12 @@ def _daily_balance_metrics(
 
     daily_growth_pct: float | None = None
     if day_open and day_open > 0:
-        daily_growth_pct = round((latest_f - day_open) / day_open * 100, 2)
+        today_flows = 0.0
+        if external_events:
+            from account_profit import external_flows_on_utc_date
+
+            today_flows = external_flows_on_utc_date(external_events, today)
+        daily_growth_pct = round((latest_f - day_open - today_flows) / day_open * 100, 2)
 
     tiers_hit = [
         tier
@@ -144,12 +151,23 @@ def _daily_balance_metrics(
 
 def account_balance_state() -> dict[str, Any]:
     """Summarize account trend for reward/penalty scaling."""
+    from account_profit import profit_metrics_for_account
     from analysis_history import get_account_growth
 
     growth = get_account_growth()
-    latest = growth.get("latest_value")
-    opening = _opening_balance(growth)
-    growth_pct = growth.get("growth_pct")
+    primary = ""
+    points = growth.get("points") or []
+    if points and isinstance(points[-1], dict):
+        primary = str(points[-1].get("account_id_key") or "").strip()
+    metrics = profit_metrics_for_account(growth, primary)
+    latest = metrics.get("latest_value") if metrics.get("latest_value") is not None else growth.get("latest_value")
+    opening = metrics.get("opening_balance")
+    if opening is None:
+        opening = _opening_balance(growth)
+    growth_pct = metrics.get("profit_pct")
+    if growth_pct is None:
+        growth_pct = growth.get("profit_pct") if growth.get("profit_pct") is not None else growth.get("growth_pct")
+    external_events = list(metrics.get("external_flow_events") or [])
 
     try:
         latest_f = float(latest) if latest is not None else None
@@ -178,8 +196,12 @@ def account_balance_state() -> dict[str, Any]:
     if latest_f is not None and trough and trough > 0 and peak and peak > trough:
         recovery_pct = round((latest_f - trough) / trough * 100, 2)
 
-    if growth_pct is None and opening and latest_f is not None and opening > 0:
-        growth_pct = round((latest_f - opening) / opening * 100, 2)
+    net_external_flows = metrics.get("net_external_flows") or growth.get("net_external_flows") or 0.0
+    invested_capital = metrics.get("invested_capital")
+    if growth_pct is None and invested_capital and latest_f is not None and float(invested_capital) > 0:
+        growth_pct = round((latest_f - float(invested_capital)) / float(invested_capital) * 100, 2)
+    elif growth_pct is None and opening and latest_f is not None and opening > 0:
+        growth_pct = round((latest_f - float(opening) - float(net_external_flows)) / float(opening) * 100, 2)
 
     try:
         growth_f = float(growth_pct) if growth_pct is not None else 0.0
@@ -206,7 +228,7 @@ def account_balance_state() -> dict[str, Any]:
     elif is_rising and reward_strength > 0:
         trend = "rising"
 
-    daily = _daily_balance_metrics(points, latest_f)
+    daily = _daily_balance_metrics(points, latest_f, external_events=external_events)
     if daily.get("benchmark_tier_count"):
         trend = "daily_benchmark"
 
@@ -214,6 +236,9 @@ def account_balance_state() -> dict[str, Any]:
         "opening_balance": opening,
         "latest_value": latest_f,
         "growth_pct": growth_pct,
+        "profit_pct": growth_pct,
+        "net_external_flows": net_external_flows,
+        "invested_capital": invested_capital,
         "drawdown_from_peak_pct": drawdown_pct,
         "recovery_from_trough_pct": recovery_pct,
         "is_declining": is_declining,

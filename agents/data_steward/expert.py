@@ -59,11 +59,27 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "sec-filings",
+        "agent": "SEC EDGAR Filings Analyst",
+        "primary_output": "sec_filings.json",
+        "sidecars": ["sec_edgar_resources.json"],
+        "sources": ["SEC EDGAR Full Text Search"],
+        "owner": "platform",
+    },
+    {
         "command": "events",
         "agent": "World Events Tracker",
         "primary_output": "world_events.json",
         "sidecars": ["world_events_tracker.json"],
         "sources": ["BBC World RSS", "NPR RSS"],
+        "owner": "platform",
+    },
+    {
+        "command": "census",
+        "agent": "Census Bureau Economic Analyst",
+        "primary_output": "census.json",
+        "sidecars": ["census_resources.json"],
+        "sources": ["api.census.gov (MRTS, RESCONST, BFS, PEP)"],
         "owner": "platform",
     },
     {
@@ -107,6 +123,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "migration",
+        "agent": "Migration Data Analyst",
+        "primary_output": "migration.json",
+        "sidecars": ["migration_data_hub_resources.json"],
+        "sources": ["World Bank Open Data API", "MPI Migration Data Hub"],
+        "owner": "platform",
+    },
+    {
         "command": "logistics",
         "agent": "Logistics Expert",
         "primary_output": "logistics.json",
@@ -123,11 +147,19 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "agriculture",
+        "agent": "Agriculture Expert",
+        "primary_output": "agriculture.json",
+        "sidecars": ["nass_state_catalog.json"],
+        "sources": ["USDA NASS Quick Stats API"],
+        "owner": "platform",
+    },
+    {
         "command": "theoretical-probability",
         "agent": "Theoretical Probability Expert",
         "primary_output": "theoretical_probability.json",
         "sidecars": ["probability_models.json"],
-        "sources": ["Yahoo Finance Chart API"],
+        "sources": ["Yahoo Finance Chart API", "E*TRADE live quotes"],
         "owner": "platform",
     },
     {
@@ -135,7 +167,7 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "agent": "Empirical Probability Expert",
         "primary_output": "empirical_probability.json",
         "sidecars": ["empirical_experiments.json"],
-        "sources": ["Yahoo Finance Chart API"],
+        "sources": ["Yahoo Finance Chart API", "E*TRADE live quotes"],
         "owner": "platform",
     },
     {
@@ -143,7 +175,7 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "agent": "Combined & Conditional Probability Expert",
         "primary_output": "combined_conditional.json",
         "sidecars": ["probability_concepts.json"],
-        "sources": ["Yahoo Finance Chart API"],
+        "sources": ["Yahoo Finance Chart API", "E*TRADE live quotes"],
         "owner": "platform",
     },
     {
@@ -151,7 +183,7 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "agent": "Research Statistics Expert",
         "primary_output": "research_statistics.json",
         "sidecars": ["statistical_methods.json"],
-        "sources": ["Yahoo Finance Chart API"],
+        "sources": ["Yahoo Finance Chart API", "E*TRADE live quotes"],
         "owner": "platform",
     },
     {
@@ -160,6 +192,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "primary_output": "sales_analytics.json",
         "sidecars": ["sales_dashboard_data.json", "sales_dashboard_panels.json"],
         "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
+        "command": "trading-economics",
+        "agent": "Trading Economics Macro Expert",
+        "primary_output": "trading_economics.json",
+        "sidecars": ["trading_economics_resources.json"],
+        "sources": ["Trading Economics guest API"],
         "owner": "platform",
     },
     {

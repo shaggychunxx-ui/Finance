@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.agriculture import run_agriculture_analysis
+from agents.census import run_census_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -22,11 +24,14 @@ from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
+from agents.migration import run_migration_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
+from agents.sec_filings import run_sec_filings_analysis
+from agents.trading_economics import run_trading_economics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 from agents.market_predictor import run_market_predictor_analysis
@@ -561,6 +566,84 @@ def _print_empirical_probability(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_agriculture(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('states_monitored', 0)} states")
+    print("=" * 60)
+    print(f"  {meta.get('national_headline', '')}")
+    print()
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Trend: {metrics.get('trend_label')} ({metrics.get('production_trend_score')})")
+    print(f"  Drought risk: {metrics.get('drought_risk_score')}")
+    print(f"  Forecast confidence: {metrics.get('forecast_confidence')}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+
+    def _print_state_group(title: str, states: list[dict[str, Any]]) -> None:
+        if not states:
+            return
+        print(f"  {title}:")
+        for s in states:
+            print(f"    • {s.get('name')} ({s.get('dashboard')}):")
+            for c in s.get("commodities", []):
+                print(
+                    f"        - {c.get('name')}: {c.get('latest_value')} {c.get('unit')} "
+                    f"({c.get('trend_pct'):+.1f}%), {c.get('forecast_year')} forecast {c.get('forecast_value')}"
+                )
+        print()
+
+    _print_state_group("Top gaining states", data.get("top_gainers", []))
+    _print_state_group("Top declining states", data.get("top_decliners", []))
+    for s in data.get("states", []):
+        print(f"  • {s.get('name')}: production trend {s.get('production_trend_score')}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_census(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("economic_assessment", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_cataloged', 0)} Census resources"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Economic label: {metrics.get('economic_label')}")
+    print(
+        f"  Consumer: {metrics.get('consumer_score')} | "
+        f"Housing: {metrics.get('housing_score')} | "
+        f"Entrepreneurship: {metrics.get('entrepreneurship_score')}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Fastest-growing states:")
+    for s in data.get("state_population_growth", [])[:5]:
+        print(f"    #{s.get('rank')} {s.get('state')}: {s.get('growth_pct'):+.2f}% YoY")
+    print()
+    if assessment:
+        print("  Economic assessment:")
+        for key in ("consumer_spending", "housing_market", "business_formation"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_events(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     summary = data.get("summary", {})
@@ -979,6 +1062,108 @@ def _print_research_statistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_migration(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("demographic_assessment", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_cataloged', 0)} Migration Data Hub resources"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Pressure: {metrics.get('pressure_label')} "
+        f"({metrics.get('migration_pressure_score')})"
+    )
+    print(
+        f"  Remittance dependency score: {metrics.get('remittance_dependency_score')} | "
+        f"Avg remittances: {metrics.get('avg_remittance_pct_gdp')}% of GDP"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Top remittance recipients:")
+    for c in data.get("countries", [])[:6]:
+        print(
+            f"    #{c.get('rank')} {c.get('name')}: "
+            f"${c.get('remittances_usd', 0) / 1e9:.1f}B/yr "
+            f"({c.get('remittances_pct_gdp')}% of GDP)"
+        )
+    print()
+    if assessment:
+        print("  Demographic assessment:")
+        for key in ("remittance_leader", "remittance_dependency", "net_migration", "macro_sensitivity"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_sec_filings(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_tracked', 0)} resources, "
+        f"{meta.get('filings_count', 0)} filings"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Activity: {summary.get('activity_label')} "
+        f"(score {summary.get('filing_activity_score')})"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print(f"  Dashboard: {meta.get('dashboard', 'https://www.sec.gov/edgar/search/#')}")
+    print()
+    print("  Filing categories:")
+    for category, count in sorted(
+        summary.get("by_category", {}).items(), key=lambda x: -x[1]
+    )[:5]:
+        print(f"    • {category.replace('-', ' ').title()}: {count}")
+    print()
+    print("  Recent filings:")
+    for f in data.get("filings", [])[:8]:
+        print(
+            f"    • [{f.get('category', '?')}] {f.get('title', '')[:68]} "
+            f"— {f.get('form', '')} ({f.get('filed_date', '')})"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+
+
+def _print_trading_economics(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('countries_analyzed', 0)} countries")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Composite: {metrics.get('composite_label')} ({metrics.get('composite_score')})")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for c in data.get("countries", []):
+        print(f"  • {c.get('country')}: {c.get('regime')} (score {c.get('regime_score')})")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_sales_analytics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     kpis = data.get("kpis", {})
@@ -1076,6 +1261,8 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
+    "agriculture": _print_agriculture,
+    "census": _print_census,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
@@ -1088,6 +1275,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
+    "migration": _print_migration,
     "markets": _print_markets,
     "market-predictor": _print_market_predictor,
     "meteorology": _print_meteorology,
@@ -1096,12 +1284,16 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
+    "sec-filings": _print_sec_filings,
     "theoretical-probability": _print_theoretical_probability,
+    "trading-economics": _print_trading_economics,
     "transportation": _print_transportation,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
+    "agriculture": run_agriculture_analysis,
+    "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
@@ -1114,6 +1306,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
+    "migration": run_migration_analysis,
     "markets": run_markets_analysis,
     "market-predictor": run_market_predictor_analysis,
     "meteorology": run_meteorology_analysis,
@@ -1122,7 +1315,9 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
+    "sec-filings": run_sec_filings_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
+    "trading-economics": run_trading_economics_analysis,
     "transportation": run_transportation_analysis,
 }
 
@@ -1172,10 +1367,22 @@ def main() -> int:
         PRINTERS[args.agent](result)
         if args.output:
             print(f"  Full report saved to {args.output}")
+            if args.agent == "agriculture":
+                catalog = args.output.parent / "nass_state_catalog.json"
+                if catalog.exists():
+                    print(f"  NASS state catalog: {catalog}")
+            if args.agent == "census":
+                catalog = args.output.parent / "census_resources.json"
+                if catalog.exists():
+                    print(f"  Census resource catalog: {catalog}")
             if args.agent == "events":
                 tracker = args.output.parent / "world_events_tracker.json"
                 if tracker.exists():
                     print(f"  Web tracker import file: {tracker}")
+            if args.agent == "migration":
+                catalog = args.output.parent / "migration_data_hub_resources.json"
+                if catalog.exists():
+                    print(f"  Migration Data Hub catalog: {catalog}")
             if args.agent == "patents":
                 catalog = args.output.parent / "patent_resources.json"
                 if catalog.exists():
@@ -1224,6 +1431,10 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "sec-filings":
+                catalog = args.output.parent / "sec_edgar_resources.json"
+                if catalog.exists():
+                    print(f"  SEC EDGAR resource catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():
@@ -1232,6 +1443,10 @@ def main() -> int:
                 if panels.exists():
                     print(f"  Dashboard panels: {panels}")
                 print(f"  Open dashboard: open_sales_dashboard.bat")
+            if args.agent == "trading-economics":
+                catalog = args.output.parent / "trading_economics_resources.json"
+                if catalog.exists():
+                    print(f"  Trading Economics resource catalog: {catalog}")
             if args.agent == "market-predictor":
                 print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":

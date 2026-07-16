@@ -104,6 +104,11 @@
       "target_trials": 10000,
       "max_symbols": 400,
       "full": true
+    },
+    "off_hours_calibration": {
+      "target_trials": 1500,
+      "max_symbols": 200,
+      "full": false
     }
   },
   "market_data_enhancement": {
@@ -126,8 +131,10 @@
     "paused": false,
     "dry_run": false,
     "pipeline_interval_minutes": 5,
+    "pipeline_off_hours_interval_minutes": 45,
     "accuracy_interval_minutes": 5,
-    "pipeline_market_hours_only": true,
+    "accuracy_off_hours_interval_minutes": 30,
+    "pipeline_market_hours_only": false,
     "live_accuracy": {
       "enabled": true,
       "min_live_samples_full": 25,

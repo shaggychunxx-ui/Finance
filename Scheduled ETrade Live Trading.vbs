@@ -5,8 +5,8 @@ Set sh = CreateObject("WScript.Shell")
 Set fs = CreateObject("Scripting.FileSystemObject")
 root = fs.GetParentFolderName(WScript.ScriptFullName)
 If Right(root, 1) <> "\" Then root = root & "\"
-pyw = root & ".venv\Scripts\pythonw.exe"
+py = root & ".venv\Scripts\python.exe"
 script = root & "run_etrade_live_trading.py"
-If Not fs.FileExists(pyw) Then WScript.Quit 1
+If Not fs.FileExists(py) Then WScript.Quit 1
 sh.CurrentDirectory = root
-sh.Run """" & pyw & """ """ & script & """", 0, False
+sh.Run """" & py & """ """ & script & """", 0, False

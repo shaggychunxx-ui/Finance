@@ -31,6 +31,8 @@ TRADING_EXEMPT_AGENTS = frozenset({
 
 IGNORE_CLUSTERS = frozenset({"other", "data_platform", "execution"})
 
+FUSION_BACKED_SOURCES = frozenset({"market-predictor", "fusion"})
+
 
 def load_trading_gate_settings(config_path: Path | None = None) -> dict[str, Any]:
     settings = dict(DEFAULT_TRADING_GATE)
@@ -201,6 +203,27 @@ def ticker_trading_gate(
         and has_eligible_agent
         and cluster.get("passes", False)
     )
+    if (
+        gate.get("enabled", True)
+        and has_eligible_agent
+        and not passes
+        and score >= float(gate.get("min_net_score", DEFAULT_TRADING_GATE["min_net_score"]))
+        and FUSION_BACKED_SOURCES.intersection(eligible_sources)
+    ):
+        min_contrib = float(gate.get("min_cluster_contribution", DEFAULT_TRADING_GATE["min_cluster_contribution"]))
+        fusion_clusters = [
+            name
+            for name, value in dict(by_cluster or {}).items()
+            if name not in IGNORE_CLUSTERS and float(value) >= min_contrib
+        ]
+        if fusion_clusters:
+            cluster = {
+                **cluster,
+                "passes": True,
+                "agreeing_clusters": sorted(fusion_clusters),
+                "reason": "fusion_backed_pick",
+            }
+            passes = True
     if not gate.get("enabled", True):
         passes = score > 0
 

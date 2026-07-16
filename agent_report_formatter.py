@@ -143,8 +143,27 @@ def format_report_summary(data: dict[str, Any]) -> str:
 
     preds = data.get("predictions", {})
     if preds:
+        horizon_labels = {
+            "1m": "1 Minute",
+            "1h": "1 Hour",
+            "24h": "24 Hour",
+            "1wk": "1 Week",
+            "1mo": "1 Month",
+            "1yr": "1 Year",
+        }
+        meta_horizons = data.get("meta", {}).get("horizons")
+        if isinstance(meta_horizons, list) and meta_horizons:
+            horizon_order = [str(h) for h in meta_horizons if str(h) in horizon_labels]
+        else:
+            try:
+                from agent_constraints import HORIZON_ORDER
+
+                horizon_order = list(HORIZON_ORDER)
+            except Exception:
+                horizon_order = list(horizon_labels.keys())
         lines.append("")
-        for horizon, label in [("24h", "24 Hour"), ("1mo", "1 Month"), ("1yr", "1 Year")]:
+        for horizon in horizon_order:
+            label = horizon_labels.get(horizon, horizon)
             rows = preds.get(horizon, [])
             if not rows:
                 continue

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Market Predictor – Finance</title>
+  <link rel="stylesheet" href="predictions_dashboard.css" />
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>Market Predictor</h1>
+    <span class="subtitle">Fused agent signals across intraday and swing horizons</span>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btn-refresh" type="button">Refresh Data</button>
+    <button class="btn btn-primary" id="btn-import" type="button">Import JSON</button>
+    <input type="file" id="import-input" accept=".json,application/json" />
+  </div>
+</header>
+
+<main>
+  <div id="status-bar" class="status-bar">Loading market predictions…</div>
+
+  <section class="kpi-grid" id="kpi-grid"></section>
+
+  <p id="summary-text" class="summary-text"></p>
+
+  <nav class="horizon-nav" id="horizon-nav" aria-label="Prediction horizons"></nav>
+
+  <div class="panel full-width">
+    <h2 id="table-title">Top movers</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Symbol</th>
+          <th>Return</th>
+          <th>Direction</th>
+          <th>Confidence</th>
+          <th>Price</th>
+          <th>Sources</th>
+          <th>Rationale</th>
+        </tr>
+      </thead>
+      <tbody id="predictions-tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script src="predictions_dashboard.js"></script>
+</body>
+</html>

@@ -83,11 +83,36 @@ AGENT_CLUSTERS: dict[str, str] = {
     "research-statistics": "quant",
     "events": "intelligence",
     "patents": "intelligence",
+    "sec-filings": "intelligence",
+    "migration": "intelligence",
+    "census": "macro",
+    "agriculture": "energy_grid",
+    "trading-economics": "macro",
     "sales-analytics": "consumer",
     "order-execution": "execution",
     "data-steward": "data_platform",
     "records-management": "data_platform",
+    "market-predictor": "fusion",
+    "history": "intelligence",
+    "etrade": "market_data",
 }
+
+# Agents that emit execution/platform signals — not directional price forecasts.
+DIRECTIONAL_SCORING_SKIP = frozenset({
+    "etrade",
+    "history",
+    "market-predictor",
+    "order-execution",
+    "data-steward",
+    "records-management",
+})
+
+
+def agent_uses_directional_accuracy(agent_id: str) -> bool:
+    """True when live directional hit-rate scoring applies to this agent."""
+    aid = str(agent_id or "").replace("_", "-")
+    return aid not in DIRECTIONAL_SCORING_SKIP
+
 
 AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
     "electricity": {
@@ -117,6 +142,26 @@ AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
     "sales-analytics": {
         "tickers": frozenset({"XRT", "WMT", "TGT", "COST", "HD", "LOW", "AMZN", "MCD"}),
         "sectors": frozenset({"retail", "consumer", "sales", "staples", "discretionary"}),
+    },
+    "agriculture": {
+        "tickers": frozenset({"DBA", "WEAT", "CORN", "SOYB", "MOO", "DE", "ADM", "BG"}),
+        "sectors": frozenset({"agriculture", "farming", "commodity", "crop", "grain"}),
+    },
+    "census": {
+        "tickers": frozenset({"XRT", "ITB", "XHB", "HD", "LOW", "WMT", "TGT"}),
+        "sectors": frozenset({"retail", "housing", "consumer", "construction", "census"}),
+    },
+    "sec-filings": {
+        "tickers": frozenset({"SPY", "QQQ", "XLF", "XLK", "XLE"}),
+        "sectors": frozenset({"sec", "filing", "regulatory", "corporate", "disclosure"}),
+    },
+    "migration": {
+        "tickers": frozenset({"EWW", "EWZ", "INDA", "FXI", "EEM"}),
+        "sectors": frozenset({"remittance", "migration", "emerging", "demographic"}),
+    },
+    "trading-economics": {
+        "tickers": frozenset({"SPY", "TLT", "GLD", "UUP", "EEM"}),
+        "sectors": frozenset({"macro", "rates", "inflation", "gdp", "economics"}),
     },
 }
 

@@ -180,7 +180,7 @@ class ETradeClient:
         if quantity <= 0:
             raise ValueError("quantity must be positive")
         action = action.upper()
-        if action not in {"BUY", "SELL", "SELL_SHORT"}:
+        if action not in {"BUY", "SELL", "SELL_SHORT", "BUY_TO_COVER"}:
             raise ValueError(f"unsupported action: {action}")
 
         instrument: dict[str, Any] = {

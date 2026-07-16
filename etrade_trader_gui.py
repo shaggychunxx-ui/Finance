@@ -301,6 +301,8 @@ class ETradeTraderApp(tk.Frame):
         self._automation_snapshot: tuple[bool, bool, bool, bool] | None = None
         self._automation_sync_ticks = 0
         self._gui_defers_to_worker = False
+        self._worker_pipeline_progress = ""
+        self._worker_pipeline_stuck = False
         self._last_pipeline_at: float | None = None
         self._last_plan_at: float | None = None
         self._last_execute_at: float | None = None
@@ -326,6 +328,7 @@ class ETradeTraderApp(tk.Frame):
         self._setup_canvas: tk.Canvas | None = None
         self._oauth_dialog: OAuthVerifyDialog | None = None
         self._oauth_pending: OAuthPending | None = None
+        self._connect_epoch = 0
         self._shutting_down = False
         self._confirmed_account_idx: int | None = None
         self._suppress_account_change = False
@@ -447,8 +450,26 @@ class ETradeTraderApp(tk.Frame):
             pass
 
     def _poll_worker_status(self) -> None:
-        worker_active = self._sync_status_from_worker()
-        self._bg_pipeline_running = worker_active
+        self._sync_status_from_worker()
+        try:
+            from etrade_worker import worker_pipeline_status
+
+            pipe = worker_pipeline_status()
+            self._worker_pipeline_progress = str(pipe.get("progress") or "")
+            self._worker_pipeline_stuck = bool(pipe.get("stuck"))
+            worker_active = bool(pipe.get("active"))
+        except Exception:
+            self._worker_pipeline_progress = ""
+            self._worker_pipeline_stuck = False
+            worker_active = False
+            try:
+                from etrade_worker import LOG_FILE as worker_log
+
+                if worker_log.exists():
+                    worker_active = (time.time() - worker_log.stat().st_mtime) < 120
+            except Exception:
+                pass
+        self._bg_pipeline_running = worker_active or self._worker_pipeline_stuck
         self._bg_day_trading_running = worker_active
 
         pipeline_at = float(self._last_pipeline_at or 0)
@@ -1163,7 +1184,7 @@ class ETradeTraderApp(tk.Frame):
         )
         detail_body = tk.Frame(self._trades_detail_panel, bg=CARD_BG)
         detail_body.pack(fill=tk.BOTH, expand=True, padx=self._m.px(6), pady=(0, self._m.px(6)))
-        detail_body.rowconfigure(1, weight=1)
+        detail_body.rowconfigure(2, weight=1)
         detail_body.columnconfigure(0, weight=1)
 
         from position_chart import CandleChartWidget
@@ -1183,8 +1204,26 @@ class ETradeTraderApp(tk.Frame):
         self._trade_detail_chart.grid(row=0, column=0, sticky="ew", pady=(0, self._m.px(4)))
         self._trade_detail_chart.show_placeholder()
 
+        self._trade_detail_projection = tk.Label(
+            detail_body,
+            text="",
+            bg=CARD_BG,
+            fg=UP,
+            font=self._m.font(10, "bold"),
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=self._m.px(300),
+        )
+        self._trade_detail_projection.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=self._m.px(4),
+            pady=(0, self._m.px(4)),
+        )
+
         detail_text_frame = tk.Frame(detail_body, bg=CARD_BG)
-        detail_text_frame.grid(row=1, column=0, sticky="nsew")
+        detail_text_frame.grid(row=2, column=0, sticky="nsew")
         detail_text_frame.rowconfigure(0, weight=1)
         detail_text_frame.columnconfigure(0, weight=1)
         self._trade_detail_text = tk.Text(
@@ -2201,10 +2240,15 @@ class ETradeTraderApp(tk.Frame):
         ).pack(fill=tk.X, padx=self._m.px(10), pady=(self._m.px(8), self._m.px(4)))
         self._holdings_tree = self._make_tree(
             self._tab_holdings,
-            ("symbol", "current_pct", "target_pct", "current_usd", "target_usd", "drift"),
+            ("symbol", "current_pct", "target_pct", "projected", "current_usd", "target_usd", "drift"),
             {
-                "symbol": ("Symbol", 88), "current_pct": ("Current %", 92), "target_pct": ("Target %", 92),
-                "current_usd": ("Current $", 108), "target_usd": ("Target $", 108), "drift": ("Drift", 80),
+                "symbol": ("Symbol", 72),
+                "current_pct": ("Current %", 80),
+                "target_pct": ("Target %", 80),
+                "projected": ("Projected", 148),
+                "current_usd": ("Current $", 92),
+                "target_usd": ("Target $", 92),
+                "drift": ("Drift", 72),
             },
         )
         self._bind_trade_tree_select(self._holdings_tree, "portfolio")
@@ -2586,8 +2630,15 @@ class ETradeTraderApp(tk.Frame):
             gain_tags: tuple[str, ...] = ()
             if baseline is not None and value is not None:
                 try:
-                    delta = float(value) - float(baseline)
-                    pct = (delta / float(baseline) * 100) if float(baseline) else 0.0
+                    from account_profit import profit_at_point
+
+                    events = getattr(self, "_balance_external_events", None) or []
+                    delta, pct = profit_at_point(
+                        float(value),
+                        float(baseline),
+                        events,
+                        str(point.get("at") or ""),
+                    )
                     sign = "+" if delta >= 0 else ""
                     point_gain_amt = f"{sign}${delta:,.2f}"
                     point_gain_pct = f"{sign}{pct:.2f}%"
@@ -2661,13 +2712,23 @@ class ETradeTraderApp(tk.Frame):
             else:
                 self._set_card(self._balance_cash_card, "—")
 
-        gain_amt: float | None = None
-        gain_pct: float | None = growth.get("growth_pct")
-        if baseline is not None and latest is not None:
+        from account_profit import profit_metrics_for_account
+
+        profit = profit_metrics_for_account(growth, account_key)
+        external_events = list(profit.get("external_flow_events") or [])
+        net_flows = profit.get("net_external_flows") or 0.0
+        invested = profit.get("invested_capital")
+        self._balance_external_events = external_events
+        self._balance_invested_capital = float(invested) if invested is not None else None
+
+        gain_amt: float | None = profit.get("profit_amount")
+        gain_pct: float | None = profit.get("profit_pct")
+        if gain_amt is None and baseline is not None and latest is not None:
             try:
-                gain_amt = float(latest) - float(baseline)
-                if gain_pct is None and float(baseline) != 0:
-                    gain_pct = (gain_amt / float(baseline)) * 100
+                base = float(invested) if invested is not None else float(baseline) + float(net_flows)
+                gain_amt = float(latest) - base
+                if gain_pct is None and base != 0:
+                    gain_pct = (gain_amt / base) * 100
             except (TypeError, ValueError):
                 gain_amt = None
 
@@ -2693,12 +2754,21 @@ class ETradeTraderApp(tk.Frame):
             config_selected=config_selected,
             accounts_meta=accounts_meta,
         )
+        transfer_note = ""
+        if net_flows:
+            sign = "+" if float(net_flows) >= 0 else ""
+            transfer_note = f" · {sign}${float(net_flows):,.0f} transfers (excluded from gain)"
         if open_ts is not None and baseline is not None:
             self._balance_baseline_label.configure(
-                text=f"Account open: {open_ts.strftime('%b %d, %Y')} · ${float(baseline):,.2f}",
+                text=(
+                    f"Account open: {open_ts.strftime('%b %d, %Y')} · "
+                    f"${float(baseline):,.2f}{transfer_note}"
+                ),
             )
         elif baseline is not None:
-            self._balance_baseline_label.configure(text=f"Account open: ${float(baseline):,.2f}")
+            self._balance_baseline_label.configure(
+                text=f"Account open: ${float(baseline):,.2f}{transfer_note}",
+            )
         else:
             self._balance_baseline_label.configure(
                 text="Account open: — (recorded on first balance refresh)",
@@ -2714,6 +2784,7 @@ class ETradeTraderApp(tk.Frame):
                 self._balance_growth_chart.load_points(
                     self._balance_growth_points,
                     baseline=baseline,
+                    profit_invested_capital=self._balance_invested_capital,
                     account_id_key=account_key,
                     accounts_meta=accounts_meta,
                     config_selected=config_selected,
@@ -2778,8 +2849,35 @@ class ETradeTraderApp(tk.Frame):
         self._trade_analysis_context = context
         self._show_trade_analysis(symbol, context)
 
+    def _portfolio_holdings_map(self) -> dict[str, dict[str, Any]]:
+        try:
+            from strategy_engine import PORTFOLIO_FILE
+
+            data = json.loads(PORTFOLIO_FILE.read_text(encoding="utf-8"))
+            return {
+                str(row.get("symbol", "")).upper(): row
+                for row in (data.get("holdings") or [])
+                if isinstance(row, dict) and row.get("symbol")
+            }
+        except Exception:
+            return {}
+
+    def _holding_with_projection(
+        self,
+        holding: dict[str, Any] | None,
+        symbol: str,
+    ) -> dict[str, Any] | None:
+        from position_analysis import merge_portfolio_projection
+
+        portfolio_row = self._portfolio_holdings_map().get(symbol.upper())
+        return merge_portfolio_projection(holding, portfolio_row)
+
     def _show_trade_analysis(self, symbol: str, context: str) -> None:
-        from position_analysis import build_position_analysis, get_company_profile
+        from position_analysis import (
+            build_position_analysis,
+            get_company_profile,
+            projected_return_compact,
+        )
 
         holding: dict[str, Any] | None = None
         current: dict[str, Any] | None = None
@@ -2808,6 +2906,7 @@ class ETradeTraderApp(tk.Frame):
                     except Exception:
                         order = None
 
+        holding = self._holding_with_projection(holding, symbol)
         text = build_position_analysis(
             symbol,
             holding=holding,
@@ -2815,6 +2914,14 @@ class ETradeTraderApp(tk.Frame):
             order=order,
             day_position=day_pos,
         )
+        projection = projected_return_compact(holding)
+        if projection != "—":
+            self._trade_detail_projection.configure(
+                text=f"Projected return: {projection}",
+                fg=UP if projection.startswith("+") else DOWN if projection.startswith("-") else TEXT,
+            )
+        else:
+            self._trade_detail_projection.configure(text="")
         labels = {
             "portfolio": "Portfolio position",
             "swing_order": "Swing trade order",
@@ -3329,11 +3436,16 @@ class ETradeTraderApp(tk.Frame):
                     source="balance_refresh",
                 )
                 growth = get_account_growth()
-                if growth.get("growth_pct") is not None:
+                if growth.get("profit_pct") is not None or growth.get("growth_pct") is not None:
+                    pct = growth.get("profit_pct") if growth.get("profit_pct") is not None else growth["growth_pct"]
+                    transfer_note = ""
+                    if growth.get("net_external_flows"):
+                        transfer_note = f" (excludes ${float(growth['net_external_flows']):,.0f} transfers)"
                     self._schedule(
                         self._log_line,
-                        f"Account growth since baseline: {growth['growth_pct']:+.2f}% "
-                        f"(${growth.get('baseline_value', 0):,.0f} → ${growth.get('latest_value', 0):,.0f})",
+                        f"Account profit since open: {float(pct):+.2f}% "
+                        f"(${growth.get('baseline_value', 0):,.0f} → ${growth.get('latest_value', 0):,.0f})"
+                        f"{transfer_note}",
                     )
             except Exception:
                 pass
@@ -3562,11 +3674,15 @@ class ETradeTraderApp(tk.Frame):
                 self._bg_updated_label.configure(text="Automation paused")
             return
 
-        if self._bg_pipeline_running:
-            agents_text, agents_color = (
-                "Worker active…" if self._gui_defers_to_worker else "Running now…",
-                WARN,
-            )
+        if self._worker_pipeline_stuck:
+            stuck_label = self._worker_pipeline_progress or "Agent stalled"
+            agents_text, agents_color = f"Stuck · {stuck_label}", DOWN
+        elif self._bg_pipeline_running:
+            if self._gui_defers_to_worker and self._worker_pipeline_progress:
+                agents_text = self._worker_pipeline_progress
+            else:
+                agents_text = "Worker active…" if self._gui_defers_to_worker else "Running now…"
+            agents_text, agents_color = agents_text, WARN
         elif self._last_pipeline_at:
             from datetime import datetime
             ts = datetime.fromtimestamp(self._last_pipeline_at).strftime("%H:%M")
@@ -3700,9 +3816,11 @@ class ETradeTraderApp(tk.Frame):
             )
             self._show_setup_tab()
             return
+        self._connect_epoch += 1
+        epoch = self._connect_epoch
         self._set_busy(True)
         self._set_status("Opening E*TRADE authorization…", WARN)
-        threading.Thread(target=self._connect_thread, args=(config,), daemon=True).start()
+        threading.Thread(target=self._connect_thread, args=(config, epoch), daemon=True).start()
 
     def _show_oauth_verify_dialog(self, pending: OAuthPending) -> None:
         if self._oauth_dialog and self._oauth_dialog.winfo_exists():
@@ -3720,11 +3838,13 @@ class ETradeTraderApp(tk.Frame):
         self._log_line("Enter the verification code from E*TRADE in the dialog.")
 
         def _submit(code: str) -> None:
+            self._connect_epoch += 1
+            epoch = self._connect_epoch
             self._set_busy(True)
             self._set_status("Completing authorization…", WARN)
             threading.Thread(
                 target=self._finish_oauth_connect,
-                args=(pending, code),
+                args=(pending, code, epoch),
                 daemon=True,
             ).start()
 
@@ -3739,9 +3859,11 @@ class ETradeTraderApp(tk.Frame):
         )
         webbrowser.open(pending.authorize_url)
 
-    def _finish_oauth_connect(self, pending: OAuthPending, verifier: str) -> None:
+    def _finish_oauth_connect(self, pending: OAuthPending, verifier: str, epoch: int) -> None:
         try:
             tokens = self._run_network_task(finish_authorization, pending, verifier)
+            if epoch != self._connect_epoch:
+                return
             self._oauth_pending = None
             self._client = ETradeClient(pending.config, tokens)
             self._config = pending.config
@@ -3756,17 +3878,21 @@ class ETradeTraderApp(tk.Frame):
         finally:
             self._schedule(self._set_busy, False)
 
-    def _connect_thread(self, config: ETradeConfig | None = None) -> None:
+    def _connect_thread(self, config: ETradeConfig | None = None, epoch: int = 0) -> None:
         dialog_scheduled = False
         try:
             self._config = config or load_config(CONFIG_PATH)
             if self._config.use_oob:
                 pending = self._run_network_task(start_authorization, self._config)
+                if epoch != self._connect_epoch:
+                    return
                 self._schedule(self._show_oauth_verify_dialog, pending)
                 dialog_scheduled = True
                 return
 
             tokens = self._run_network_task(authenticate, self._config, open_browser=True)
+            if epoch != self._connect_epoch:
+                return
             self._client = ETradeClient(self._config, tokens)
             self._schedule(self._on_connected)
             self._schedule(self._set_status, "Connected to E*TRADE", UP)
@@ -3799,12 +3925,34 @@ class ETradeTraderApp(tk.Frame):
         self._refresh_account(silent=True)
         self._show_dashboard_tab()
 
+    def _clear_local_tokens(self) -> None:
+        if not self._config:
+            return
+        token_path = Path(self._config.token_path)
+        if token_path.exists():
+            token_path.unlink()
+
+    def _mark_offline(self, *, status: str = "Disconnected", log: str | None = None) -> None:
+        self._client = None
+        self._conn_status.configure(text="● Offline", fg=DOWN)
+        self._set_status(status, MUTED if status == "Disconnected" else DOWN)
+        if log:
+            self._log_line(log)
+        self._update_setup_progress()
+        self._update_bg_status()
+
     def _disconnect(self) -> None:
+        self._connect_epoch += 1
+        self._oauth_pending = None
         if self._config:
             try:
-                revoke_access_token(self._config)
+                tokens = load_tokens(self._config.token_path, self._config.sandbox)
+                if tokens:
+                    revoke_access_token(self._config, tokens)
+                else:
+                    self._clear_local_tokens()
             except Exception:
-                pass
+                self._clear_local_tokens()
         self._client = None
         self._accounts = []
         self._confirmed_account_idx = None
@@ -3856,11 +4004,19 @@ class ETradeTraderApp(tk.Frame):
                     WARN,
                 )
         except Exception as exc:
-            if silent:
-                self._schedule(self._log_line, f"Account refresh failed: {exc}")
+            msg = str(exc)
+            if "session expired" in msg.lower() or "token expired" in msg.lower():
+                self._schedule(
+                    self._mark_offline,
+                    status="Session expired — click Connect to sign in again",
+                    log=f"Account refresh failed: {msg}",
+                )
+            elif silent:
+                self._schedule(self._log_line, f"Account refresh failed: {msg}")
+                self._schedule(self._set_status, msg[:120], DOWN)
             else:
-                self._schedule(messagebox.showerror, "Refresh Failed", str(exc))
-            self._schedule(self._set_status, str(exc)[:120], DOWN)
+                self._schedule(messagebox.showerror, "Refresh Failed", msg)
+                self._schedule(self._set_status, msg[:120], DOWN)
         finally:
             self._refresh_running = False
             self._schedule(self._set_busy, False)
@@ -4135,9 +4291,12 @@ class ETradeTraderApp(tk.Frame):
         self._update_history_tab()
         self._update_attribution_tab()
 
+        from position_analysis import projected_return_compact
+
         self._tree_clear(self._holdings_tree)
         self._tree_clear(self._orders_tree)
 
+        portfolio_map = self._portfolio_holdings_map()
         pos_map = {p["symbol"].upper(): p for p in plan.current_positions}
         target_map = {h["symbol"].upper(): h for h in plan.target_holdings}
         symbols = sorted(set(pos_map) | set(target_map))
@@ -4145,8 +4304,9 @@ class ETradeTraderApp(tk.Frame):
 
         for sym in symbols:
             cur = pos_map.get(sym, {})
-            tgt = target_map.get(sym, {})
+            tgt = self._holding_with_projection(target_map.get(sym), sym) or {}
             cur_usd = float(cur.get("market_value", 0))
+            projection = projected_return_compact(tgt if tgt else portfolio_map.get(sym))
             tgt_usd = float(
                 tgt.get("allocation_usd")
                 or (plan.investable_usd * float(tgt.get("weight_pct", 0)) / 100)
@@ -4161,6 +4321,7 @@ class ETradeTraderApp(tk.Frame):
                     sym,
                     f"{cur_pct:.1f}%",
                     f"{tgt_pct:.1f}%",
+                    projection,
                     f"${cur_usd:,.0f}",
                     f"${tgt_usd:,.0f}",
                     f"{drift:+.1f}%",

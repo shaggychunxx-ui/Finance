@@ -704,10 +704,11 @@
         );
       } else {
         const env = String(c.environment || "");
-        let msg = `Desktop reachable · ${env || "E*TRADE not connected"}`;
-        if (env.startsWith("error:")) msg = `Status error · ${env.slice(6).trim()}`;
-        else if (env === "not_configured") msg = "Desktop reachable · E*TRADE not configured on PC";
-        setLinkState("connected", msg);
+        let msg = `Not connected · ${env || "E*TRADE offline on PC"}`;
+        if (env.startsWith("error:")) msg = `Not connected · ${env.slice(6).trim()}`;
+        else if (env === "not_configured") msg = "Not connected · E*TRADE not configured on PC";
+        else if (env) msg = `Not connected · ${env}`;
+        setLinkState("offline", msg);
       }
 
       const p = data.portfolio || {};

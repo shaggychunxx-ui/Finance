@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -18,6 +20,8 @@ from agents.enhancement import (
 ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / "output"
 CONFIG_PATH = ROOT / "etrade_config.json"
+
+QUOTE_BATCH_TIMEOUT_SEC = max(15, int(os.environ.get("FINANCE_ETRADE_QUOTE_TIMEOUT_SEC", "45")))
 
 DEFAULT_SETTINGS = {
     "enabled": True,
@@ -87,6 +91,7 @@ def fetch_etrade_quotes(
     symbols: list[str],
     *,
     detail_flag: str = "ALL",
+    batch_timeout_sec: int = QUOTE_BATCH_TIMEOUT_SEC,
 ) -> dict[str, dict[str, Any]]:
     if not symbols:
         return {}
@@ -95,14 +100,19 @@ def fetch_etrade_quotes(
     chunk_size = 25
     for i in range(0, len(symbols), chunk_size):
         batch = symbols[i : i + chunk_size]
+        pool = ThreadPoolExecutor(max_workers=1)
         try:
-            payload = client.get_quotes(
+            future = pool.submit(
+                client.get_quotes,
                 batch,
                 detail_flag=detail_flag,
                 skip_mini_options_check=True,
             )
-        except Exception:
+            payload = future.result(timeout=batch_timeout_sec)
+        except (FuturesTimeoutError, Exception):
             continue
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
         response = payload.get("QuoteResponse", payload)
         data = response.get("QuoteData")
         rows = data if isinstance(data, list) else [data] if data else []

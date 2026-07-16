@@ -396,6 +396,55 @@ def finalize_pipeline_cycle(
     return entry
 
 
+def refresh_growth_metrics(data: dict[str, Any]) -> dict[str, Any]:
+    """Recompute per-account profit and top-level growth fields excluding external transfers."""
+    from account_profit import profit_metrics_for_account
+
+    points = data.get("points") or []
+    accounts = data.setdefault("accounts", {})
+    if not isinstance(accounts, dict):
+        accounts = {}
+        data["accounts"] = accounts
+
+    account_keys: set[str] = set()
+    for row in points:
+        if not isinstance(row, dict):
+            continue
+        key = str(row.get("account_id_key") or "").strip()
+        if key:
+            account_keys.add(key)
+
+    for key in account_keys:
+        metrics = profit_metrics_for_account(data, key)
+        accounts[key] = {
+            **(accounts.get(key) or {}),
+            "net_external_flows": metrics.get("net_external_flows"),
+            "invested_capital": metrics.get("invested_capital"),
+            "profit_amount": metrics.get("profit_amount"),
+            "profit_pct": metrics.get("profit_pct"),
+            "external_flow_events": metrics.get("external_flow_events") or [],
+        }
+
+    primary = ""
+    if points and isinstance(points[-1], dict):
+        primary = str(points[-1].get("account_id_key") or "").strip()
+    if not primary and account_keys:
+        primary = sorted(account_keys)[0]
+
+    if primary:
+        metrics = profit_metrics_for_account(data, primary)
+        data["growth_pct"] = metrics.get("profit_pct")
+        data["profit_amount"] = metrics.get("profit_amount")
+        data["profit_pct"] = metrics.get("profit_pct")
+        data["net_external_flows"] = metrics.get("net_external_flows")
+        data["invested_capital"] = metrics.get("invested_capital")
+        if metrics.get("opening_balance") is not None:
+            data["baseline_value"] = metrics["opening_balance"]
+        if metrics.get("latest_value") is not None:
+            data["latest_value"] = metrics["latest_value"]
+    return data
+
+
 def record_account_value(
     total_value: float,
     *,
@@ -440,7 +489,7 @@ def record_account_value(
                 last["cash_buying_power"] = rounded_cash
             last["source"] = source
             data["latest_value"] = rounded_total
-            data["growth_pct"] = _growth_pct(data)
+            refresh_growth_metrics(data)
             data["updated_at"] = stamp
             _write_json(ACCOUNT_VALUES_FILE, data)
             return
@@ -458,7 +507,7 @@ def record_account_value(
     if data.get("baseline_value") is None:
         data["baseline_value"] = rounded_total
     data["latest_value"] = rounded_total
-    data["growth_pct"] = _growth_pct(data)
+    refresh_growth_metrics(data)
     data["updated_at"] = stamp
     _write_json(ACCOUNT_VALUES_FILE, data)
     try:
@@ -488,11 +537,15 @@ def get_account_growth() -> dict[str, Any]:
             "baseline_value": None,
             "latest_value": None,
             "growth_pct": None,
+            "profit_amount": None,
+            "profit_pct": None,
+            "net_external_flows": None,
+            "invested_capital": None,
             "points": [],
             "accounts": {},
         }
     data.setdefault("accounts", {})
-    return data
+    return refresh_growth_metrics(data)
 
 
 def set_account_opened_at(
@@ -640,6 +693,10 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
             "baseline_value": growth.get("baseline_value"),
             "latest_value": growth.get("latest_value"),
             "growth_pct": growth.get("growth_pct"),
+            "profit_amount": growth.get("profit_amount"),
+            "profit_pct": growth.get("profit_pct"),
+            "net_external_flows": growth.get("net_external_flows"),
+            "invested_capital": growth.get("invested_capital"),
             "is_declining": balance_penalties.get("is_declining"),
             "is_rising": balance_penalties.get("is_rising"),
             "trend": balance_penalties.get("trend"),

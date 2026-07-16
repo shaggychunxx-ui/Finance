@@ -1,0 +1,76 @@
+{
+  "comment": "Sister app config for short selling. Shares OAuth tokens with the long trader via token_path when left as etrade_tokens.json. Defaults are safer: dry_run true, conservative size limits.",
+  "consumer_key": "YOUR_CONSUMER_KEY",
+  "consumer_secret": "YOUR_CONSUMER_SECRET",
+  "sandbox": true,
+  "callback_url": "http://127.0.0.1:8765/callback",
+  "use_oob": true,
+  "token_path": "etrade_tokens.json",
+  "inherit_credentials_from": "etrade_config.json",
+  "selected_account": {
+    "account_id_key": "",
+    "display_label": "",
+    "confirmed_at": ""
+  },
+  "short_strategy": {
+    "enabled": true,
+    "cash_buffer_pct": 20.0,
+    "max_short_book_pct": 40.0,
+    "max_positions": 8,
+    "max_position_pct": 8.0,
+    "min_drift_pct": 2.0,
+    "min_trade_usd": 75.0,
+    "min_bearish_score": 0.15,
+    "min_confidence": 0.45,
+    "selection_mode": "relative",
+    "require_cluster_agreement": false,
+    "min_agreeing_clusters": 2,
+    "stop_loss_pct": 6.0,
+    "take_profit_pct": 10.0,
+    "use_stop_orders": true,
+    "place_protective_orders": true,
+    "hard_to_borrow_skip": true,
+    "min_price": 5.0,
+    "exclude_symbols": [],
+    "prefer_liquid": true
+  },
+  "short_day_trading": {
+    "enabled": true,
+    "interval_minutes": 5,
+    "max_positions": 2,
+    "capital_pct": 15.0,
+    "min_daily_drop_pct": 0.35,
+    "min_confidence": 0.55,
+    "take_profit_pct": 0.6,
+    "stop_loss_pct": 0.45,
+    "flatten_minutes_before_close": 20,
+    "max_trade_usd": 500.0,
+    "min_trade_usd": 75.0
+  },
+  "trade_guards": {
+    "enabled": true,
+    "pdt_equity_threshold_usd": 25000.0,
+    "pdt_max_day_trades_5d": 3,
+    "buying_power_buffer_pct": 5.0,
+    "require_margin_buying_power": true
+  },
+  "background_worker": {
+    "auto_execute": false,
+    "live_trading": false,
+    "day_trading": true,
+    "paused": false,
+    "dry_run": true,
+    "pipeline_interval_minutes": 5,
+    "plan_interval_minutes": 30,
+    "execute_min_interval_minutes": 20,
+    "day_trading_interval_minutes": 5,
+    "allow_off_hours_trading": false,
+    "reuse_long_agent_pipeline": true
+  },
+  "trading_tasks": {
+    "agents": "Reuse long-app agent research in output/ (or run Finance agents separately)",
+    "plan": "Every 30 min — rebuild short book from bearish agent scores",
+    "live_trading": "Every 20 min — SELL_SHORT / BUY_TO_COVER (market hours, when live enabled)",
+    "day_trading": "Every 5 min — intraday short entries/covers from 24h down signals"
+  }
+}

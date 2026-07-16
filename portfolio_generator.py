@@ -46,6 +46,7 @@ class TickerScore:
     notes: list[str] = field(default_factory=list)
     price: float | None = None
     projected_return_pct: float | None = None
+    projected_return_horizon: str | None = None
     confidence: float | None = None
     role: str = "equity"
     by_cluster: dict[str, float] = field(default_factory=dict)
@@ -77,6 +78,7 @@ def _add_score(
     *,
     price: float | None = None,
     projected_return_pct: float | None = None,
+    projected_return_horizon: str | None = None,
     confidence: float | None = None,
     role: str = "equity",
     horizon: str | None = None,
@@ -137,6 +139,10 @@ def _add_score(
         entry.price = price
     if projected_return_pct is not None:
         entry.projected_return_pct = projected_return_pct
+        if projected_return_horizon:
+            entry.projected_return_horizon = projected_return_horizon
+        elif horizon:
+            entry.projected_return_horizon = horizon
     if confidence is not None:
         entry.confidence = max(entry.confidence or 0, confidence)
     if role:
@@ -210,6 +216,7 @@ def _ingest_finance_opportunities(data: dict[str, Any], scores: dict[str, Ticker
             "finance",
             opp.get("rationale", opp.get("strategy", "")),
             projected_return_pct=opp.get("day_chg_pct"),
+            projected_return_horizon="today",
         )
 
 
@@ -376,6 +383,7 @@ def _small_account_profile(
     return {
         "investable_usd": round(investable, 2),
         "target_holdings": target_holdings,
+        "min_holdings": min_holdings,
         "max_share_price": round(max_share_price, 2),
         "min_trade_usd": min_trade,
     }
@@ -417,6 +425,7 @@ def _ingest_affordable_movers(
                 note,
                 price=px,
                 projected_return_pct=float(day_chg) if day_chg is not None else None,
+                projected_return_horizon="today" if day_chg is not None else None,
                 role="equity",
             )
 
@@ -453,6 +462,7 @@ def _ingest_affordable_predictions(
                 note,
                 price=px,
                 projected_return_pct=ret,
+                projected_return_horizon=horizon,
                 confidence=conf,
             )
 
@@ -512,6 +522,42 @@ def _cap_weights(weights: list[float], max_pct: float, min_pct: float) -> list[f
     capped = [min(max_pct, max(min_pct, w)) for w in weights]
     total = sum(capped)
     return [round(w / total * 100, 2) for w in capped] if total else capped
+
+
+def _merge_fusion_clusters(scores: dict[str, TickerScore], output_dir: Path) -> None:
+    """Blend Market Predictor fused cluster breakdown into portfolio scores."""
+    try:
+        from agents.market_predictor import _collect_ticker_scores
+    except Exception:
+        return
+
+    try:
+        fused = _collect_ticker_scores(output_dir)
+    except Exception:
+        return
+
+    for sym, row in fused.items():
+        clusters = row.get("by_cluster") or {}
+        if not clusters:
+            continue
+        entry = scores.setdefault(sym, TickerScore(symbol=sym))
+        for cluster, value in clusters.items():
+            try:
+                entry.by_cluster[cluster] = entry.by_cluster.get(cluster, 0.0) + float(value)
+            except (TypeError, ValueError):
+                continue
+        for src in row.get("sources") or []:
+            entry.sources.add(str(src))
+
+
+def _minimum_holdings_required(
+    *,
+    holdings: int,
+    small: dict[str, Any] | None,
+) -> int:
+    if small:
+        return max(3, int(small.get("min_holdings", 3)))
+    return max(6, holdings // 2)
 
 
 def generate_portfolio(
@@ -604,6 +650,7 @@ def generate_portfolio(
                 ticker.sources.add("profit-optimizer")
                 if profile.composite_return_pct > 0:
                     ticker.projected_return_pct = profile.composite_return_pct
+                    ticker.projected_return_horizon = "composite"
                 ticker.notes.append(
                     f"Profit d/w/m/y: {profile.horizon_returns.get('daily', 0):+.1f}%/"
                     f"{profile.horizon_returns.get('weekly', 0):+.1f}%/"
@@ -616,14 +663,29 @@ def generate_portfolio(
     if small_account:
         _apply_affordable_score_boost(scores, small=small_account, notional=float(notional_usd or 0))
 
+    _merge_fusion_clusters(scores, output_dir)
+
     ranked = sorted(scores.values(), key=lambda t: t.score, reverse=True)
+    gate_meta: dict[str, Any] = {"enabled": False}
     if agent_controlled:
         positive = [t for t in ranked if t.score > 0 and _is_agent_pick(t, small=small_account)]
+        pre_gate = list(positive)
         try:
-            from trading_gate import filter_tickers_for_trading, load_trading_gate_settings
+            from trading_gate import (
+                filter_tickers_for_trading,
+                load_trading_gate_settings,
+                trading_gate_summary_for_portfolio,
+            )
 
             gate_settings = load_trading_gate_settings()
-            positive = filter_tickers_for_trading(positive, settings=gate_settings)
+            gated = filter_tickers_for_trading(positive, settings=gate_settings)
+            gate_meta = trading_gate_summary_for_portfolio(gated)
+            gate_meta["pre_gate_candidates"] = len(pre_gate)
+            if gated:
+                positive = gated
+            elif pre_gate:
+                positive = pre_gate
+                gate_meta["fallback"] = "used_pre_gate_candidates"
         except Exception:
             pass
     else:
@@ -631,7 +693,8 @@ def generate_portfolio(
     selected = _select_holdings(positive, holdings=holdings, small=small_account)
     _backfill_etrade_prices(output_dir, selected)
 
-    if len(selected) < max(6, holdings // 2):
+    min_required = _minimum_holdings_required(holdings=holdings, small=small_account)
+    if len(selected) < min_required:
         raise ValueError(
             "Not enough bullish signals to build a portfolio. "
             "Run Market Predictor and key agents (markets, finance, datascience) first."
@@ -654,6 +717,8 @@ def generate_portfolio(
             row["price"] = ticker.price
         if ticker.projected_return_pct is not None:
             row["projected_return_pct"] = round(ticker.projected_return_pct, 2)
+        if ticker.projected_return_horizon:
+            row["projected_return_horizon"] = ticker.projected_return_horizon
         if ticker.confidence is not None:
             row["confidence"] = round(ticker.confidence, 3)
         if ticker.by_cluster:
@@ -721,19 +786,23 @@ def generate_portfolio(
             f"Regime: {regime['label']} ({regime['posture']}) — risk-on {regime['risk_on_score']:.2f}",
             f"{len(holdings_out)} holdings, max position {MAX_WEIGHT_PCT:.0f}%",
         ]
-    if growth.get("growth_pct") is not None:
-        recommendations.append(f"Account growth since baseline: {growth['growth_pct']:+.2f}%")
+    profit_pct = growth.get("profit_pct") if growth.get("profit_pct") is not None else growth.get("growth_pct")
+    if profit_pct is not None:
+        note = f"Account profit since open: {profit_pct:+.2f}%"
+        if growth.get("net_external_flows"):
+            note += f" (excludes ${float(growth['net_external_flows']):,.0f} transfers)"
+        recommendations.append(note)
     if regime["posture"] == "risk-off":
         recommendations.append("Elevated defensive allocation — favor quality and hedges")
     elif regime["posture"] == "risk-on":
         recommendations.append("Risk-on tilt — growth and momentum sleeves overweighted")
 
-    trading_gate_meta: dict[str, Any] = {}
+    trading_gate_meta: dict[str, Any] = dict(gate_meta) if agent_controlled else {}
     if agent_controlled:
         try:
             from trading_gate import load_trading_gate_settings
 
-            trading_gate_meta = load_trading_gate_settings()
+            trading_gate_meta.update(load_trading_gate_settings())
             trading_gate_meta["holdings_passed"] = sum(
                 1 for h in holdings_out if (h.get("trading_gate") or {}).get("passes")
             )

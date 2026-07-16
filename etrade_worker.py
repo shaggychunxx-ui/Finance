@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import traceback
@@ -35,6 +36,8 @@ STATE_FILE = OUTPUT / "etrade_worker_state.json"
 LOCK_FILE = OUTPUT / "etrade_worker.lock"
 CONFIG_PATH = ROOT / "etrade_config.json"
 SERVICE_CHECK_SECONDS = 60
+SERVICE_MUTEX_NAME = "Local\\FinanceETradeWorkerService"
+_service_mutex_handle: int | None = None
 
 DEFAULT_WORKER = {
     "auto_execute": True,
@@ -43,8 +46,10 @@ DEFAULT_WORKER = {
     "dry_run": False,
     "paused": False,
     "pipeline_interval_minutes": 5,
+    "pipeline_off_hours_interval_minutes": 45,
     "accuracy_interval_minutes": 5,
-    "pipeline_market_hours_only": True,
+    "accuracy_off_hours_interval_minutes": 30,
+    "pipeline_market_hours_only": False,
     "plan_interval_minutes": 30,
     "execute_min_interval_minutes": 15,
     "day_trading_interval_minutes": 5,
@@ -104,12 +109,41 @@ def gui_should_defer_to_worker(config_path: Path = CONFIG_PATH) -> bool:
     return False
 
 
+def _pipeline_runs_off_hours(settings: dict[str, Any]) -> bool:
+    return not bool(settings.get("pipeline_market_hours_only", True))
+
+
+def _effective_pipeline_interval_minutes(
+    settings: dict[str, Any],
+    *,
+    market_open: bool,
+) -> int:
+    if market_open:
+        return max(1, int(settings.get("pipeline_interval_minutes", 5)))
+    return max(15, int(settings.get("pipeline_off_hours_interval_minutes", 45)))
+
+
+def _effective_accuracy_interval_minutes(
+    settings: dict[str, Any],
+    *,
+    market_open: bool,
+) -> int:
+    if market_open:
+        return max(1, int(settings.get("accuracy_interval_minutes", 5)))
+    return max(10, int(settings.get("accuracy_off_hours_interval_minutes", 30)))
+
+
 def _next_service_sleep_seconds(config_path: Path = CONFIG_PATH) -> float:
     """Sleep until the next task is due instead of waking every minute."""
     settings = worker_settings(config_path)
     state = load_worker_state()
     now = time.time()
+    market_open = is_us_market_open()
     waits: list[float] = [30.0]
+    interval_overrides = {
+        "last_pipeline_at": _effective_pipeline_interval_minutes(settings, market_open=market_open),
+        "last_accuracy_at": _effective_accuracy_interval_minutes(settings, market_open=market_open),
+    }
     for last_key, interval_key, default_min in (
         ("last_pipeline_at", "pipeline_interval_minutes", 5),
         ("last_accuracy_at", "accuracy_interval_minutes", 15),
@@ -118,7 +152,8 @@ def _next_service_sleep_seconds(config_path: Path = CONFIG_PATH) -> float:
         ("last_day_trade_at", "day_trading_interval_minutes", 5),
     ):
         last = state.get(last_key)
-        interval = max(60.0, int(settings.get(interval_key, default_min)) * 60)
+        interval_min = interval_overrides.get(last_key, int(settings.get(interval_key, default_min)))
+        interval = max(60.0, interval_min * 60)
         if last:
             waits.append(max(0.0, interval - (now - float(last))))
         else:
@@ -133,6 +168,7 @@ def _log(msg: str) -> None:
     print(line, flush=True)
     with LOG_FILE.open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
+        handle.flush()
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -183,23 +219,210 @@ def plan_order_signature(plan: StrategyPlan) -> str:
     return repr(sorted(items))
 
 
+def _service_mutex_available() -> bool:
+    if os.name != "nt":
+        return not service_already_running()
+    import ctypes
+
+    ERROR_ALREADY_EXISTS = 183
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, SERVICE_MUTEX_NAME)
+    if not handle:
+        return False
+    already = ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS
+    ctypes.windll.kernel32.CloseHandle(handle)
+    return not already
+
+
 def acquire_worker_lock(max_age_seconds: int = 7200) -> bool:
+    """One-shot worker lock — defers to the long-running service when it is active."""
+    del max_age_seconds  # PID-based; age only used for stale lock recovery below.
+    if service_already_running():
+        _log("Background service already running — skipping one-shot worker cycle.")
+        return False
+    pid = _read_service_lock_pid()
+    if _pid_is_running(pid) and pid != os.getpid():
+        _log(f"Worker already running (pid {pid}) — skipping this run.")
+        return False
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    if LOCK_FILE.exists():
-        age = time.time() - LOCK_FILE.stat().st_mtime
-        if age < max_age_seconds:
-            _log(f"Worker lock active ({int(age)}s old) - skipping this run.")
-            return False
-        _log("Stale worker lock found - taking over.")
-    LOCK_FILE.write_text(str(int(time.time())), encoding="utf-8")
+    LOCK_FILE.write_text(str(os.getpid()), encoding="utf-8")
     return True
 
 
 def release_worker_lock() -> None:
     try:
+        if LOCK_FILE.exists() and _read_service_lock_pid() == os.getpid():
+            LOCK_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _read_service_lock_pid() -> int:
+    if not LOCK_FILE.exists():
+        return 0
+    try:
+        return int(LOCK_FILE.read_text(encoding="utf-8").strip().split()[0])
+    except (OSError, ValueError):
+        return 0
+
+
+def _clear_stale_worker_lock() -> None:
+    """Remove lock file left behind when a prior worker process died."""
+    pid = _read_service_lock_pid()
+    if pid > 0 and _pid_is_running(pid):
+        return
+    try:
         LOCK_FILE.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def service_already_running() -> bool:
+    """True when another headless worker service process holds the lock."""
+    _clear_stale_worker_lock()
+    return _pid_is_running(_read_service_lock_pid())
+
+
+def acquire_service_lock() -> bool:
+    global _service_mutex_handle
+    _clear_stale_worker_lock()
+    if os.name == "nt":
+        import ctypes
+
+        ERROR_ALREADY_EXISTS = 183
+        handle = ctypes.windll.kernel32.CreateMutexW(None, False, SERVICE_MUTEX_NAME)
+        if not handle:
+            return False
+        if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            live_pid = _read_service_lock_pid()
+            if _pid_is_running(live_pid):
+                return False
+            _clear_stale_worker_lock()
+            handle = ctypes.windll.kernel32.CreateMutexW(None, False, SERVICE_MUTEX_NAME)
+            if not handle or ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+                if handle:
+                    ctypes.windll.kernel32.CloseHandle(handle)
+                return False
+        _service_mutex_handle = int(handle)
+    pid = _read_service_lock_pid()
+    if _pid_is_running(pid) and pid != os.getpid():
+        return False
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    LOCK_FILE.write_text(str(os.getpid()), encoding="utf-8")
+    return True
+
+
+def release_service_lock() -> None:
+    global _service_mutex_handle
+    release_worker_lock()
+    if os.name == "nt" and _service_mutex_handle:
+        import ctypes
+
+        ctypes.windll.kernel32.CloseHandle(_service_mutex_handle)
+        _service_mutex_handle = None
+
+
+def _touch_service_lock() -> None:
+    if LOCK_FILE.exists() and _read_service_lock_pid() == os.getpid():
+        try:
+            LOCK_FILE.write_text(str(os.getpid()), encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _parse_log_stamp(line: str) -> float | None:
+    if not line.startswith("["):
+        return None
+    end = line.find("]")
+    if end <= 1:
+        return None
+    stamp = line[1:end]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%H:%M:%S"):
+        try:
+            dt = datetime.strptime(stamp, fmt)
+            if fmt == "%H:%M:%S":
+                now = datetime.now()
+                dt = dt.replace(year=now.year, month=now.month, day=now.day)
+            return dt.timestamp()
+        except ValueError:
+            continue
+    return None
+
+
+def worker_pipeline_status(*, stuck_after_sec: int = 600) -> dict[str, Any]:
+    """Infer whether the headless worker pipeline is running, stuck, or idle."""
+    state = load_worker_state()
+    lines: list[str] = []
+    log_mtime = 0.0
+    if LOG_FILE.exists():
+        try:
+            lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+            log_mtime = LOG_FILE.stat().st_mtime
+        except OSError:
+            pass
+
+    tail = lines[-200:]
+    complete_idx: int | None = None
+    start_idx: int | None = None
+    last_agent_line = ""
+    for index in range(len(tail) - 1, -1, -1):
+        line = tail[index]
+        if complete_idx is None and "Pipeline complete" in line:
+            complete_idx = index
+        if start_idx is None and "Running Finance agent pipeline" in line:
+            start_idx = index
+        if not last_agent_line and "Agent " in line and "/" in line and ": " in line:
+            last_agent_line = line
+
+    progress = ""
+    if last_agent_line:
+        progress = last_agent_line.split("] ", 1)[-1] if "] " in last_agent_line else last_agent_line
+
+    active = False
+    if start_idx is not None and (complete_idx is None or start_idx > complete_idx):
+        active = True
+
+    if state.get("pipeline_active"):
+        active = True
+        progress = str(state.get("pipeline_progress") or progress)
+
+    log_age = (time.time() - log_mtime) if log_mtime else None
+    progress_at = float(state.get("pipeline_progress_at") or 0)
+    progress_age = (time.time() - progress_at) if progress_at else None
+    stale_for = max(
+        log_age or 0.0,
+        progress_age or 0.0,
+    )
+    stuck = bool(active and stale_for >= stuck_after_sec)
+    if stuck:
+        active = False
+
+    return {
+        "active": active,
+        "stuck": stuck,
+        "progress": progress,
+        "log_age_sec": log_age,
+        "progress_age_sec": progress_age,
+    }
 
 
 def _interval_due(last_at: Any, interval_minutes: int, *, force: bool = False) -> bool:
@@ -356,26 +579,37 @@ def _pipeline_benchmark_profile(
     settings = _pipeline_benchmark_settings(config_path)
     if not settings.get("enabled", True):
         return "skip"
-    if is_us_market_open(now) and not settings.get("run_during_market_hours", False):
-        return "skip"
-    return "routine"
+    if is_us_market_open(now):
+        if not settings.get("run_during_market_hours", False):
+            return "skip"
+        return "routine"
+    return "off_hours"
 
 
 def _run_live_scoring(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bool:
     """Score matured predictions between full pipeline runs."""
     settings = worker_settings(config_path)
+    market_open = is_us_market_open()
     try:
         from live_accuracy import load_live_accuracy_settings
 
         live_settings = load_live_accuracy_settings(config_path)
-        interval = int(
-            live_settings.get(
-                "accuracy_interval_minutes",
-                settings.get("accuracy_interval_minutes", 15),
+        if market_open:
+            interval = int(
+                live_settings.get(
+                    "accuracy_interval_minutes",
+                    settings.get("accuracy_interval_minutes", 15),
+                )
             )
-        )
+        else:
+            interval = int(
+                live_settings.get(
+                    "accuracy_off_hours_interval_minutes",
+                    settings.get("accuracy_off_hours_interval_minutes", 30),
+                )
+            )
     except Exception:
-        interval = int(settings.get("accuracy_interval_minutes", 15))
+        interval = _effective_accuracy_interval_minutes(settings, market_open=market_open)
 
     state = load_worker_state()
     if not _interval_due(state.get("last_accuracy_at"), interval, force=force):
@@ -406,10 +640,15 @@ def _run_pipeline(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bo
     settings = worker_settings(config_path)
     calibration_due = _daily_calibration_due(state, config_path=config_path)
     market_open = is_us_market_open()
-    if not force and not calibration_due and not market_open:
-        _log("Pipeline skipped - US market closed (daily calibration already done today).")
+    off_hours_ok = _pipeline_runs_off_hours(settings)
+    if not force and not calibration_due and not market_open and not off_hours_ok:
+        _log("Pipeline skipped - US market closed (off-hours pipeline disabled).")
         return False
-    if not _interval_due(state.get("last_pipeline_at"), settings["pipeline_interval_minutes"], force=force):
+    interval_min = _effective_pipeline_interval_minutes(
+        settings,
+        market_open=market_open or calibration_due,
+    )
+    if not _interval_due(state.get("last_pipeline_at"), interval_min, force=force):
         if not (force or calibration_due):
             _log("Pipeline skipped - not due yet.")
             return False
@@ -423,16 +662,48 @@ def _run_pipeline(*, force: bool = False, config_path: Path = CONFIG_PATH) -> bo
         _log("Daily calibration due — running full walk-forward backtest.")
     elif benchmark_profile == "skip":
         _log("Intraday pipeline — agents and predictor only (backtest skipped during market hours).")
+    elif not market_open:
+        _log(
+            f"Off-hours pipeline — agents, predictions, anomaly monitoring "
+            f"({benchmark_profile} backtest, every {interval_min} min)."
+        )
     else:
         _log(f"Pipeline backtest profile: {benchmark_profile}.")
 
     _log("Running Finance agent pipeline...")
-    ok = run_agent_pipeline(
-        on_progress=_log,
-        check_remote=False,
-        reload_runners=True,
-        benchmark_profile=benchmark_profile,
-    )
+    state["pipeline_active"] = True
+    state["pipeline_progress"] = "Starting agents…"
+    state["pipeline_progress_at"] = time.time()
+    save_worker_state(state)
+
+    def _pipeline_progress(msg: str) -> None:
+        _log(msg)
+        if "Running Finance agent pipeline" in msg or msg.startswith("Agent "):
+            live = load_worker_state()
+            live["pipeline_active"] = True
+            live["pipeline_progress"] = msg
+            live["pipeline_progress_at"] = time.time()
+            save_worker_state(live)
+
+    ok = 0
+    try:
+        ok = run_agent_pipeline(
+            on_progress=_pipeline_progress,
+            check_remote=False,
+            reload_runners=False,
+            benchmark_profile=benchmark_profile,
+        )
+    except Exception as exc:
+        _log(f"Pipeline error: {exc}")
+        _log(traceback.format_exc())
+    finally:
+        state = load_worker_state()
+        state.pop("pipeline_active", None)
+        state.pop("pipeline_progress", None)
+        state.pop("pipeline_progress_at", None)
+        save_worker_state(state)
+
+    state = load_worker_state()
     state["last_pipeline_at"] = time.time()
     if calibration_due:
         tz = ZoneInfo(
@@ -524,7 +795,11 @@ def _run_plan_build(client: ETradeClient, *, force: bool = False, config_path: P
 
     balance = client.get_balance(acct["account_id_key"])
     notional = balance.get("total_account_value") or None
-    portfolio = generate_portfolio(OUTPUT, notional_usd=notional)
+    try:
+        portfolio = generate_portfolio(OUTPUT, notional_usd=notional)
+    except ValueError as exc:
+        _log(f"Strategy plan skipped — {exc}")
+        return None
     save_portfolio(portfolio, PORTFOLIO_FILE)
     plan = build_strategy_plan(
         client,
@@ -764,16 +1039,37 @@ def run_live_trading_cycle(*, force: bool = False, config_path: Path = CONFIG_PA
     return exit_code
 
 
+def _clear_stale_pipeline_state() -> None:
+    """Drop orphaned in-progress flags when a prior worker died mid-pipeline."""
+    state = load_worker_state()
+    if not state.get("pipeline_active"):
+        return
+    status = worker_pipeline_status()
+    _log(f"Clearing stale pipeline state — last progress: {status.get('progress') or 'unknown'}")
+    state.pop("pipeline_active", None)
+    state.pop("pipeline_progress", None)
+    state.pop("pipeline_progress_at", None)
+    save_worker_state(state)
+
+
 def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
+    if not acquire_service_lock():
+        _log(f"Worker service already running (pid {_read_service_lock_pid()}).")
+        return 0
+
+    _clear_stale_pipeline_state()
     settings = worker_settings(config_path)
     pipeline_min = int(settings.get("pipeline_interval_minutes", 5))
+    off_hours_min = int(settings.get("pipeline_off_hours_interval_minutes", 45))
     plan_min = int(settings.get("plan_interval_minutes", 30))
     execute_min = int(settings.get("execute_min_interval_minutes", 15))
     day_min = int(settings.get("day_trading_interval_minutes", 5))
     live = "ON" if settings.get("live_trading", True) and not settings.get("dry_run") else "OFF"
     day_on = "ON" if settings.get("day_trading", True) else "OFF"
+    off_hours = "ON" if _pipeline_runs_off_hours(settings) else "OFF"
     _log(
-        f"Background service started - agents every {pipeline_min} min, "
+        f"Background service started - agents every {pipeline_min} min (market) / "
+        f"{off_hours_min} min off-hours ({off_hours}), "
         f"plan every {plan_min} min, live trading every {execute_min} min ({live}), "
         f"day trading every {day_min} min ({day_on})."
     )
@@ -782,31 +1078,38 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
     client: ETradeClient | None = None
     client_refreshed_at = 0.0
 
-    while True:
-        try:
-            if automation_paused(config_path):
-                time.sleep(120)
-                continue
+    try:
+        while True:
+            try:
+                if automation_paused(config_path):
+                    time.sleep(120)
+                    continue
 
-            if not client or (time.time() - client_refreshed_at) > 1800:
-                client = _connect_client(config_path)
-                client_refreshed_at = time.time()
+                if not client or (time.time() - client_refreshed_at) > 1800:
+                    client = _connect_client(config_path)
+                    client_refreshed_at = time.time()
 
-            _run_pipeline(config_path=config_path)
-            _run_live_scoring(config_path=config_path)
+                _run_pipeline(config_path=config_path)
+                _run_live_scoring(config_path=config_path)
 
-            if client:
-                _run_plan_build(client, config_path=config_path)
-                _run_live_execute(client, config_path=config_path)
-                _run_day_trading(client, config_path=config_path)
-            else:
-                _log("Plan/live/day trading waiting for E*TRADE connection.")
-        except Exception as exc:
-            _log(f"Service loop error: {exc}")
-            _log(traceback.format_exc())
-            client = None
+                if client:
+                    _run_plan_build(client, config_path=config_path)
+                    _run_live_execute(client, config_path=config_path)
+                    _run_day_trading(client, config_path=config_path)
+                else:
+                    _log("Plan/live/day trading waiting for E*TRADE connection.")
+            except Exception as exc:
+                _log(f"Service loop error: {exc}")
+                _log(traceback.format_exc())
+                client = None
 
-        time.sleep(_next_service_sleep_seconds(config_path))
+            _touch_service_lock()
+            sleep_sec = _next_service_sleep_seconds(config_path)
+            _log(f"Service heartbeat — sleeping {sleep_sec:.0f}s (pid {os.getpid()}).")
+            time.sleep(sleep_sec)
+    finally:
+        _log(f"Background service stopping (pid {os.getpid()}).")
+        release_service_lock()
 
 
 def main() -> int:
