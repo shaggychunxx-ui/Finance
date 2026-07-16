@@ -170,6 +170,38 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "day-trading-microstructure",
+        "agent": "Day Trading Market Microstructure Expert",
+        "primary_output": "day_trading_microstructure.json",
+        "sidecars": ["day_trading_playbook.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
+        "command": "portfolio-frameworks",
+        "agent": "Portfolio Building Frameworks Expert",
+        "primary_output": "portfolio_frameworks.json",
+        "sidecars": ["portfolio_frameworks_catalog.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
+        "command": "long-squeeze-synergy",
+        "agent": "Structural Synergy Expert (Long Squeezes & Institutional Tailwinds)",
+        "primary_output": "long_squeeze_synergy.json",
+        "sidecars": ["structural_catalysts.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
+        "command": "risk-protection",
+        "agent": "Elite Risk & Capital Protection Protocols Expert",
+        "primary_output": "risk_protection.json",
+        "sidecars": ["risk_protocols.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

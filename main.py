@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agents.datascience import run_datascience_analysis
+from agents.day_trading_microstructure import run_day_trading_microstructure_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
@@ -20,12 +21,15 @@ from agents.financial_data import run_financial_data_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
+from agents.long_squeeze_synergy import run_long_squeeze_synergy_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
+from agents.portfolio_frameworks import run_portfolio_frameworks_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
+from agents.risk_protection import run_risk_protection_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
@@ -929,6 +933,129 @@ def _print_order_execution(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_day_trading_microstructure(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  ORB breakouts: {metrics.get('orb_breakout_count')}  |  "
+        f"Iceberg/absorption: {metrics.get('iceberg_absorption_count')}  |  "
+        f"VWAP stretched: {metrics.get('vwap_stretched_count')}"
+    )
+    print()
+    print("  Symbol microstructure:")
+    for s in data.get("symbol_microstructure", [])[:8]:
+        print(
+            f"    • {s.get('symbol')} [{s.get('liquidity_tier')}]: "
+            f"ORB {s.get('orb_signal')} | VWAP {s.get('vwap_signal')} (z={s.get('vwap_zscore')})"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_portfolio_frameworks(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    split = data.get("core_satellite_split", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Core-satellite split: {split.get('core_pct')}% core / {split.get('satellite_pct')}% satellite")
+    print()
+    print("  Factor readings:")
+    for r in data.get("factor_readings", []):
+        print(f"    • {r.get('symbol')} ({r.get('label')}): 6mo {r.get('trailing_return_pct')}%, vol {r.get('annualized_vol_pct')}%")
+    print()
+    print("  Risk-parity weights:")
+    for w in data.get("risk_parity_weights", []):
+        print(
+            f"    • {w.get('symbol')} ({w.get('label')}): {w.get('risk_parity_weight_pct')}% "
+            f"(traditional {w.get('traditional_weight_pct')}%)"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_long_squeeze_synergy(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Gamma-squeeze setups: {metrics.get('gamma_squeeze_count')}  |  "
+        f"PEAD-drift setups: {metrics.get('pead_drift_count')}"
+    )
+    print()
+    print("  Candidates:")
+    for c in data.get("candidates", [])[:8]:
+        flags = []
+        if c.get("gamma_squeeze_flag"):
+            flags.append("GAMMA")
+        if c.get("pead_drift_flag"):
+            flags.append("PEAD")
+        print(
+            f"    • {c.get('symbol')} ({c.get('label')}): 1mo {c.get('one_month_return_pct')}%, "
+            f"3mo {c.get('three_month_return_pct')}%{' [' + ', '.join(flags) + ']' if flags else ''}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_risk_protection(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Account equity: ${meta.get('account_equity', 0):,.0f}")
+    print()
+    print("  Position size guards (1% rule):")
+    for g in data.get("position_size_guards", [])[:8]:
+        print(
+            f"    • {g.get('symbol')} ({g.get('label')}): stop ${g.get('stop_width')} -> "
+            f"max {g.get('max_shares')} shares (${g.get('max_risk_dollars')} at risk)"
+        )
+    print()
+    print("  Kelly readings:")
+    for k in data.get("kelly_readings", [])[:8]:
+        print(
+            f"    • {k.get('symbol')} ({k.get('label')}): win rate {k.get('win_rate', 0):.1%}, "
+            f"Kelly f*={k.get('kelly_fraction')}"
+        )
+    print()
+    print("  Sector correlations:")
+    for c in data.get("sector_correlations", [])[:8]:
+        cap = " [CAPPED]" if c.get("capped") else ""
+        print(f"    • {c.get('sector_a')} / {c.get('sector_b')}: {c.get('correlation')}{cap}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1080,6 +1207,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
+    "day-trading-microstructure": _print_day_trading_microstructure,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
     "events": _print_events,
@@ -1088,13 +1216,16 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
+    "long-squeeze-synergy": _print_long_squeeze_synergy,
     "markets": _print_markets,
     "market-predictor": _print_market_predictor,
     "meteorology": _print_meteorology,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
+    "portfolio-frameworks": _print_portfolio_frameworks,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
+    "risk-protection": _print_risk_protection,
     "sales-analytics": _print_sales_analytics,
     "theoretical-probability": _print_theoretical_probability,
     "transportation": _print_transportation,
@@ -1106,6 +1237,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
+    "day-trading-microstructure": run_day_trading_microstructure_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
     "events": run_events_analysis,
@@ -1114,13 +1246,16 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
+    "long-squeeze-synergy": run_long_squeeze_synergy_analysis,
     "markets": run_markets_analysis,
     "market-predictor": run_market_predictor_analysis,
     "meteorology": run_meteorology_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
+    "portfolio-frameworks": run_portfolio_frameworks_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
+    "risk-protection": run_risk_protection_analysis,
     "sales-analytics": run_sales_analytics_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "transportation": run_transportation_analysis,
@@ -1224,6 +1359,22 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "day-trading-microstructure":
+                catalog = args.output.parent / "day_trading_playbook.json"
+                if catalog.exists():
+                    print(f"  Day trading playbook catalog: {catalog}")
+            if args.agent == "portfolio-frameworks":
+                catalog = args.output.parent / "portfolio_frameworks_catalog.json"
+                if catalog.exists():
+                    print(f"  Portfolio frameworks catalog: {catalog}")
+            if args.agent == "long-squeeze-synergy":
+                catalog = args.output.parent / "structural_catalysts.json"
+                if catalog.exists():
+                    print(f"  Structural catalysts catalog: {catalog}")
+            if args.agent == "risk-protection":
+                catalog = args.output.parent / "risk_protocols.json"
+                if catalog.exists():
+                    print(f"  Risk protocols catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():

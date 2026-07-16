@@ -26,6 +26,10 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Day Trading Market Microstructure Expert** | `run.bat day-trading-microstructure` | Yahoo Finance (1mo daily OHLCV) |
+| **Portfolio Building Frameworks Expert** | `run.bat portfolio-frameworks` | Yahoo Finance (6mo daily history) |
+| **Structural Synergy Expert (Long Squeezes)** | `run.bat long-squeeze-synergy` | Yahoo Finance (3mo daily OHLCV) |
+| **Elite Risk & Capital Protection Protocols Expert** | `run.bat risk-protection` | Yahoo Finance (3mo daily OHLCV) |
 
 ## Quick start
 
@@ -50,6 +54,10 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat day-trading-microstructure
+run.bat portfolio-frameworks
+run.bat long-squeeze-synergy
+run.bat risk-protection
 ```
 
 Or with options:
@@ -399,6 +407,75 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Day Trading Market Microstructure Expert
+
+Scans a liquid day-trading watchlist for intra-day tactics approximated from
+daily OHLCV:
+
+- **Opening Range Breakout (ORB)** — rolling Donchian channel breakout/breakdown, volume-confirmed
+- **Order Flow & Tape Reading** — volume z-score vs. price displacement as an iceberg/absorption proxy
+- **VWAP Mean Reversion & Continuation** — rolling volume-weighted price with a standard-deviation stretch band
+
+```bat
+run.bat day-trading-microstructure -o output/day_trading_microstructure.json
+```
+
+Outputs:
+
+- `output/day_trading_microstructure.json` — full analysis with market signals and recommendations
+- `output/day_trading_playbook.json` — ORB / tape reading / VWAP tactic catalog
+
+## Portfolio Building Frameworks Expert
+
+Structured, rules-based factor allocation frameworks:
+
+- **Core-Satellite Architecture** — recommended core (70-80%) / satellite (20-30%) split
+- **Systematic Factor Investing** — momentum (MTUM) and quality (QUAL) factor readings vs. SPY
+- **Dynamic Risk-Parity Asset Allocation** — inverse-volatility weights across equities/Treasuries/gold vs. a traditional 60/40
+
+```bat
+run.bat portfolio-frameworks -o output/portfolio_frameworks.json
+```
+
+Outputs:
+
+- `output/portfolio_frameworks.json` — full analysis with market signals and recommendations
+- `output/portfolio_frameworks_catalog.json` — framework catalog
+
+## Structural Synergy Expert (Long Squeezes & Institutional Tailwinds)
+
+Scans for scenarios where systemic buying pressure is structurally favored:
+
+- **Index Inclusion Front-Running** — mandatory ETF buying catalyst (descriptive)
+- **The Long Gamma Squeeze** — volume z-score + momentum spike proxy for call-option-driven dealer hedging
+- **Post-Earnings Announcement Drift (PEAD)** — momentum-acceleration proxy for earnings underreaction
+
+```bat
+run.bat long-squeeze-synergy -o output/long_squeeze_synergy.json
+```
+
+Outputs:
+
+- `output/long_squeeze_synergy.json` — full analysis with market signals and recommendations
+- `output/structural_catalysts.json` — structural catalyst tactic catalog
+
+## Elite Risk & Capital Protection Protocols Expert
+
+Disciplined capital-preservation rules computed from live market data:
+
+- **The 1% Rule** — ATR-based stop distance sized against account equity
+- **The Kelly Criterion Framework** — f* = (p·b − (1−p)) / b from empirical win rate and payout ratio
+- **Correlated Risk Caps** — sector ETF correlation matrix flags concentration risk to cap
+
+```bat
+run.bat risk-protection -o output/risk_protection.json
+```
+
+Outputs:
+
+- `output/risk_protection.json` — full analysis with market signals and recommendations
+- `output/risk_protocols.json` — risk protocol catalog
 
 ## Market Predictor
 

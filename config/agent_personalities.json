@@ -162,6 +162,42 @@
       "defensive_bias": 0.6,
       "volatility_tolerance": 0.25
     },
+    "day-trading-microstructure": {
+      "label": "The Tape Reader",
+      "risk_appetite": 0.75,
+      "conviction": 0.6,
+      "patience": 0.2,
+      "contrarian": 0.25,
+      "defensive_bias": 0.25,
+      "volatility_tolerance": 0.72
+    },
+    "portfolio-frameworks": {
+      "label": "The Allocator",
+      "risk_appetite": 0.45,
+      "conviction": 0.82,
+      "patience": 0.85,
+      "contrarian": 0.3,
+      "defensive_bias": 0.4,
+      "volatility_tolerance": 0.4
+    },
+    "long-squeeze-synergy": {
+      "label": "The Squeeze Hunter",
+      "risk_appetite": 0.8,
+      "conviction": 0.58,
+      "patience": 0.3,
+      "contrarian": 0.4,
+      "defensive_bias": 0.2,
+      "volatility_tolerance": 0.78
+    },
+    "risk-protection": {
+      "label": "The Capital Guardian",
+      "risk_appetite": 0.18,
+      "conviction": 0.86,
+      "patience": 0.75,
+      "contrarian": 0.2,
+      "defensive_bias": 0.85,
+      "volatility_tolerance": 0.2
+    },
     "data-steward": {
       "label": "The Steward",
       "risk_appetite": 0.4,

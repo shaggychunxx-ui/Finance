@@ -806,6 +806,102 @@ def test_market_predictor_cli_registered() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_new_topic_agents_registered() -> None:
+    """The four new topic agents must be registered in RUNNERS/PRINTERS and importable."""
+    from main import PRINTERS, RUNNERS
+
+    for agent_id in (
+        "day-trading-microstructure",
+        "portfolio-frameworks",
+        "long-squeeze-synergy",
+        "risk-protection",
+    ):
+        assert agent_id in RUNNERS, f"{agent_id} missing from RUNNERS"
+        assert agent_id in PRINTERS, f"{agent_id} missing from PRINTERS"
+
+    from agents.day_trading_microstructure import DayTradingMicrostructureExpert
+    from agents.long_squeeze_synergy import LongSqueezeSynergyExpert
+    from agents.portfolio_frameworks import PortfolioFrameworksExpert
+    from agents.risk_protection import RiskProtectionExpert
+
+    assert DayTradingMicrostructureExpert(pipeline_context={}).agent_id == "day-trading-microstructure"
+    assert PortfolioFrameworksExpert(pipeline_context={}).agent_id == "portfolio-frameworks"
+    assert LongSqueezeSynergyExpert(pipeline_context={}).agent_id == "long-squeeze-synergy"
+    assert RiskProtectionExpert(pipeline_context={}).agent_id == "risk-protection"
+
+    # Printers must not raise on an empty/minimal result shape.
+    PRINTERS["day-trading-microstructure"]({"meta": {}, "metrics": {}, "symbol_microstructure": []})
+    PRINTERS["portfolio-frameworks"]({"meta": {}, "core_satellite_split": {}, "factor_readings": [], "risk_parity_weights": []})
+    PRINTERS["long-squeeze-synergy"]({"meta": {}, "metrics": {}, "candidates": []})
+    PRINTERS["risk-protection"]({"meta": {}, "position_size_guards": [], "kelly_readings": [], "sector_correlations": []})
+
+
+def test_day_trading_microstructure_calculations() -> None:
+    from agents.day_trading_microstructure.expert import DayTradingMicrostructureExpert
+
+    expert = DayTradingMicrostructureExpert(pipeline_context={})
+    ohlcv = {
+        "open": [100 + i * 0.1 for i in range(30)],
+        "high": [101 + i * 0.1 for i in range(30)],
+        "low": [99 + i * 0.1 for i in range(30)],
+        "close": [100.5 + i * 0.1 for i in range(30)],
+        "volume": [1_000_000 + (i % 3) * 50_000 for i in range(29)] + [3_000_000],
+    }
+    orb_high, orb_low, orb_signal = expert._orb_signal(ohlcv)
+    assert orb_high > orb_low
+    assert "volume confirmed" in orb_signal or "range" in orb_signal or "low volume" in orb_signal
+
+    vol_z, tape_signal = expert._tape_signal(ohlcv)
+    assert vol_z > 0
+    assert isinstance(tape_signal, str) and tape_signal
+
+    vwap, vwap_z, vwap_signal = expert._vwap_signal(ohlcv)
+    assert vwap > 0
+    assert isinstance(vwap_signal, str) and vwap_signal
+
+
+def test_portfolio_frameworks_risk_parity_weights() -> None:
+    from agents.portfolio_frameworks.expert import PortfolioFrameworksExpert
+
+    expert = PortfolioFrameworksExpert(pipeline_context={})
+    rp_closes = {
+        "SPY": [100 + (i % 5) * 0.4 for i in range(60)],
+        "TLT": [90 + (i % 5) * 0.1 for i in range(60)],
+        "GLD": [180 + (i % 5) * 0.05 for i in range(60)],
+    }
+    weights = expert._risk_parity_weights(rp_closes)
+    assert weights
+    total = sum(w.risk_parity_weight_pct for w in weights)
+    assert 99.0 <= total <= 101.0
+    # Lower volatility assets should receive a larger risk-parity weight.
+    gld = next(w for w in weights if w.symbol == "GLD")
+    spy = next(w for w in weights if w.symbol == "SPY")
+    if gld.annualized_vol_pct < spy.annualized_vol_pct:
+        assert gld.risk_parity_weight_pct > spy.risk_parity_weight_pct
+
+
+def test_risk_protection_one_percent_rule_and_kelly() -> None:
+    from agents.risk_protection.expert import RiskProtectionExpert
+
+    expert = RiskProtectionExpert(pipeline_context={}, account_equity=50_000.0)
+    ohlcv = {
+        "open": [100.0] * 30,
+        "high": [102.0] * 30,
+        "low": [98.0] * 30,
+        "close": [100.0, 101.0] * 15,
+        "volume": [1_000_000] * 30,
+    }
+    guard = expert._position_size_guard("TEST", "Test symbol", ohlcv)
+    assert guard is not None
+    assert guard.max_risk_dollars == 500.0
+    assert guard.max_shares >= 0
+
+    kelly = expert._kelly_reading("TEST", "Test symbol", ohlcv["close"])
+    assert kelly is not None
+    assert 0.0 <= kelly.kelly_fraction <= 1.0
+    assert kelly.half_kelly_fraction == round(kelly.kelly_fraction / 2, 4)
+
+
 def test_market_predictor_loop_cycle_no_crash() -> None:
     """run_predictor_cycle must complete without raising even with no agent data."""
     import tempfile
@@ -906,6 +1002,10 @@ def _run_all() -> None:
         test_base_expert_watchlist_and_memory,
         test_trading_gate_cluster_and_eligibility,
         test_market_predictor_cli_registered,
+        test_new_topic_agents_registered,
+        test_day_trading_microstructure_calculations,
+        test_portfolio_frameworks_risk_parity_weights,
+        test_risk_protection_one_percent_rule_and_kelly,
         test_market_predictor_loop_cycle_no_crash,
         test_backtest_loop_cycle_no_crash,
         test_backtest_loop_cli_argument_validation,
