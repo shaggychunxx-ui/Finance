@@ -203,6 +203,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "earnings-calendar",
+        "agent": "Institutional Earnings Calendar Expert",
+        "primary_output": "earnings_calendar.json",
+        "sidecars": ["earnings_calendar_resources.json"],
+        "sources": ["Yahoo Finance Chart API", "Static consensus earnings calendar"],
+        "owner": "platform",
+    },
+    {
         "command": "order-execution",
         "agent": "Order Execution & Market Microstructure Expert",
         "primary_output": "order_execution.json",

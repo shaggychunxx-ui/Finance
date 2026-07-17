@@ -52,6 +52,7 @@ _PLATFORM_DEFAULTS: dict[str, dict[str, Any]] = {
     "sec-filings": {"label": "The Disclosure Analyst", "risk_appetite": 0.38, "conviction": 0.78, "patience": 0.68, "contrarian": 0.42, "defensive_bias": 0.56, "volatility_tolerance": 0.40},
     "migration": {"label": "The Flow Tracker", "risk_appetite": 0.40, "conviction": 0.72, "patience": 0.70, "contrarian": 0.44, "defensive_bias": 0.50, "volatility_tolerance": 0.42},
     "trading-economics": {"label": "The Macro Reader", "risk_appetite": 0.46, "conviction": 0.74, "patience": 0.64, "contrarian": 0.40, "defensive_bias": 0.46, "volatility_tolerance": 0.48},
+    "earnings-calendar": {"label": "The Print Watcher", "risk_appetite": 0.52, "conviction": 0.68, "patience": 0.50, "contrarian": 0.38, "defensive_bias": 0.42, "volatility_tolerance": 0.56},
     "patents": {"label": "The Innovation Scout", "risk_appetite": 0.70, "conviction": 0.60, "patience": 0.80, "contrarian": 0.35, "defensive_bias": 0.25, "volatility_tolerance": 0.58},
     "electricity": {"label": "The Grid Steward", "risk_appetite": 0.38, "conviction": 0.68, "patience": 0.72, "contrarian": 0.22, "defensive_bias": 0.70, "volatility_tolerance": 0.42},
     "grid": {"label": "The Cautious Engineer", "risk_appetite": 0.36, "conviction": 0.70, "patience": 0.74, "contrarian": 0.20, "defensive_bias": 0.72, "volatility_tolerance": 0.40},

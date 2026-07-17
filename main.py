@@ -16,6 +16,7 @@ from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.data_steward import run_data_steward_analysis
+from agents.earnings_calendar import run_earnings_calendar_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
@@ -1164,6 +1165,32 @@ def _print_trading_economics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_earnings_calendar(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('events_tracked', 0)} reports")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for e in data.get("events", []):
+        print(
+            f"  • {e.get('date')} {e.get('timing')}: {e.get('company')} ({e.get('ticker')}) "
+            f"— {e.get('bias')} — {e.get('key_metric')}"
+        )
+    print()
+    print("  Sector themes:")
+    for t in data.get("sector_themes", []):
+        print(f"    • {t.get('label')}: {t.get('summary')}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_sales_analytics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     kpis = data.get("kpis", {})
@@ -1265,6 +1292,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
+    "earnings-calendar": _print_earnings_calendar,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
     "electricity": _print_electricity,
@@ -1296,6 +1324,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
+    "earnings-calendar": run_earnings_calendar_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
@@ -1447,6 +1476,10 @@ def main() -> int:
                 catalog = args.output.parent / "trading_economics_resources.json"
                 if catalog.exists():
                     print(f"  Trading Economics resource catalog: {catalog}")
+            if args.agent == "earnings-calendar":
+                catalog = args.output.parent / "earnings_calendar_resources.json"
+                if catalog.exists():
+                    print(f"  Earnings calendar resource catalog: {catalog}")
             if args.agent == "market-predictor":
                 print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":

@@ -934,6 +934,29 @@ def test_restore_same_cycle_agent_outputs() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_earnings_calendar_cli_registered() -> None:
+    """earnings-calendar must appear in RUNNERS and PRINTERS and round-trip without error."""
+    import tempfile
+
+    from main import PRINTERS, RUNNERS
+
+    assert "earnings-calendar" in RUNNERS, "earnings-calendar missing from RUNNERS"
+    assert "earnings-calendar" in PRINTERS, "earnings-calendar missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp())
+    out_file = out_dir / "earnings_calendar.json"
+    result = RUNNERS["earnings-calendar"](output=out_file)
+    assert isinstance(result, dict), "run_earnings_calendar_analysis must return a dict"
+    assert result.get("events"), "result must contain non-empty 'events'"
+    assert result.get("market_signals"), "result must contain non-empty 'market_signals'"
+    tickers = {e["ticker"] for e in result["events"]}
+    assert {"GOOG", "MSFT", "NVDA", "TSLA"} <= tickers
+    # Printer must not raise
+    PRINTERS["earnings-calendar"](result)
+    assert out_file.exists()
+    assert (out_dir / "earnings_calendar_resources.json").exists()
+
+
 def test_market_predictor_cli_registered() -> None:
     """market-predictor must appear in RUNNERS and PRINTERS and round-trip without error."""
     import tempfile

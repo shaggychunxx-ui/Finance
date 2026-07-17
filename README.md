@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
+| **Institutional Earnings Calendar Expert** | `run.bat earnings-calendar` | Yahoo Finance / Nasdaq / MarketBeat / Investing.com earnings calendars |
 | **Market Predictor** | `run.bat market-predictor` | Fuses all agent outputs into multi-horizon predictions |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
@@ -46,6 +47,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat sales-analytics
+run.bat earnings-calendar
 run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
@@ -348,6 +350,25 @@ Outputs:
 - `output/sales_analytics.json` — full BI analysis with market signals
 - `output/sales_dashboard_data.json` — dashboard feed (auto-loaded by `sales_dashboard.html`)
 - `output/sales_dashboard_panels.json` — dashboard panel catalog
+
+## Institutional Earnings Calendar Expert
+
+Tracks the institutional earnings timeline for late-July/August 2026 and the macro themes driving Wall Street's reaction to each print:
+
+- **12 tracked reports** — TRV, TFC, WRB, GM, GOOG, TSLA, INTC, MSFT, HOOD, COIN, MSTR, NVDA with consensus EPS/revenue estimates and the primary operational metric to watch
+- **Sector themes** — AI CapEx debate, financial foundations post-rotation, automotive realities, fintech/crypto rotation
+- **Pre-print momentum** — live Yahoo Finance 5d/20d momentum overlay (calibrated proxy fallback when live data is unavailable)
+- **Quiet period & call structure notes** — SEC quiet period, wire release timing, and post-release investor call mechanics
+- **Market signals** — per-ticker bias derived from pre-print momentum
+
+```bat
+run.bat earnings-calendar -o output/earnings_calendar.json
+```
+
+Outputs:
+
+- `output/earnings_calendar.json` — full earnings timeline with market signals and recommendations
+- `output/earnings_calendar_resources.json` — earnings calendar data source catalog
 
 ## Data Steward Expert
 
