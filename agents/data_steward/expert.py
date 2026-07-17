@@ -115,6 +115,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "borrow-fees",
+        "agent": "Cost-to-Borrow (Short Borrow Fee) Expert",
+        "primary_output": "borrow_fees.json",
+        "sidecars": ["borrow_fee_data_metrics.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
         "command": "geopolitics",
         "agent": "Geopolitics Expert",
         "primary_output": "geopolitics.json",

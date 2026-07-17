@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agents.agriculture import run_agriculture_analysis
+from agents.borrow_fees import run_borrow_fees_analysis
 from agents.census import run_census_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
@@ -108,6 +109,38 @@ def _print_markets(data: dict[str, Any]) -> None:
             f"{g.get('symbol')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
         ))
         print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_borrow_fees(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Blended CTB avg: {metrics.get('avg_ctb_pct')}%  |  "
+        f"Hard-to-Borrow names: {metrics.get('htb_count')}"
+    )
+    print()
+    print("  Symbols:")
+    for s in sorted(
+        data.get("symbol_borrow_fees", []), key=lambda x: -x.get("squeeze_risk_score", 0)
+    ):
+        print(
+            f"    • {s.get('symbol')} ({s.get('borrow_category')}): "
+            f"CTB avg {s.get('ctb_avg_pct')}% "
+            f"(min {s.get('ctb_min_pct')}% / max {s.get('ctb_max_pct')}%), "
+            f"days-to-cover {s.get('days_to_cover_proxy')}, "
+            f"squeeze-risk {s.get('squeeze_risk_score')}/10"
+        )
+    print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -1262,6 +1295,7 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
     "agriculture": _print_agriculture,
+    "borrow-fees": _print_borrow_fees,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
@@ -1293,6 +1327,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
     "agriculture": run_agriculture_analysis,
+    "borrow-fees": run_borrow_fees_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
@@ -1371,6 +1406,10 @@ def main() -> int:
                 catalog = args.output.parent / "nass_state_catalog.json"
                 if catalog.exists():
                     print(f"  NASS state catalog: {catalog}")
+            if args.agent == "borrow-fees":
+                catalog = args.output.parent / "borrow_fee_data_metrics.json"
+                if catalog.exists():
+                    print(f"  Borrow fee data metrics catalog: {catalog}")
             if args.agent == "census":
                 catalog = args.output.parent / "census_resources.json"
                 if catalog.exists():

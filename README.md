@@ -15,6 +15,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
+| **Cost-to-Borrow (Short Borrow Fee) Expert** | `run.bat borrow-fees` | [Yahoo Finance](https://finance.yahoo.com/) Chart API (CTB rate/squeeze proxy) |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
@@ -39,6 +40,7 @@ run.bat datascience
 run.bat finance
 run.bat financial-data
 run.bat markets
+run.bat borrow-fees
 run.bat geopolitics
 run.bat logistics
 run.bat theoretical-probability
@@ -203,6 +205,26 @@ Live US market analysis from Yahoo Finance:
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+## Cost-to-Borrow (Short Borrow Fee) Expert
+
+Analyzes the mechanics of stock borrow fees ("cost-to-borrow"/CTB) — the annualized rate
+short sellers pay to borrow shares — for an 8-symbol watchlist (SPY, AAPL, MSFT, QQQ, IWM,
+GME, COIN, PLTR):
+
+- Daily-fee formula: `Daily Fee = (Shares Shorted x Stock Price x Borrow Fee Rate) / 360`
+- Easy-to-Borrow (ETB, ~0.25%-1.5%) vs Hard-to-Borrow (HTB, ~5%-300%+) classification
+- Calibrated CTB min/max/average and days-to-cover proxy per symbol, derived from realized
+  volatility, overnight-gap frequency, and dollar-volume thinness (a stand-in for real
+  shares-available/short-interest data, which is not reachable from this sandbox)
+- Squeeze-risk score (0-10) flagging names where borrow-fee drag plus slow days-to-cover
+  raise the odds of forced short covering
+
+Outputs:
+
+- `output/borrow_fees.json` — full analysis with market signals and recommendations
+- `output/borrow_fee_data_metrics.json` — CTB data-metrics glossary (Shares Available,
+  CTB Min/Max/Average, Days to Cover)
 
 ## Geopolitics Expert
 
