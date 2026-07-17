@@ -336,8 +336,8 @@ class QualityFactorExpert(BaseExpert):
         flags: list[str] = []
         if fcf_yield and 0 < fcf_yield < HIGH_VALUATION_FCF_YIELD_THRESHOLD:
             flags.append("Growth-at-any-price premium: thin FCF yield leaves little valuation margin of safety")
-        if da and capex / da >= HIGH_CAPEX_TO_DA_RATIO:
-            flags.append("CapEx/inflation shock: heavy capital intensity vs. depreciation base compresses FCF if input costs spike")
+        if da > 0 and capex / da >= HIGH_CAPEX_TO_DA_RATIO:
+            flags.append("Capex/inflation shock: heavy capital intensity vs. depreciation base compresses FCF if input costs spike")
         if eva_spread >= COMPETITIVE_REVERSION_SPREAD_THRESHOLD:
             flags.append("Competitive reversion risk: outsized ROIC-WACC spread is a beacon for capital and disruptive entrants")
         elif eva_spread < 0:
