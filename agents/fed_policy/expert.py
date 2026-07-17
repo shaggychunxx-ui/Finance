@@ -291,7 +291,18 @@ class FedPolicyExpert(BaseExpert):
 
     @staticmethod
     def _fetch_fred_history(series_id: str, *, years: int = 10) -> list[tuple[datetime, float]]:
-        """Pull the full available FRED history for a series (past N years)."""
+        """Pull the full available FRED history for a series (past N years).
+
+        Args:
+            series_id: FRED series identifier (e.g. "DFF" for EFFR).
+            years: How many trailing years of observations to keep; rows
+                older than this cutoff are dropped after being parsed.
+
+        Returns:
+            A list of (observation_date, value) tuples, oldest-to-newest
+            order not guaranteed (callers should sort). Empty list if the
+            series can't be fetched or parsed (e.g. FRED unreachable).
+        """
         try:
             resp = requests.get(
                 FRED_CSV_URL,
@@ -322,7 +333,21 @@ class FedPolicyExpert(BaseExpert):
         return history
 
     def _historical_stats(self, current_effr: float) -> tuple[dict[str, Any], bool]:
-        """Summarize the multi-year EFFR history: cycle high/low and trend."""
+        """Summarize the multi-year EFFR history: cycle high/low and trend.
+
+        Args:
+            current_effr: The current EFFR value (live or proxy) used to
+                compute the year-over-year change in basis points.
+
+        Returns:
+            A tuple of (stats, is_live):
+            - stats: dict with years_covered, cycle_high, cycle_low,
+              rate_1y_ago, change_1y_bp, and a human-readable source note.
+              All numeric fields are None when live FRED history is
+              unavailable.
+            - is_live: True when the stats were computed from live FRED
+              data; False when the fallback (unavailable) dict was used.
+        """
         history = self._fetch_fred_history(FRED_SERIES["effr"], years=10)
         if not history:
             return {
@@ -356,6 +381,7 @@ class FedPolicyExpert(BaseExpert):
     @staticmethod
     def _build_rates(live: dict[str, float]) -> RateSnapshot:
         def pick(name: str) -> float:
+            # Prefer the live FRED value; fall back to the calibrated proxy.
             return live.get(name, PROXY_SNAPSHOT[name])
 
         return RateSnapshot(
