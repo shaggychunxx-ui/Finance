@@ -15,6 +15,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.corporate_distress import run_corporate_distress_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -1143,6 +1144,34 @@ def _print_sec_filings(data: dict[str, Any]) -> None:
     _print_signals(data.get("market_signals", []))
 
 
+def _print_corporate_distress(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    counts = data.get("distress_zone_counts", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Data source: {meta.get('data_source', '')}")
+    print()
+    print("  Distress zone counts:")
+    for zone, count in counts.items():
+        print(f"    • {zone}: {count}")
+    print()
+    print("  Symbol Distance-to-Default proxy:")
+    for s in sorted(data.get("symbol_distress_proxy", []), key=lambda x: x.get("distance_to_default", 0)):
+        print(
+            f"    • {s.get('symbol')}: DD {s.get('distance_to_default')} "
+            f"({s.get('distress_zone')})"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_trading_economics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1264,6 +1293,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "agriculture": _print_agriculture,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
+    "corporate-distress": _print_corporate_distress,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1295,6 +1325,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
+    "corporate-distress": run_corporate_distress_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
@@ -1423,6 +1454,10 @@ def main() -> int:
                 catalog = args.output.parent / "probability_concepts.json"
                 if catalog.exists():
                     print(f"  Probability concepts catalog: {catalog}")
+            if args.agent == "corporate-distress":
+                catalog = args.output.parent / "distress_bankruptcy_playbook.json"
+                if catalog.exists():
+                    print(f"  Distress & bankruptcy playbook catalog: {catalog}")
             if args.agent == "research-statistics":
                 catalog = args.output.parent / "statistical_methods.json"
                 if catalog.exists():

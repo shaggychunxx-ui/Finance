@@ -179,6 +179,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "corporate-distress",
+        "agent": "Corporate Distress & Bankruptcy Analyst",
+        "primary_output": "corporate_distress.json",
+        "sidecars": ["distress_bankruptcy_playbook.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
         "command": "research-statistics",
         "agent": "Research Statistics Expert",
         "primary_output": "research_statistics.json",

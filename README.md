@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Corporate Distress & Bankruptcy Analyst** | `run.bat corporate-distress` | Yahoo Finance (1yr daily history) — distress spectrum, Altman Z-Score & Merton DD models, Chapter 11/7 mechanics |
 
 ## Quick start
 
@@ -399,6 +400,28 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Corporate Distress & Bankruptcy Analyst
+
+Credit / special-situations analyst covering the financial distress spectrum and
+bankruptcy mechanics:
+
+- The 4-phase distress spectrum (Operational Friction → Going-Concern Doubt →
+  Insolvency → Legal Default), including AICPA AU-C 570 / FASB ASC 205-40
+  going-concern criteria and management remediation mitigants
+- Liquidation-basis accounting shifts (FASB ASC 205-30): NRV asset measurement,
+  liability acceleration, accrual of future liquidation costs, intangible devaluation
+- Altman Z-Score model (formula, sub-ratios, Safe/Grey/Distress zones) and the
+  Merton Structural Model (Distance-to-Default) reference methodology
+- Chapter 11 mechanics (automatic stay, DIP financing/super-priority claims,
+  Section 365 executory contract rejection, cramdown/absolute priority rule) and
+  the Chapter 7 absolute priority waterfall (Tiers 1–6)
+- Out-of-court workout vs. formal Chapter 11 bankruptcy comparison table
+- Live market-implied distress proxy for a shared equity watchlist: realized
+  asset-volatility, drawdown, and momentum feed a Merton-style
+  Distance-to-Default score (Yahoo Finance 1yr daily OHLCV) — disclosed as a
+  price-derived proxy since audited balance-sheet fundamentals aren't available
+  from the public chart API
 
 ## Market Predictor
 
