@@ -60,6 +60,15 @@ REGIME_VOL_WINDOW = 20
 PAIR_LOOKBACK = 60
 ADX_WINDOW = 14
 DRAWDOWN_CIRCUIT_BREAKER_PCT = 0.07
+VOL_RISING_THRESHOLD = 1.02
+VOL_DECLINING_THRESHOLD = 0.98
+
+# Evidence score weights (base term keeps the score away from zero when data is thin).
+EVIDENCE_ENTRY_WEIGHT = 0.35
+EVIDENCE_WIN_RATE_WEIGHT = 0.30
+EVIDENCE_STAT_ARB_WEIGHT = 0.20
+EVIDENCE_BASE_TERM = 0.15
+EVIDENCE_CIRCUIT_BREAKER_PENALTY = 0.25
 
 DUAL_FORCE_PLAYBOOK: list[dict[str, Any]] = [
     {
@@ -359,6 +368,7 @@ class MomentumReversionExpert(BaseExpert):
 
         macro_intact = bool(
             ema_trend[-1] is not None
+            and len(closes) > LOOKBACK_MOMENTUM
             and closes[-1] > ema_trend[-1]
             and (closes[-1] - closes[-LOOKBACK_MOMENTUM]) > 0
         )
@@ -405,9 +415,9 @@ class MomentumReversionExpert(BaseExpert):
         vol_now = statistics.pstdev(vol_window) * math.sqrt(252) if len(vol_window) >= 2 else 0.0
         vol_before = statistics.pstdev(vol_prior) * math.sqrt(252) if len(vol_prior) >= 2 else vol_now
 
-        if vol_now > vol_before * 1.02:
+        if vol_now > vol_before * VOL_RISING_THRESHOLD:
             vol_trend = "rising"
-        elif vol_now < vol_before * 0.98:
+        elif vol_now < vol_before * VOL_DECLINING_THRESHOLD:
             vol_trend = "declining"
         else:
             vol_trend = "flat"
@@ -587,13 +597,13 @@ class MomentumReversionExpert(BaseExpert):
         for p in pairs:
             if p.trade_signal == "NO_TRADE":
                 continue
-            a, b_sym = p.pair
+            symbol_a, symbol_b = p.pair
             signals.append(build_market_signal(
-                sector=f"{a}/{b_sym} Stat Arb",
-                tickers=[a, b_sym],
+                sector=f"{symbol_a}/{symbol_b} Stat Arb",
+                tickers=[symbol_a, symbol_b],
                 bias="NEUTRAL",
                 reason=(
-                    f"{a}/{b_sym} spread z-score {p.spread_zscore} with ADX proxy {p.adx_proxy} "
+                    f"{symbol_a}/{symbol_b} spread z-score {p.spread_zscore} with ADX proxy {p.adx_proxy} "
                     f"(momentum overlay {p.momentum_overlay}) — {p.trade_signal}."
                 ),
                 confidence=0.55,
@@ -634,11 +644,11 @@ class MomentumReversionExpert(BaseExpert):
                 recs.append(f"{r.symbol}: {r.regime_label} — lock down momentum models, favor short-term support/resistance reversion.")
 
         for p in pairs:
-            a, b_sym = p.pair
+            symbol_a, symbol_b = p.pair
             if p.momentum_overlay == "BLOCKED":
-                recs.append(f"{a}/{b_sym}: spread ADX proxy > 30 — momentum overlay blocks the mean-reversion trade (failure-mode risk).")
+                recs.append(f"{symbol_a}/{symbol_b}: spread ADX proxy > 30 — momentum overlay blocks the mean-reversion trade (failure-mode risk).")
             elif p.trade_signal != "NO_TRADE":
-                recs.append(f"{a}/{b_sym}: {p.trade_signal} — spread z-score {p.spread_zscore} with momentum exhausted (ADX proxy {p.adx_proxy}).")
+                recs.append(f"{symbol_a}/{symbol_b}: {p.trade_signal} — spread z-score {p.spread_zscore} with momentum exhausted (ADX proxy {p.adx_proxy}).")
 
         if not recs:
             recs.append("No dual-force setups currently active — continue monitoring the watchlist for regime shifts.")
@@ -691,12 +701,16 @@ class MomentumReversionExpert(BaseExpert):
             if backtests else 0.0
         )
         avg_win_rate = statistics.fmean([b.win_rate for b in backtests]) if backtests else 0.5
-        breaker_penalty = 0.25 if any(b.circuit_breaker_triggered for b in backtests) else 0.0
+        breaker_penalty = EVIDENCE_CIRCUIT_BREAKER_PENALTY if any(b.circuit_breaker_triggered for b in backtests) else 0.0
         stat_arb_ratio = (
             sum(1 for p in pairs if p.trade_signal != "NO_TRADE") / len(pairs) if pairs else 0.0
         )
         evidence_score = round(max(0.0, min(1.0,
-            0.35 * entry_ratio + 0.30 * avg_win_rate + 0.20 * stat_arb_ratio + 0.15 - breaker_penalty
+            EVIDENCE_ENTRY_WEIGHT * entry_ratio
+            + EVIDENCE_WIN_RATE_WEIGHT * avg_win_rate
+            + EVIDENCE_STAT_ARB_WEIGHT * stat_arb_ratio
+            + EVIDENCE_BASE_TERM
+            - breaker_penalty
         )), 4)
 
         momentum_regimes = sum(1 for r in regimes if r.momentum_allocation_pct > 50)
