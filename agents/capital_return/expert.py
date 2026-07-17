@@ -29,6 +29,15 @@ DASHBOARD_URL = "https://finance.yahoo.com/"
 # classification purposes (dividend-only / buyback-only / dual-engine counts).
 MIN_YIELD_THRESHOLD_PCT = 0.05
 
+# Life-cycle stage label used to identify the "mature cash cow" cohort for
+# average total-shareholder-yield regime scoring.
+MATURE_CASH_COW_STAGE = "Mature Cash Cow (Dual-Engine Total Yield)"
+
+# Confidence-scoring constants for the value-creating buyback market signal.
+BASE_CONFIDENCE = 0.55
+MAX_YIELD_CONFIDENCE_BONUS = 0.25
+YIELD_CONFIDENCE_SCALE = 20.0
+
 # Curated capital-return profiles across the corporate life cycle.
 # dividend_yield_pct / buyback_yield_pct / payout_ratio_pct / roic_pct / wacc_pct
 # are approximate, slowly-changing fundamentals used alongside live price data.
@@ -86,7 +95,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "AAPL": {
         "name": "Apple Inc.",
         "sector": "Technology",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 0.45,
         "buyback_yield_pct": 3.5,
         "payout_ratio_pct": 15.0,
@@ -96,7 +105,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "MSFT": {
         "name": "Microsoft Corporation",
         "sector": "Technology",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 0.7,
         "buyback_yield_pct": 1.6,
         "payout_ratio_pct": 25.0,
@@ -106,7 +115,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "JNJ": {
         "name": "Johnson & Johnson",
         "sector": "Health Care",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 3.0,
         "buyback_yield_pct": 1.0,
         "payout_ratio_pct": 45.0,
@@ -116,7 +125,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "KO": {
         "name": "The Coca-Cola Company",
         "sector": "Consumer Staples",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 2.9,
         "buyback_yield_pct": 1.0,
         "payout_ratio_pct": 65.0,
@@ -126,7 +135,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "PG": {
         "name": "Procter & Gamble Co.",
         "sector": "Consumer Staples",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 2.3,
         "buyback_yield_pct": 1.5,
         "payout_ratio_pct": 55.0,
@@ -136,7 +145,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "XOM": {
         "name": "Exxon Mobil Corporation",
         "sector": "Energy",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 3.3,
         "buyback_yield_pct": 4.0,
         "payout_ratio_pct": 40.0,
@@ -146,7 +155,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "CVX": {
         "name": "Chevron Corporation",
         "sector": "Energy",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 4.0,
         "buyback_yield_pct": 3.5,
         "payout_ratio_pct": 55.0,
@@ -156,7 +165,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "IBM": {
         "name": "International Business Machines",
         "sector": "Technology",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 3.2,
         "buyback_yield_pct": 0.5,
         "payout_ratio_pct": 65.0,
@@ -166,7 +175,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "T": {
         "name": "AT&T Inc.",
         "sector": "Communication Services",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 5.5,
         "buyback_yield_pct": 0.0,
         "payout_ratio_pct": 55.0,
@@ -176,7 +185,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "HD": {
         "name": "The Home Depot, Inc.",
         "sector": "Consumer Discretionary",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 2.3,
         "buyback_yield_pct": 1.0,
         "payout_ratio_pct": 55.0,
@@ -186,7 +195,7 @@ CAPITAL_RETURN_PROFILES: dict[str, dict[str, Any]] = {
     "MCD": {
         "name": "McDonald's Corporation",
         "sector": "Consumer Discretionary",
-        "stage": "Mature Cash Cow (Dual-Engine Total Yield)",
+        "stage": MATURE_CASH_COW_STAGE,
         "dividend_yield_pct": 2.2,
         "buyback_yield_pct": 1.5,
         "payout_ratio_pct": 55.0,
@@ -506,10 +515,12 @@ class CapitalReturnExpert(BaseExpert):
             if "value-destroying" in c.buyback_quality_label
         ]
 
+        mature_cohort = [c for c in candidates if MATURE_CASH_COW_STAGE in c.stage]
         avg_dual_yield = (
-            sum(c.total_shareholder_yield_pct for c in candidates if "Mature Cash Cow" in c.stage)
-            / max(1, sum(1 for c in candidates if "Mature Cash Cow" in c.stage))
-        ) if candidates else 0.0
+            sum(c.total_shareholder_yield_pct for c in mature_cohort) / len(mature_cohort)
+            if mature_cohort
+            else 0.0
+        )
 
         if avg_dual_yield >= 4.0:
             regime = "dual-engine total yield regime — mature cohort favors combined dividend + buyback returns"
@@ -553,7 +564,10 @@ class CapitalReturnExpert(BaseExpert):
                     confidence=self.adjust_signal_confidence(
                         best.symbol,
                         "BULLISH",
-                        0.55 + min(0.25, best.total_shareholder_yield_pct / 20.0),
+                        # Base confidence plus a bonus scaled by total shareholder
+                        # yield, capped so a single extreme yield can't dominate.
+                        BASE_CONFIDENCE
+                        + min(MAX_YIELD_CONFIDENCE_BONUS, best.total_shareholder_yield_pct / YIELD_CONFIDENCE_SCALE),
                     ),
                     evidence={
                         "total_shareholder_yield_pct": best.total_shareholder_yield_pct,
