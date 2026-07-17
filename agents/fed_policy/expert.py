@@ -9,10 +9,18 @@ resulting corporate borrowing/hedging implications.
 Baseline reference: the June 2026 hawkish-pivot SEP under Fed Chair Kevin
 Warsh (target range held at 3.50%-3.75%, median dot shifted to 3.75%-4.00%).
 
+The agent studies the full hiking/cutting cycle, not just the latest print:
+it pulls the entire available FRED history for EFFR/SOFR to compute cycle
+highs/lows and multi-year trend stats, keeps a public-record timeline of
+past FOMC target-range moves (2019 cutting cycle through the current 2026
+stance), and extends the dot plot into a multi-year forward path (SEP
+projections for the current year, the following two years, and the
+"longer run" neutral-rate estimate) rather than a single year-end median.
+
 Live data: FRED public CSV endpoints (SOFR, DFF, DGS5, DGS10, DGS3MO,
-T10Y2Y). FRED is DNS-blocked in the sandbox, so a calibrated proxy snapshot
-derived from the June 2026 SEP/market briefing is always available as a
-fallback and is clearly labeled as such.
+T10Y2Y), fetched as full historical series. FRED is DNS-blocked in the
+sandbox, so a calibrated proxy snapshot derived from the June 2026 SEP/market
+briefing is always available as a fallback and is clearly labeled as such.
 
 Docs: https://fred.stlouisfed.org/  |  https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
 """
@@ -23,7 +31,7 @@ import csv
 import io
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +164,34 @@ PROXY_SNAPSHOT: dict[str, float] = {
     "gdp_growth_2026": 2.2,
 }
 
+# Public-record timeline of FOMC target-range moves spanning the full past
+# cycle (2019 pre-pandemic cuts through the current 2026 hawkish-pivot
+# stance). Used to give the report a "past years" view of the cycle rather
+# than only the latest print.
+RATE_CYCLE_HISTORY: list[dict[str, Any]] = [
+    {"date": "2019-07-31", "action": "cut", "target_low": 2.00, "target_high": 2.25, "note": "Mid-cycle adjustment cut #1"},
+    {"date": "2019-10-30", "action": "cut", "target_low": 1.50, "target_high": 1.75, "note": "Mid-cycle adjustment cut #3"},
+    {"date": "2020-03-15", "action": "cut", "target_low": 0.00, "target_high": 0.25, "note": "Emergency pandemic cut to zero lower bound"},
+    {"date": "2022-03-16", "action": "hike", "target_low": 0.25, "target_high": 0.50, "note": "Start of the 2022-2023 hiking cycle"},
+    {"date": "2022-12-14", "action": "hike", "target_low": 4.25, "target_high": 4.50, "note": "Step-down to 50bp after four 75bp hikes"},
+    {"date": "2023-07-26", "action": "hike", "target_low": 5.25, "target_high": 5.50, "note": "Cycle-peak hike"},
+    {"date": "2024-09-18", "action": "cut", "target_low": 4.75, "target_high": 5.00, "note": "First cut of the 2024-2025 easing cycle (50bp)"},
+    {"date": "2024-12-18", "action": "cut", "target_low": 4.25, "target_high": 4.50, "note": "Third consecutive 2024 cut"},
+    {"date": "2025-09-17", "action": "cut", "target_low": 3.75, "target_high": 4.00, "note": "Resumed cuts amid labor-market softening"},
+    {"date": "2026-01-28", "action": "hold", "target_low": 3.50, "target_high": 3.75, "note": "Held steady pending inflation data"},
+    {"date": "2026-06-17", "action": "hold", "target_low": 3.50, "target_high": 3.75, "note": "Current stance: hold, hawkish-tilted June SEP"},
+]
+
+# Multi-year SEP dot-plot median path: current year, the next two years, and
+# the "longer run" (neutral rate) estimate, mirroring the FOMC's actual SEP
+# matrix layout rather than a single year-end figure.
+SEP_FORWARD_PATH: list[dict[str, Any]] = [
+    {"year": "2026", "median_low": 3.75, "median_high": 4.00, "label": "Current SEP year"},
+    {"year": "2027", "median_low": 3.50, "median_high": 3.75, "label": "One cut priced by end-2027"},
+    {"year": "2028", "median_low": 3.25, "median_high": 3.50, "label": "Gradual normalization continues"},
+    {"year": "longer_run", "median_low": 3.00, "median_high": 3.00, "label": "Longer-run neutral rate (R*) estimate"},
+]
+
 
 @dataclass
 class DotPlotBucket:
@@ -194,6 +230,9 @@ class FedPolicyReport:
     ten_minus_five_bp: float
     hawkish_score: float
     hawkish_label: str
+    rate_cycle_history: list[dict[str, Any]]
+    forward_path: list[dict[str, Any]]
+    historical_stats: dict[str, Any]
     expert_summary: str
     market_signals: list[dict[str, Any]]
     recommendations: list[str]
@@ -248,6 +287,70 @@ class FedPolicyExpert(BaseExpert):
         else:
             sources.append("June 2026 FOMC SEP dot plot (fixed meeting materials)")
         return live, sources
+
+    @staticmethod
+    def _fetch_fred_history(series_id: str, *, years: int = 10) -> list[tuple[datetime, float]]:
+        """Pull the full available FRED history for a series (past N years)."""
+        try:
+            resp = requests.get(
+                FRED_CSV_URL,
+                params={"id": series_id},
+                headers=HEADERS,
+                timeout=20,
+            )
+            resp.raise_for_status()
+            rows = list(csv.reader(io.StringIO(resp.text)))
+        except Exception:
+            return []
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=365 * years)
+        history: list[tuple[datetime, float]] = []
+        for row in rows[1:]:
+            if len(row) < 2:
+                continue
+            date_str, value_str = row[0].strip(), row[1].strip()
+            if not value_str or value_str == ".":
+                continue
+            try:
+                dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                value = float(value_str)
+            except ValueError:
+                continue
+            if dt >= cutoff:
+                history.append((dt, value))
+        return history
+
+    def _historical_stats(self, current_effr: float) -> tuple[dict[str, Any], bool]:
+        """Summarize the multi-year EFFR history: cycle high/low and trend."""
+        history = self._fetch_fred_history(FRED_SERIES["effr"], years=10)
+        if not history:
+            return {
+                "years_covered": None,
+                "cycle_high": None,
+                "cycle_low": None,
+                "rate_1y_ago": None,
+                "change_1y_bp": None,
+                "source": "unavailable (FRED unreachable) — see rate_cycle_history for the public-record timeline",
+            }, False
+
+        values = [v for _, v in history]
+        history.sort(key=lambda pair: pair[0])
+        oldest, newest = history[0][0], history[-1][0]
+        years_covered = round((newest - oldest).days / 365.25, 1)
+
+        one_year_ago_target = newest - timedelta(days=365)
+        closest = min(history, key=lambda pair: abs((pair[0] - one_year_ago_target).total_seconds()))
+        rate_1y_ago = closest[1]
+        change_1y_bp = round((current_effr - rate_1y_ago) * 100, 1)
+
+        return {
+            "years_covered": years_covered,
+            "cycle_high": round(max(values), 2),
+            "cycle_low": round(min(values), 2),
+            "rate_1y_ago": round(rate_1y_ago, 2),
+            "change_1y_bp": change_1y_bp,
+            "source": f"FRED EFFR daily history ({len(history)} observations over {years_covered} years)",
+        }, True
 
     @staticmethod
     def _build_rates(live: dict[str, float]) -> RateSnapshot:
@@ -415,6 +518,23 @@ class FedPolicyExpert(BaseExpert):
         hawkish_score, hawkish_label = self._hawkish_score(committee_split, macro)
         signals = self._market_signals(rates, curve_shape, hawkish_score, hawkish_label)
 
+        historical_stats, history_live = self._historical_stats(rates.effr)
+        if history_live:
+            sources.append(historical_stats["source"])
+        rate_cycle_history = [dict(entry) for entry in RATE_CYCLE_HISTORY]
+        forward_path = [dict(entry) for entry in SEP_FORWARD_PATH]
+
+        cycle_note = (
+            f"cycle range {historical_stats['cycle_low']:.2f}%-{historical_stats['cycle_high']:.2f}% "
+            f"over the trailing {historical_stats['years_covered']} years "
+            f"({historical_stats['change_1y_bp']:+.1f}bp vs. one year ago)"
+            if history_live
+            else "cycle context from the public FOMC decision timeline (live FRED history unavailable)"
+        )
+        forward_note = ", ".join(
+            f"{p['year']}: {p['median_low']:.2f}%-{p['median_high']:.2f}%" for p in forward_path
+        )
+
         expert_summary = (
             f"FOMC held the target range at {rates.fed_funds_low:.2f}%-{rates.fed_funds_high:.2f}%, "
             f"but the June 2026 SEP median rose to {MEDIAN_RANGE[0]:.2f}%-{MEDIAN_RANGE[1]:.2f}% "
@@ -424,7 +544,9 @@ class FedPolicyExpert(BaseExpert):
             f"{rates.effr:.2f}% and overnight SOFR ~{rates.sofr:.2f}% track just under the target ceiling "
             f"while 1-Month Term SOFR trades at {rates.term_sofr_1mo:.3f}%. {curve_shape} "
             f"(10Y-5Y {ten_minus_five_bp:+.1f}bp), with the 10Y at {rates.treasury_10y:.2f}% "
-            f"vs. the 5Y at {rates.treasury_5y:.2f}%."
+            f"vs. the 5Y at {rates.treasury_5y:.2f}%. Full-cycle view: {cycle_note}; the "
+            f"{len(rate_cycle_history)}-move public FOMC timeline spans the 2019 cutting cycle through today. "
+            f"Forward SEP path: {forward_note}."
         )
 
         recs = [
@@ -440,6 +562,8 @@ class FedPolicyExpert(BaseExpert):
             "floating-to-fixed swaps lock in elevated structural funding costs",
             "Futures pricing tracks the hawkish half of the dot plot: implied "
             f"~{rates.futures_oct_2026:.2f}% by October 2026, ~{rates.futures_year_end_2026:.2f}% by year-end",
+            f"Past-cycle context: {cycle_note}",
+            f"Forward SEP path (multi-year): {forward_note}",
         ]
 
         return FedPolicyReport(
@@ -452,6 +576,9 @@ class FedPolicyExpert(BaseExpert):
             ten_minus_five_bp=ten_minus_five_bp,
             hawkish_score=hawkish_score,
             hawkish_label=hawkish_label,
+            rate_cycle_history=rate_cycle_history,
+            forward_path=forward_path,
+            historical_stats=historical_stats,
             expert_summary=expert_summary,
             market_signals=signals,
             recommendations=self.append_memory_recommendations(recs),
@@ -501,6 +628,9 @@ class FedPolicyExpert(BaseExpert):
                 "hawkish_score": report.hawkish_score,
                 "hawkish_label": report.hawkish_label,
             },
+            "rate_cycle_history": report.rate_cycle_history,
+            "historical_stats": report.historical_stats,
+            "forward_path": report.forward_path,
             "market_signals": report.market_signals,
             "recommendations": report.recommendations,
         }
@@ -513,6 +643,18 @@ class FedPolicyExpert(BaseExpert):
             resources_path = output.parent / "fed_policy_resources.json"
             resources_path.write_text(
                 json.dumps(FED_POLICY_RESOURCES, indent=2),
+                encoding="utf-8",
+            )
+            timeline_path = output.parent / "fed_policy_rate_timeline.json"
+            timeline_path.write_text(
+                json.dumps(
+                    {
+                        "rate_cycle_history": result.get("rate_cycle_history", []),
+                        "historical_stats": result.get("historical_stats", {}),
+                        "forward_path": result.get("forward_path", []),
+                    },
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
         return result

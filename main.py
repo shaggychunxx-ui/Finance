@@ -1201,6 +1201,23 @@ def _print_fed_policy(data: dict[str, Any]) -> None:
             f"— {bucket.get('label')}{tag}"
         )
     print()
+    hist_stats = data.get("historical_stats", {})
+    if hist_stats.get("cycle_high") is not None:
+        print(
+            f"  Cycle (last {hist_stats.get('years_covered')}y): "
+            f"{hist_stats.get('cycle_low')}%-{hist_stats.get('cycle_high')}% | "
+            f"1y ago {hist_stats.get('rate_1y_ago')}% ({hist_stats.get('change_1y_bp'):+.1f}bp)"
+        )
+    print("  Past FOMC moves:")
+    for move in data.get("rate_cycle_history", []):
+        print(
+            f"    {move.get('date')}: {move.get('action')} to {move.get('target_low')}%-"
+            f"{move.get('target_high')}% — {move.get('note')}"
+        )
+    print("  Forward SEP path:")
+    for step in data.get("forward_path", []):
+        print(f"    {step.get('year')}: {step.get('median_low')}%-{step.get('median_high')}% — {step.get('label')}")
+    print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -1494,6 +1511,9 @@ def main() -> int:
                 catalog = args.output.parent / "fed_policy_resources.json"
                 if catalog.exists():
                     print(f"  Fed policy resource catalog: {catalog}")
+                timeline = args.output.parent / "fed_policy_rate_timeline.json"
+                if timeline.exists():
+                    print(f"  Fed policy rate-cycle timeline: {timeline}")
             if args.agent == "market-predictor":
                 print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":
