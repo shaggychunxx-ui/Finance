@@ -203,6 +203,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "dxy-commodities",
+        "agent": "DXY-Commodities Correlation Expert",
+        "primary_output": "dxy_commodities.json",
+        "sidecars": ["dxy_commodities_resources.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
         "command": "order-execution",
         "agent": "Order Execution & Market Microstructure Expert",
         "primary_output": "order_execution.json",

@@ -88,6 +88,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "census": "macro",
     "agriculture": "energy_grid",
     "trading-economics": "macro",
+    "dxy-commodities": "macro",
     "sales-analytics": "consumer",
     "order-execution": "execution",
     "data-steward": "data_platform",
@@ -162,6 +163,10 @@ AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
     "trading-economics": {
         "tickers": frozenset({"SPY", "TLT", "GLD", "UUP", "EEM"}),
         "sectors": frozenset({"macro", "rates", "inflation", "gdp", "economics"}),
+    },
+    "dxy-commodities": {
+        "tickers": frozenset({"UUP", "GLD", "SLV", "USO", "UNG", "CPER", "DBA"}),
+        "sectors": frozenset({"macro", "dollar", "commodities", "fx", "energy", "precious metals", "agribusiness"}),
     },
 }
 

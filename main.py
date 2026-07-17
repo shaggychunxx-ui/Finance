@@ -12,6 +12,7 @@ from typing import Any, Callable
 from agents.agriculture import run_agriculture_analysis
 from agents.census import run_census_analysis
 from agents.datascience import run_datascience_analysis
+from agents.dxy_commodities import run_dxy_commodities_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
@@ -1164,6 +1165,29 @@ def _print_trading_economics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_dxy_commodities(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    dxy = data.get("dxy", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('commodities_analyzed', 0)} commodities")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  DXY ({dxy.get('symbol')}): 20d return {dxy.get('return_20d_pct')}%")
+    print(f"  Composite: {metrics.get('composite_regime')} (avg corr {metrics.get('composite_score')})")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for c in data.get("couplings", []):
+        print(f"  • {c.get('name')} ({c.get('symbol')}): {c.get('regime')} (corr {c.get('correlation_20d')})")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_sales_analytics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     kpis = data.get("kpis", {})
@@ -1267,6 +1291,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
+    "dxy-commodities": _print_dxy_commodities,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
     "events": _print_events,
@@ -1298,6 +1323,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
+    "dxy-commodities": run_dxy_commodities_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
     "events": run_events_analysis,
@@ -1447,6 +1473,10 @@ def main() -> int:
                 catalog = args.output.parent / "trading_economics_resources.json"
                 if catalog.exists():
                     print(f"  Trading Economics resource catalog: {catalog}")
+            if args.agent == "dxy-commodities":
+                catalog = args.output.parent / "dxy_commodities_resources.json"
+                if catalog.exists():
+                    print(f"  DXY-Commodities resource catalog: {catalog}")
             if args.agent == "market-predictor":
                 print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":
