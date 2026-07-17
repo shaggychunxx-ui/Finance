@@ -45,6 +45,10 @@ CONTANGO_HISTORICAL_FREQUENCY_PCT = 82.5
 
 VIX_VXV_DEEP_CONTANGO = 0.90
 VIX_VXV_BACKWARDATION = 1.00
+# Baseline ratio subtracted when normalizing the VIX/VXV ratio into a
+# 0-1 contango probability score for the metrics block.
+CONTANGO_SCORE_RATIO_BASELINE = 0.75
+PCT_MULTIPLIER = 100
 
 REGIME_PLAYBOOK: list[dict[str, Any]] = [
     {
@@ -131,7 +135,7 @@ INDICATOR_PLAYBOOK: list[dict[str, Any]] = [
 ]
 
 EXECUTION_GUARDRAILS: list[str] = [
-    "Short-volatility volatility-squeezes: steady, consistent income in steep "
+    "Short-volatility squeezes: steady, consistent income in steep "
     "contango, but a sudden 100% intraday VIX spike can wipe out years of "
     "collected premium in minutes if positions are uncorrelated or over-leveraged.",
     "Long-volatility timing drag: buying long-volatility products to hedge a "
@@ -214,8 +218,8 @@ class VixTermStructureExpert(BaseExpert):
         etp_closes = self.fetch_yahoo_closes(SHORT_TERM_ETP, range_="2mo", interval="1d")
         if len(vix_closes) <= ROLL_WINDOW_TRADING_DAYS or len(etp_closes) <= ROLL_WINDOW_TRADING_DAYS:
             return None
-        vix_ret = (vix_closes[-1] / vix_closes[-ROLL_WINDOW_TRADING_DAYS] - 1) * 100
-        etp_ret = (etp_closes[-1] / etp_closes[-ROLL_WINDOW_TRADING_DAYS] - 1) * 100
+        vix_ret = (vix_closes[-1] / vix_closes[-ROLL_WINDOW_TRADING_DAYS] - 1) * PCT_MULTIPLIER
+        etp_ret = (etp_closes[-1] / etp_closes[-ROLL_WINDOW_TRADING_DAYS] - 1) * PCT_MULTIPLIER
         return round(etp_ret - vix_ret, 2)
 
     @staticmethod
@@ -272,9 +276,8 @@ class VixTermStructureExpert(BaseExpert):
             if spot and mid and spot.price and mid.price
             else None
         )
-        convergence = (
-            round(near.price - spot.price, 2) if near and spot and near.price is not None and spot.price is not None else None
-        )
+        near_price_ok = near and spot and near.price is not None and spot.price is not None
+        convergence = round(near.price - spot.price, 2) if near_price_ok else None
         curve_steepness = (
             round(mid_etp.day_chg_pct - short_etp.day_chg_pct, 2)
             if mid_etp
@@ -385,9 +388,9 @@ class VixTermStructureExpert(BaseExpert):
         spot = by_sym.get(SPOT_SYMBOL)
 
         contango_probability_score = (
-            round(min(1.0, max(0.0, 1.0 - (assessment.vix_vix3m_ratio - 0.75))), 3)
+            round(min(1.0, max(0.0, 1.0 - (assessment.vix_vix3m_ratio - CONTANGO_SCORE_RATIO_BASELINE))), 3)
             if assessment.vix_vix3m_ratio is not None
-            else round(CONTANGO_HISTORICAL_FREQUENCY_PCT / 100, 3)
+            else round(CONTANGO_HISTORICAL_FREQUENCY_PCT / PCT_MULTIPLIER, 3)
         )
         stress_parts = [
             v
