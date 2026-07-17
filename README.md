@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **ETF Creation & Redemption Mechanics Expert** | `run.bat etf-mechanics` | [Yahoo Finance](https://finance.yahoo.com/) API |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat etf-mechanics
 ```
 
 Or with options:
@@ -399,6 +401,22 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## ETF Creation & Redemption Mechanics Expert
+
+Analyzes the primary-market arbitrage loop that lets Authorized Participants (APs)
+keep an ETF's secondary-market price in line with its NAV:
+
+- Creation mechanism (premium arbitrage) and redemption mechanism (discount arbitrage) playbooks
+- In-kind vs. cash creation model classification per ETF (equity, fixed income, emerging markets, commodities)
+- Premium/discount-to-NAV proxy and volume z-score used to flag likely AP creation/redemption activity
+- Fund-flow direction proxy (creation/inflow vs. redemption/outflow vs. neutral)
+- Systemic advantages vs. mutual funds (intraday liquidity, tax efficiency, externalized transaction costs)
+
+Note: real primary-market Portfolio Composition Files (PCF) and shares-outstanding
+series are not available from the Yahoo Finance chart feed used here, so the NAV,
+premium/discount, and fund-flow figures are calibrated proxies derived from
+price/volume action rather than a live AP creation-unit feed.
 
 ## Market Predictor
 

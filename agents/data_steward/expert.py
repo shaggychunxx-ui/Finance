@@ -210,6 +210,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "etf-mechanics",
+        "agent": "ETF Creation & Redemption Mechanics Expert",
+        "primary_output": "etf_mechanics.json",
+        "sidecars": ["creation_redemption_playbook.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

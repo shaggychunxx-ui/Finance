@@ -15,6 +15,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.etf_mechanics import run_etf_mechanics_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -977,6 +978,40 @@ def _print_logistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_etf_mechanics(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("fund_flow_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Arbitrage tightness: {metrics.get('arbitrage_tightness_score')}  |  "
+        f"Fund flow signal: {metrics.get('fund_flow_signal_score')}"
+    )
+    print()
+    print("  ETF arbitrage snapshot:")
+    for s in data.get("etf_arbitrage_snapshot", [])[:8]:
+        print(
+            f"    • {s.get('symbol')} [{s.get('creation_model')}]: "
+            f"{s.get('premium_discount_pct')}% vs NAV proxy → {s.get('arbitrage_signal')} "
+            f"({s.get('flow_proxy_direction')})"
+        )
+    print()
+    if assessment:
+        print("  Fund flow assessment:")
+        if assessment.get("conclusion"):
+            print(f"    • {assessment['conclusion']}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_order_execution(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1269,6 +1304,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
+    "etf-mechanics": _print_etf_mechanics,
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
@@ -1300,6 +1336,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
+    "etf-mechanics": run_etf_mechanics_analysis,
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
@@ -1431,6 +1468,10 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "etf-mechanics":
+                catalog = args.output.parent / "creation_redemption_playbook.json"
+                if catalog.exists():
+                    print(f"  Creation/redemption playbook catalog: {catalog}")
             if args.agent == "sec-filings":
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():
