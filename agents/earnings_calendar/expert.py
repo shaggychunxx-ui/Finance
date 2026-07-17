@@ -235,7 +235,7 @@ class EarningsCalendarExpert(BaseExpert):
         if len(closes) <= days:
             return None
         base = closes[-days - 1]
-        if not base:
+        if base is None or base == 0:
             return None
         return round(((closes[-1] - base) / base) * 100, 2)
 
