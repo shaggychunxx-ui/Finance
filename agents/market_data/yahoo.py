@@ -8,9 +8,11 @@ from typing import Any
 import requests
 
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+OPTIONS_API = "https://query1.finance.yahoo.com/v7/finance/options/{symbol}"
 DEFAULT_HEADERS = {"User-Agent": "Finance-Agents/1.0 (shaggychunxx@gmail.com)"}
 
 _session_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
+_options_cache: dict[str, dict[str, Any]] = {}
 _last_request_at = 0.0
 
 
@@ -18,6 +20,7 @@ def clear_yahoo_session_cache() -> None:
     """Drop cached chart responses (call at pipeline session start/end)."""
     global _last_request_at
     _session_cache.clear()
+    _options_cache.clear()
     _last_request_at = 0.0
 
 
@@ -171,3 +174,81 @@ def fetch_chart_meta(
         "week_chg_pct": round(week_chg, 3) if week_chg is not None else None,
         "volume": int(volume) if volume is not None else None,
     }
+
+
+def _option_leg(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "contract_symbol": raw.get("contractSymbol"),
+        "strike": float(raw.get("strike", 0.0) or 0.0),
+        "last_price": float(raw.get("lastPrice", 0.0) or 0.0),
+        "bid": float(raw.get("bid", 0.0) or 0.0),
+        "ask": float(raw.get("ask", 0.0) or 0.0),
+        "volume": int(raw.get("volume") or 0),
+        "open_interest": int(raw.get("openInterest") or 0),
+        "implied_volatility": float(raw.get("impliedVolatility", 0.0) or 0.0),
+        "in_the_money": bool(raw.get("inTheMoney", False)),
+    }
+
+
+def fetch_option_chain(
+    symbol: str,
+    *,
+    delay_seconds: float = 0.0,
+    client_tag: str = "agent",
+    timeout: int = 25,
+) -> dict[str, Any] | None:
+    """Fetch the nearest-expiration option chain (calls + puts) for a symbol.
+
+    Returns a dict with ``spot_price``, ``expiration`` (unix seconds),
+    ``days_to_expiration``, ``calls`` and ``puts`` (each a list of contract
+    dicts), or ``None`` if the chain could not be retrieved.
+    """
+    key = symbol.upper()
+    if key in _options_cache:
+        return _options_cache[key]
+
+    headers = {**DEFAULT_HEADERS, "User-Agent": f"Finance-{client_tag}/1.0"}
+    _throttle(delay_seconds)
+    try:
+        resp = requests.get(
+            OPTIONS_API.format(symbol=symbol),
+            headers=headers,
+            timeout=timeout,
+        )
+        if resp.status_code == 429:
+            time.sleep(3)
+            _throttle(delay_seconds)
+            resp = requests.get(
+                OPTIONS_API.format(symbol=symbol),
+                headers=headers,
+                timeout=timeout,
+            )
+        resp.raise_for_status()
+        result = resp.json()["optionChain"]["result"][0]
+    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError):
+        return None
+
+    quote = result.get("quote") or {}
+    spot_price = quote.get("regularMarketPrice")
+    options_list = result.get("options") or []
+    if spot_price is None or not options_list:
+        return None
+
+    nearest = options_list[0]
+    expiration = int(nearest.get("expirationDate") or 0)
+    days_to_expiration = None
+    if expiration:
+        days_to_expiration = max(
+            0.0, (expiration - time.time()) / 86400.0
+        )
+
+    chain = {
+        "symbol": symbol.upper(),
+        "spot_price": float(spot_price),
+        "expiration": expiration,
+        "days_to_expiration": round(days_to_expiration, 1) if days_to_expiration is not None else None,
+        "calls": [_option_leg(c) for c in (nearest.get("calls") or [])],
+        "puts": [_option_leg(p) for p in (nearest.get("puts") or [])],
+    }
+    _options_cache[key] = chain
+    return chain

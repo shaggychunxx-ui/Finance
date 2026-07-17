@@ -210,6 +210,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "options-flow",
+        "agent": "Smart Money Options Flow Expert",
+        "primary_output": "options_flow.json",
+        "sidecars": ["smart_money_playbook.json"],
+        "sources": ["Yahoo Finance option chain API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

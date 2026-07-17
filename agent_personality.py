@@ -63,6 +63,7 @@ _PLATFORM_DEFAULTS: dict[str, dict[str, Any]] = {
     "combined-conditional": {"label": "The Conditional Thinker", "risk_appetite": 0.50, "conviction": 0.80, "patience": 0.72, "contrarian": 0.50, "defensive_bias": 0.36, "volatility_tolerance": 0.54},
     "research-statistics": {"label": "The Research Scientist", "risk_appetite": 0.45, "conviction": 0.84, "patience": 0.78, "contrarian": 0.48, "defensive_bias": 0.34, "volatility_tolerance": 0.50},
     "order-execution": {"label": "The Execution Purist", "risk_appetite": 0.30, "conviction": 0.90, "patience": 0.40, "contrarian": 0.15, "defensive_bias": 0.60, "volatility_tolerance": 0.25},
+    "options-flow": {"label": "The Tape Sleuth", "risk_appetite": 0.55, "conviction": 0.75, "patience": 0.50, "contrarian": 0.35, "defensive_bias": 0.40, "volatility_tolerance": 0.60},
     "data-steward": {"label": "The Steward", "risk_appetite": 0.40, "conviction": 0.88, "patience": 0.85, "contrarian": 0.20, "defensive_bias": 0.50, "volatility_tolerance": 0.30},
     "records-management": {"label": "The Archivist", "risk_appetite": 0.35, "conviction": 0.86, "patience": 0.90, "contrarian": 0.18, "defensive_bias": 0.55, "volatility_tolerance": 0.28},
     "market-predictor": {"label": "The Ensemble Conductor", "risk_appetite": 0.50, "conviction": 0.75, "patience": 0.55, "contrarian": 0.35, "defensive_bias": 0.45, "volatility_tolerance": 0.50},

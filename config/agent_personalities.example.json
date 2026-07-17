@@ -163,6 +163,15 @@
       "defensive_bias": 0.6,
       "volatility_tolerance": 0.25
     },
+    "options-flow": {
+      "label": "The Tape Sleuth",
+      "risk_appetite": 0.55,
+      "conviction": 0.75,
+      "patience": 0.5,
+      "contrarian": 0.35,
+      "defensive_bias": 0.4,
+      "volatility_tolerance": 0.6
+    },
     "data-steward": {
       "label": "The Steward",
       "risk_appetite": 0.4,

@@ -25,6 +25,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.migration import run_migration_analysis
+from agents.options_flow import run_options_flow_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
@@ -1012,6 +1013,40 @@ def _print_order_execution(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_options_flow(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("flow_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Flow conviction: {metrics.get('flow_conviction_score')}  |  "
+        f"Hedging ambiguity: {metrics.get('hedging_ambiguity_score')}"
+    )
+    print()
+    print("  Symbol options flow:")
+    for s in data.get("symbol_flow", [])[:8]:
+        print(
+            f"    • {s.get('symbol')}: {s.get('bias')} — "
+            f"sig.ratio={s.get('significance_ratio')}, golden_sweep={s.get('golden_sweep_candidate')}"
+        )
+    print()
+    if assessment:
+        print("  Flow assessment:")
+        for key in ("market_bias_signal", "forensic_signal", "tool_recommendation"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1279,6 +1314,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "markets": _print_markets,
     "market-predictor": _print_market_predictor,
     "meteorology": _print_meteorology,
+    "options-flow": _print_options_flow,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
     "records-management": _print_records_management,
@@ -1310,6 +1346,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "markets": run_markets_analysis,
     "market-predictor": run_market_predictor_analysis,
     "meteorology": run_meteorology_analysis,
+    "options-flow": run_options_flow_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
     "records-management": run_records_management_analysis,
@@ -1431,6 +1468,10 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "options-flow":
+                catalog = args.output.parent / "smart_money_playbook.json"
+                if catalog.exists():
+                    print(f"  Smart money playbook catalog: {catalog}")
             if args.agent == "sec-filings":
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():

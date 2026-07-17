@@ -219,6 +219,16 @@ class BaseExpert:
             client_tag=self.agent_id or type(self).__name__,
         )
 
+    def fetch_yahoo_option_chain(self, symbol: str) -> dict[str, Any] | None:
+        from agents.market_data.yahoo import fetch_option_chain
+
+        delay = float(getattr(self, "delay_seconds", 0.35))
+        return fetch_option_chain(
+            symbol,
+            delay_seconds=delay,
+            client_tag=self.agent_id or type(self).__name__,
+        )
+
     def fetch_yahoo_chart_meta(
         self,
         symbol: str,

@@ -26,6 +26,8 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Order Execution & Market Microstructure Expert** | `run.bat order-execution` | Yahoo Finance Chart API |
+| **Smart Money Options Flow Expert** | `run.bat options-flow` | Yahoo Finance option chain API |
 
 ## Quick start
 
@@ -50,6 +52,8 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat order-execution
+run.bat options-flow
 ```
 
 Or with options:
