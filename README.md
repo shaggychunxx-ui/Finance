@@ -15,6 +15,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
+| **VIX Term Structure Expert** | `run.bat vix-term-structure` | [Yahoo Finance](https://finance.yahoo.com/) API (^VIX, ^VIX9D, ^VIX3M, VXX, VIXM) |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
@@ -39,6 +40,7 @@ run.bat datascience
 run.bat finance
 run.bat financial-data
 run.bat markets
+run.bat vix-term-structure
 run.bat geopolitics
 run.bat logistics
 run.bat theoretical-probability
@@ -203,6 +205,21 @@ Live US market analysis from Yahoo Finance:
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+## VIX Term Structure Expert
+
+Maps the relationship between expected S&P 500 volatility and time — Spot VIX
+vs. VIX9D/VIX3M and short/mid-term VIX futures ETPs (VXX, VIXM), since free
+public feeds don't expose individual CBOE VX futures contract prices:
+
+- Regime classification: **Contango** (baseline, ~80-85% of trading days) vs.
+  **Backwardation** (crisis state), with the insurance-premium/VRP and
+  volatility-spike mechanics that drive each regime
+- VIX / VXV ratio, VIX9D convergence, and a curve-steepness/roll-yield proxy
+  (VXX vs. VIX 1-month cumulative return spread)
+- Negative vs. positive roll-yield mechanics for short- and long-volatility ETPs
+- Execution guardrails: short-vol squeeze risk, long-vol timing drag, and
+  VIX mean-reversion caps
 
 ## Geopolitics Expert
 

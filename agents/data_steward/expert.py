@@ -210,6 +210,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "vix-term-structure",
+        "agent": "VIX Term Structure Expert",
+        "primary_output": "vix_term_structure.json",
+        "sidecars": ["vix_term_structure_indicators.json"],
+        "sources": ["Yahoo Finance API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

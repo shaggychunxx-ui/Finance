@@ -90,6 +90,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "trading-economics": "macro",
     "sales-analytics": "consumer",
     "order-execution": "execution",
+    "vix-term-structure": "macro",
     "data-steward": "data_platform",
     "records-management": "data_platform",
     "market-predictor": "fusion",

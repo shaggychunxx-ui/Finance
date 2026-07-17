@@ -34,6 +34,7 @@ from agents.sec_filings import run_sec_filings_analysis
 from agents.trading_economics import run_trading_economics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
+from agents.vix_term_structure import run_vix_term_structure_analysis
 from agents.market_predictor import run_market_predictor_analysis
 from historical_simulation import run_accuracy_benchmark_cli, run_historical_simulation_cli
 
@@ -1012,6 +1013,37 @@ def _print_order_execution(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_vix_term_structure(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {assessment.get('regime')}  |  "
+        f"Contango probability: {metrics.get('contango_probability_score')}  |  "
+        f"Stress: {metrics.get('stress_score')}"
+    )
+    print()
+    print("  Term structure:")
+    for p in data.get("term_structure_points", []):
+        chg = f" ({p.get('day_chg_pct'):+.2f}%)" if p.get("day_chg_pct") is not None else ""
+        print(f"    • {p.get('symbol')}: {p.get('price')}{chg}")
+    print()
+    for key in ("ratio_signal", "convergence_signal", "roll_signal"):
+        if assessment.get(key):
+            print(f"  • {assessment[key]}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1288,6 +1320,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "theoretical-probability": _print_theoretical_probability,
     "trading-economics": _print_trading_economics,
     "transportation": _print_transportation,
+    "vix-term-structure": _print_vix_term_structure,
 }
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
@@ -1319,6 +1352,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "theoretical-probability": run_theoretical_probability_analysis,
     "trading-economics": run_trading_economics_analysis,
     "transportation": run_transportation_analysis,
+    "vix-term-structure": run_vix_term_structure_analysis,
 }
 
 
@@ -1431,6 +1465,10 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "vix-term-structure":
+                catalog = args.output.parent / "vix_term_structure_indicators.json"
+                if catalog.exists():
+                    print(f"  VIX term structure indicators catalog: {catalog}")
             if args.agent == "sec-filings":
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():
