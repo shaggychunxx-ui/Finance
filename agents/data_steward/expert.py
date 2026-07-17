@@ -67,6 +67,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "content-integrity",
+        "agent": "Content Integrity Expert",
+        "primary_output": "content_integrity.json",
+        "sidecars": ["content_integrity_playbook.json"],
+        "sources": ["BBC World RSS", "NPR World RSS"],
+        "owner": "platform",
+    },
+    {
         "command": "events",
         "agent": "World Events Tracker",
         "primary_output": "world_events.json",

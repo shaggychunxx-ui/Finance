@@ -15,6 +15,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.content_integrity import run_content_integrity_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -644,6 +645,38 @@ def _print_census(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_content_integrity(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('headlines_screened', 0)} headlines screened")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    by_tier = summary.get("by_risk_tier", {})
+    print(
+        f"  Risk tier mix: critical {by_tier.get('critical', 0)}, "
+        f"high {by_tier.get('high', 0)}, medium {by_tier.get('medium', 0)}, "
+        f"low {by_tier.get('low', 0)}"
+    )
+    print(f"  Ensemble risk score: {summary.get('ensemble_risk_score', 0)}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  Flagged headlines:")
+    for f in data.get("flags", [])[:8]:
+        if f.get("risk_tier") in ("critical", "high", "medium"):
+            print(
+                f"    • [{f.get('risk_tier', '?').upper()}] {f.get('title', '')[:70]} "
+                f"— {f.get('pillar', '')}"
+            )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_events(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     summary = data.get("summary", {})
@@ -1264,6 +1297,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "agriculture": _print_agriculture,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
+    "content-integrity": _print_content_integrity,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1295,6 +1329,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
+    "content-integrity": run_content_integrity_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
@@ -1435,6 +1470,10 @@ def main() -> int:
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():
                     print(f"  SEC EDGAR resource catalog: {catalog}")
+            if args.agent == "content-integrity":
+                catalog = args.output.parent / "content_integrity_playbook.json"
+                if catalog.exists():
+                    print(f"  Content integrity playbook catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():

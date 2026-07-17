@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Content Integrity Expert** | `run.bat content-integrity` | BBC World / NPR RSS |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat content-integrity
 ```
 
 Or with options:
@@ -399,6 +401,22 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Content Integrity Expert
+
+Catalogs the multi-layered pipeline behind modern news toxicity and social
+spoof/impersonation filters, and screens live world headlines for
+market-relevant disinformation risk:
+
+- **Filter pillars** — Toxicity Filtering Engine, Social Spoof & Impersonation
+  Filters, Automated News Integrity Checking (with sub-techniques for each)
+- **Commercial ecosystem** — ZeroFox, BrandShield, Lasso Moderation, Disqus,
+  Perspective API, AWS Rekognition, Azure Content Safety
+- **Structural trade-offs** — false-positive information tax, latency/compute
+  costs, chilling-effect algorithmic bias
+- **Live risk screen** — heuristic ensemble risk tiering (critical/high/
+  medium/low) of BBC World / NPR RSS headlines for spoof, deepfake, and
+  manipulation keywords, with ticker-level market signals for watchlist names
 
 ## Market Predictor
 
