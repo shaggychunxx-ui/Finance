@@ -1032,6 +1032,51 @@ def test_backtest_loop_cli_argument_validation() -> None:
         assert loop_mod.main() == 2
 
 
+def test_crowding_quality_cli_registered() -> None:
+    """crowding-quality must appear in RUNNERS/PRINTERS and produce a valid quadrant report."""
+    import unittest.mock as mock
+
+    from agents.crowding_quality.expert import CrowdingQualityExpert, WATCHLIST
+    from main import PRINTERS, RUNNERS
+
+    assert "crowding-quality" in RUNNERS, "crowding-quality missing from RUNNERS"
+    assert "crowding-quality" in PRINTERS, "crowding-quality missing from PRINTERS"
+
+    def _fake_ohlcv(self, symbol: str, *, range_: str = "3mo", interval: str = "1d") -> dict:
+        n = 40
+        close = 100.0
+        closes, highs, lows, volumes, opens = [], [], [], [], []
+        for i in range(n):
+            close *= 1.001
+            o = close * 0.999
+            h = close * 1.01
+            l = close * 0.99
+            v = 2_000_000.0 * (3.0 if symbol == "GME" and i >= n - 5 else 1.0)
+            closes.append(close)
+            opens.append(o)
+            highs.append(h)
+            lows.append(l)
+            volumes.append(v)
+        return {"close": closes, "open": opens, "high": highs, "low": lows, "volume": volumes}
+
+    with mock.patch.object(CrowdingQualityExpert, "fetch_yahoo_ohlcv", _fake_ohlcv):
+        expert = CrowdingQualityExpert(pipeline_context={})
+        report = expert.analyze()
+        result = expert.to_dict(report)
+
+    assert isinstance(result, dict)
+    assert "symbol_crowding_quality" in result
+    rows = result["symbol_crowding_quality"]
+    assert len(rows) == len(WATCHLIST)
+    valid_quadrants = set(result["framework"]["quadrants"])
+    for row in rows:
+        assert row["quadrant"] in valid_quadrants
+        assert 0.0 <= row["crowding_score"] <= 10.0
+        assert 0.0 <= row["quality_score"] <= 10.0
+
+    PRINTERS["crowding-quality"](result)
+
+
 def _run_all() -> None:
     tests = [
         test_app_paths_consistent,
@@ -1061,6 +1106,7 @@ def _run_all() -> None:
         test_base_expert_watchlist_and_memory,
         test_trading_gate_cluster_and_eligibility,
         test_market_predictor_cli_registered,
+        test_crowding_quality_cli_registered,
         test_market_predictor_loop_cycle_no_crash,
         test_backtest_loop_cycle_no_crash,
         test_backtest_loop_cli_argument_validation,

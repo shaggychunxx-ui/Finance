@@ -15,6 +15,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.crowding_quality import run_crowding_quality_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -1012,6 +1013,40 @@ def _print_order_execution(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_crowding_quality(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("crowding_quality_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Avg crowding: {metrics.get('avg_crowding_score')}/10  |  "
+        f"Avg quality: {metrics.get('avg_quality_score')}/10"
+    )
+    print()
+    print("  Symbol quadrants:")
+    for s in data.get("symbol_crowding_quality", [])[:8]:
+        print(
+            f"    • {s.get('symbol')} [{s.get('quadrant')}]: "
+            f"crowding={s.get('crowding_score')}, quality={s.get('quality_score')}"
+        )
+    print()
+    if assessment:
+        print("  Assessment:")
+        for key in ("squeeze_watch", "sweet_spot_watch", "conclusion"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1264,6 +1299,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "agriculture": _print_agriculture,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
+    "crowding-quality": _print_crowding_quality,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1295,6 +1331,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
+    "crowding-quality": run_crowding_quality_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
@@ -1431,6 +1468,10 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "crowding-quality":
+                catalog = args.output.parent / "crowding_quality_framework.json"
+                if catalog.exists():
+                    print(f"  Crowding/quality framework catalog: {catalog}")
             if args.agent == "sec-filings":
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():

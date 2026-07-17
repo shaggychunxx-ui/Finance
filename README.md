@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Crowding vs. Quality Expert** | `run.bat crowding-quality` | Yahoo Finance (3mo daily OHLCV, calibrated short-crowding proxies) |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat crowding-quality
 ```
 
 Or with options:
@@ -399,6 +401,19 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Crowding vs. Quality Expert
+
+Institutional short-selling framework scoring watchlist names on two independent axes:
+
+- **Crowding** — utilization rate, cost-to-borrow (GC vs. special), and days-to-cover proxies
+  derived from Yahoo Finance volume/liquidity data (no live equity-lending feed exists for free)
+- **Quality** — structural stability (institutional- vs. retail-led float), alpha origin
+  (fundamental directional vs. index/pair-trading hedge vs. technical/momentum), and a
+  fundamental-decay score (orderly drawdown vs. chaotic volatility)
+- **Quadrant classification** — Sweet Spot, Crowded Quality, Squeeze Zone, Low-Conviction Noise
+- Sector signals flag Squeeze Zone names (forced buy-in risk) and Sweet Spot names (favorable
+  short carry)
 
 ## Market Predictor
 
