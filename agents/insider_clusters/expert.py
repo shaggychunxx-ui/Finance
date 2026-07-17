@@ -3,15 +3,13 @@ Insider Form 4 Cluster Analyst Agent
 =====================================
 Tracks SEC Form 4 "open-market purchase" filings (Transaction Code P) via
 EDGAR Full Text Search and flags Form 4 clusters — 3+ distinct insiders
-buying the same company's stock within a tight 10-to-15 business day window.
+buying the same company's stock within a tight 15-calendar-day window
+(an approximation of the 10-to-15 business day window analysts use).
 
 Only Code P (bona fide open-market purchases funded with personal capital)
 counts toward a cluster; Code M (derivative exercise) and Code A
 (grant/award) are structural compensation events and are excluded.
-
-The cluster window defaults to 15 calendar days (an approximation of the
-10-to-15 business day window analysts use); pass ``lookback_days`` to
-``InsiderClusterAnalyst`` to tune it.
+Pass ``lookback_days`` to ``InsiderClusterAnalyst`` to tune the window.
 
 Insiders are ranked by a power hierarchy:
   Tier 1 — CEO / CFO (The Operators)
