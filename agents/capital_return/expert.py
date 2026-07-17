@@ -25,6 +25,10 @@ from agents.base import BaseExpert
 
 DASHBOARD_URL = "https://finance.yahoo.com/"
 
+# Yields at or below this threshold are treated as "no active program" for
+# classification purposes (dividend-only / buyback-only / dual-engine counts).
+MIN_YIELD_THRESHOLD_PCT = 0.05
+
 # Curated capital-return profiles across the corporate life cycle.
 # dividend_yield_pct / buyback_yield_pct / payout_ratio_pct / roic_pct / wacc_pct
 # are approximate, slowly-changing fundamentals used alongside live price data.
@@ -216,7 +220,10 @@ TAX_TREATMENT_TABLE: list[dict[str, str]] = [
     },
     {
         "dividend_type": "Ordinary Dividends",
-        "holding_requirement": "Held <= 60 days or paid by REITs / certain foreign assets",
+        "holding_requirement": (
+            "Held <= 60 days, or paid by REITs, certain foreign assets, "
+            "partnerships, or money market funds"
+        ),
         "tax_treatment": "Investor's standard marginal income tax bracket (up to 37%)",
     },
 ]
@@ -382,7 +389,7 @@ class CapitalReturnExpert(BaseExpert):
 
     @staticmethod
     def _buyback_quality_label(buyback_yield_pct: float, range_position_pct: float | None) -> str:
-        if buyback_yield_pct <= 0.05:
+        if buyback_yield_pct <= MIN_YIELD_THRESHOLD_PCT:
             return "no active buyback program"
         if range_position_pct is None:
             return "buyback active — valuation context unavailable"
@@ -464,10 +471,13 @@ class CapitalReturnExpert(BaseExpert):
             for c in candidates
             if "elevated dividend cut risk" in c.dividend_risk_label
         ]
+        # Only surface the concerning case here (buying near highs); value-creating
+        # buybacks are already highlighted via the top total-yield leader and the
+        # dedicated BULLISH market signal.
         buyback_flags = [
             f"{c.symbol}: {c.buyback_quality_label}"
             for c in candidates
-            if "value-destroying" in c.buyback_quality_label or "value-creating" in c.buyback_quality_label
+            if "value-destroying" in c.buyback_quality_label
         ]
 
         avg_dual_yield = (
@@ -584,13 +594,13 @@ class CapitalReturnExpert(BaseExpert):
             else 0.0
         )
         dividend_only = sum(
-            1 for c in candidates if c.dividend_yield_pct > 0 and c.buyback_yield_pct <= 0.05
+            1 for c in candidates if c.dividend_yield_pct > 0 and c.buyback_yield_pct <= MIN_YIELD_THRESHOLD_PCT
         )
         buyback_only = sum(
-            1 for c in candidates if c.buyback_yield_pct > 0 and c.dividend_yield_pct <= 0.05
+            1 for c in candidates if c.buyback_yield_pct > 0 and c.dividend_yield_pct <= MIN_YIELD_THRESHOLD_PCT
         )
         dual_engine = sum(
-            1 for c in candidates if c.dividend_yield_pct > 0.05 and c.buyback_yield_pct > 0.05
+            1 for c in candidates if c.dividend_yield_pct > MIN_YIELD_THRESHOLD_PCT and c.buyback_yield_pct > MIN_YIELD_THRESHOLD_PCT
         )
 
         ranked = sorted(candidates, key=lambda c: -c.total_shareholder_yield_pct)

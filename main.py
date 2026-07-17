@@ -258,7 +258,7 @@ def _print_capital_return(data: dict[str, Any]) -> None:
         print(
             f"    • {c.get('symbol')} ({c.get('stage')}): "
             f"div {c.get('dividend_yield_pct')}% + buyback {c.get('buyback_yield_pct')}% = "
-            f"{c.get('total_shareholder_yield_pct'):+.2f}% — {c.get('capital_efficiency_label')}"
+            f"{(c.get('total_shareholder_yield_pct') or 0.0):+.2f}% — {c.get('capital_efficiency_label')}"
         )
     print()
     if assessment:
