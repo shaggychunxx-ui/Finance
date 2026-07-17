@@ -212,7 +212,8 @@ open-market purchases (Transaction Code P) and flags high-conviction insider clu
 
 - Excludes Code M (option exercise) and Code A (grant/award) — only bona fide, cash-funded
   open-market purchases count
-- Flags a cluster when 3+ distinct insiders buy the same ticker within a 15-business-day window
+- Flags a cluster when 3+ distinct insiders buy the same ticker within a 15-calendar-day window
+  (an approximation of the 10-to-15 business day window analysts use)
 - Ranks insiders by power hierarchy: Tier 1 CEO/CFO, Tier 2 Chairman/Independent Directors,
   Tier 3 10% beneficial owners
 - Emits a conviction score per cluster and a bullish market signal for qualifying tickers
