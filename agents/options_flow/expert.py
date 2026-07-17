@@ -43,7 +43,8 @@ WATCHLIST: dict[str, str] = {
 }
 
 # Forensic thresholds for the "golden sweep" style anomaly screen.
-GOLDEN_SWEEP_MIN_PREMIUM_USD = 1_000_000.0
+# Premium notional = contract volume * last price * 100 shares/contract.
+GOLDEN_SWEEP_MIN_PREMIUM_USD = 1_000_000.0  # dollar notional threshold
 GOLDEN_SWEEP_MIN_OTM_PCT = 15.0
 SHORT_DATED_MAX_DAYS = 14.0
 AT_ASK_PROXY_RATIO = 0.98  # lastPrice >= 98% of ask counts as "paid at/near the ask"
@@ -249,6 +250,7 @@ class OptionsFlowExpert(BaseExpert):
             if volume <= 0 or volume <= oi:
                 continue
             otm_pct = self._otm_pct(leg["strike"], spot, is_call)
+            # Premium notional: contract volume * last price * 100 shares/contract.
             premium_notional = volume * leg.get("last_price", 0.0) * 100.0
             at_ask = self._at_ask(leg)
             golden = (
@@ -291,6 +293,8 @@ class OptionsFlowExpert(BaseExpert):
 
         total_volume = call_volume + put_volume
         total_oi = call_oi + put_oi
+        # None (rather than a sentinel/inf) when OI is 0 keeps the field JSON-safe;
+        # the per-contract `unusual` list already flags volume > 0-OI contracts explicitly.
         significance_ratio = round(total_volume / total_oi, 2) if total_oi else None
         put_call_ratio = round(put_volume / call_volume, 2) if call_volume else None
 
@@ -303,6 +307,8 @@ class OptionsFlowExpert(BaseExpert):
         else:
             call_premium = sum(u["premium_notional"] for u in unusual_calls)
             put_premium = sum(u["premium_notional"] for u in unusual_puts)
+            # Require a 50%+ premium edge (1.5x) before calling a side "dominant" —
+            # avoids flagging roughly-balanced call/put flow as directional.
             if call_premium > put_premium * 1.5:
                 bias = "Bullish flow (unusual call-side premium dominant)"
             elif put_premium > call_premium * 1.5:
@@ -452,6 +458,8 @@ class OptionsFlowExpert(BaseExpert):
         expert_summary = self._expert_summary(assessment)
 
         golden_count = sum(1 for s in symbols if s.golden_sweep_candidate)
+        # Score on a 0-10 scale: 2.0 baseline conviction (some unusual flow is normal
+        # noise) plus up to 8.0 more scaled by the fraction of golden-sweep symbols.
         flow_conviction_score = round(min(10.0, golden_count / len(symbols) * 10 + 2), 1)
         ambiguous = sum(1 for s in symbols if s.top_contract is None)
         hedging_ambiguity_score = round(ambiguous / len(symbols) * 10, 1)

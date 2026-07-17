@@ -10,6 +10,7 @@ import requests
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 OPTIONS_API = "https://query1.finance.yahoo.com/v7/finance/options/{symbol}"
 DEFAULT_HEADERS = {"User-Agent": "Finance-Agents/1.0 (shaggychunxx@gmail.com)"}
+SECONDS_PER_DAY = 86400.0
 
 _session_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
 _options_cache: dict[str, dict[str, Any]] = {}
@@ -239,7 +240,7 @@ def fetch_option_chain(
     days_to_expiration = None
     if expiration:
         days_to_expiration = max(
-            0.0, (expiration - time.time()) / 86400.0
+            0.0, (expiration - time.time()) / SECONDS_PER_DAY
         )
 
     chain = {
