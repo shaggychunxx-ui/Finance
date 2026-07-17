@@ -15,6 +15,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.correlation_breakdown import run_correlation_breakdown_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -279,6 +280,44 @@ def _print_datascience(data: dict[str, Any]) -> None:
             f"z {t.get('z_score_20d'):+.2f} | 20d {t.get('return_20d_pct'):+.2f}% | "
             f"MC P(up) {t.get('mc_prob_up_5d'):.0%}"
         )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_correlation_breakdown(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    regime = data.get("regime", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Regime: {regime.get('regime_label')} (VIX {regime.get('vix_level')}) — "
+        f"switch prob {regime.get('calm_to_panic_switch_prob')}"
+    )
+    print(
+        f"  Convergence score: {metrics.get('correlation_convergence_score')} | "
+        f"Tail risk score: {metrics.get('tail_risk_score')} | "
+        f"Diversification score: {metrics.get('diversification_score')}"
+    )
+    print()
+    print("  Calm vs stress correlation to SPY:")
+    for p in data.get("correlation_pairs", []):
+        flag = " ⚠ BREAKDOWN" if p.get("convergence_flag") else ""
+        print(
+            f"    • {p.get('symbol')}: calm {p.get('calm_correlation')} → "
+            f"stress {p.get('stress_correlation')}{flag}"
+        )
+    print()
+    print("  Tail risk (CVaR):")
+    for m in data.get("tail_metrics", []):
+        print(f"    • {m.get('symbol')}: CVaR95 {m.get('cvar_95_pct')}% | CVaR99 {m.get('cvar_99_pct')}%")
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -1264,6 +1303,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "agriculture": _print_agriculture,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
+    "correlation-breakdown": _print_correlation_breakdown,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1295,6 +1335,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
+    "correlation-breakdown": run_correlation_breakdown_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,

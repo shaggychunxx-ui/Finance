@@ -81,6 +81,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "empirical-probability": "quant",
     "combined-conditional": "quant",
     "research-statistics": "quant",
+    "correlation-breakdown": "quant",
     "events": "intelligence",
     "patents": "intelligence",
     "sec-filings": "intelligence",

@@ -21,6 +21,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
+| **Correlation Breakdown / Tail-Risk Expert** | `run.bat correlation-breakdown` | Yahoo Finance (1yr daily history + VIX) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Market Predictor** | `run.bat market-predictor` | Fuses all agent outputs into multi-horizon predictions |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
@@ -45,6 +46,7 @@ run.bat theoretical-probability
 run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
+run.bat correlation-breakdown
 run.bat sales-analytics
 run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
@@ -327,6 +329,31 @@ Outputs:
 
 - `output/research_statistics.json` — full statistical research report
 - `output/statistical_methods.json` — methods and formulas catalog
+
+## Correlation Breakdown / Tail-Risk Expert
+
+Quantitative risk analyst covering "correlation breakdown" — the tendency of historically
+uncorrelated assets to converge toward r ≈ 1.0 during systemic liquidity shocks, eliminating
+diversification benefits exactly when they are needed most ([Ray Dalio: surviving market
+crashes](https://www.investopedia.com/ray-dalio-on-surviving-market-crashes-11699830)):
+
+- **Calm vs stress correlation** — pairwise correlation to SPY in normal vs worst-tail return
+  days, flagging convergence toward r ≈ 1.0 (a copula lower-tail-dependence proxy)
+- **CVaR / Expected Shortfall** — historical-simulation VaR95, CVaR95, and CVaR99 per asset
+- **Fat-tail diagnostics** — excess kurtosis flags where Gaussian VaR understates crash risk
+- **Regime-switching proxy** — two-state (calm/panicked) VIX-driven Markov regime with
+  empirical persistence and calm→panic switch probability
+- **Portfolio protection playbook** — long volatility options, trend-following/CTA, and
+  tail-risk budgeting strategies
+
+```bat
+run.bat correlation-breakdown -o output/correlation_breakdown.json
+```
+
+Outputs:
+
+- `output/correlation_breakdown.json` — full correlation-breakdown and tail-risk report
+- `output/tail_risk_frameworks.json` — copula/CVaR/regime-switching framework and protection-strategy catalog
 
 ## Sales Analytics BI Expert
 

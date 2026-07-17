@@ -91,6 +91,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "correlation-breakdown",
+        "agent": "Correlation Breakdown / Tail-Risk Expert",
+        "primary_output": "correlation_breakdown.json",
+        "sidecars": ["tail_risk_frameworks.json"],
+        "sources": ["Yahoo Finance Chart API (1y daily + VIX)"],
+        "owner": "platform",
+    },
+    {
         "command": "finance",
         "agent": "Google Finance Beta Analyst",
         "primary_output": "finance.json",
