@@ -44,17 +44,19 @@ ACCRUALS_RESOURCES: list[dict[str, Any]] = [
         "id": "sloan_ratio_methodology",
         "name": "Sloan Ratio — Aggregate Accrual Test",
         "provider": "Richard Sloan (accounting research)",
-        "url": "https://courses.lumenlearning.com/suny-finaccounting/chapter/direct-write-off-and-allowance-methods/",
+        "url": "https://www.investopedia.com/terms/q/quality-of-earnings.asp",
         "coverage": "(Net Income - Operating CF - Investing CF) / Total Assets",
         "access": "reference",
         "api_key_required": False,
-        "notes": "Classifies earnings quality risk into Low/Moderate/Severe bands.",
+        "notes": "Classifies earnings quality risk into Low/Moderate/Severe bands. Derived "
+        "from Sloan (1996), 'Do Stock Prices Fully Reflect Information in Accruals and "
+        "Cash Flows about Future Earnings?'",
     },
     {
         "id": "modified_jones_model",
         "name": "Modified Jones Model — Discretionary Accruals",
         "provider": "Jones (1991) / Dechow, Sloan & Sweeney (1995)",
-        "url": "https://courses.lumenlearning.com/suny-finaccounting/chapter/direct-write-off-and-allowance-methods/",
+        "url": "https://www.investopedia.com/terms/q/quality-of-earnings.asp",
         "coverage": "TA_t/A_(t-1) = a1(1/A_(t-1)) + a2((dREV-dREC)/A_(t-1)) + a3(PPE_t/A_(t-1)) + e_t",
         "access": "reference",
         "api_key_required": False,
