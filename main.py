@@ -25,6 +25,7 @@ from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.migration import run_migration_analysis
+from agents.momentum_reversion import run_momentum_reversion_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
 from agents.records_management import run_records_management_analysis
@@ -559,6 +560,54 @@ def _print_empirical_probability(data: dict[str, Any]) -> None:
     if assessment:
         print("  Empirical assessment:")
         for key in ("conditional_signal", "experiment_signal", "experimental_edge"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_momentum_reversion(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("dual_force_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Regime: {metrics.get('regime_label')} (evidence {metrics.get('evidence_score')})")
+    print()
+    print("  Trend-pullback backtests:")
+    for b in data.get("trend_pullback_backtests", [])[:6]:
+        print(
+            f"    • {b.get('symbol')} [{b.get('current_status')}] "
+            f"win rate {b.get('win_rate'):.0%} over {b.get('trades')} trades, "
+            f"max DD {b.get('max_drawdown_pct')}%"
+        )
+    print()
+    print("  Regime metrics:")
+    for r in data.get("regime_metrics", [])[:6]:
+        print(
+            f"    • {r.get('symbol')}: ER={r.get('efficiency_ratio')}, "
+            f"vol {r.get('volatility_trend')} — {r.get('regime_label')}"
+        )
+    print()
+    pairs = data.get("stat_arb_signals", [])
+    if pairs:
+        print("  Statistical arbitrage pairs:")
+        for p in pairs:
+            print(
+                f"    • {'/'.join(p.get('pair', []))}: z={p.get('spread_zscore')}, "
+                f"ADX proxy={p.get('adx_proxy')} ({p.get('momentum_overlay')}) — {p.get('trade_signal')}"
+            )
+        print()
+    if assessment:
+        print("  Dual-force assessment:")
+        for key in ("trend_pullback_signal", "regime_signal", "stat_arb_signal", "defense_signal", "combined_edge"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
@@ -1276,6 +1325,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "grid": _print_grid,
     "logistics": _print_logistics,
     "migration": _print_migration,
+    "momentum-reversion": _print_momentum_reversion,
     "markets": _print_markets,
     "market-predictor": _print_market_predictor,
     "meteorology": _print_meteorology,
@@ -1307,6 +1357,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
     "migration": run_migration_analysis,
+    "momentum-reversion": run_momentum_reversion_analysis,
     "markets": run_markets_analysis,
     "market-predictor": run_market_predictor_analysis,
     "meteorology": run_meteorology_analysis,
@@ -1419,6 +1470,10 @@ def main() -> int:
                 catalog = args.output.parent / "empirical_experiments.json"
                 if catalog.exists():
                     print(f"  Empirical experiments catalog: {catalog}")
+            if args.agent == "momentum-reversion":
+                catalog = args.output.parent / "dual_force_playbook.json"
+                if catalog.exists():
+                    print(f"  Dual-force playbook catalog: {catalog}")
             if args.agent == "combined-conditional":
                 catalog = args.output.parent / "probability_concepts.json"
                 if catalog.exists():

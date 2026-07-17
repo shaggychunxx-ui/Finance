@@ -171,6 +171,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "momentum-reversion",
+        "agent": "Dual-Force Momentum / Mean-Reversion Expert",
+        "primary_output": "momentum_reversion.json",
+        "sidecars": ["dual_force_playbook.json"],
+        "sources": ["Yahoo Finance Chart API", "E*TRADE live quotes"],
+        "owner": "platform",
+    },
+    {
         "command": "combined-conditional",
         "agent": "Combined & Conditional Probability Expert",
         "primary_output": "combined_conditional.json",

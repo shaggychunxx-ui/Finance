@@ -19,6 +19,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
+| **Dual-Force Momentum / Mean-Reversion Expert** | `run.bat momentum-reversion` | Yahoo Finance (2yr daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
@@ -45,6 +46,7 @@ run.bat theoretical-probability
 run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
+run.bat momentum-reversion
 run.bat sales-analytics
 run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
@@ -284,6 +286,32 @@ Outputs:
 
 - `output/empirical_probability.json` — full empirical analysis with market signals
 - `output/empirical_experiments.json` — catalog of experimental methods
+
+## Dual-Force Momentum / Mean-Reversion Expert
+
+Expert blending trend-persistence (momentum) and overextension-correction (mean-reversion)
+anomalies via three structural architectures:
+
+- **Multi-Timeframe Trend-Pullback Setup** — macro momentum filter (120-day return + 100-day
+  EMA) gating a micro mean-reversion trigger (RSI(3) < 15), exited via SMA(10) normalization,
+  a -5% hard stop, or a 5-day time stop; backtested per watchlist symbol
+- **Statistical Arbitrage with Momentum Overlay** — pair-spread z-score reversion (e.g.
+  KO/PEP, XOM/CVX) gated by a close-only ADX proxy so trades are blocked while the spread
+  still has directional momentum (ADX > 30) and allowed once it exhausts (ADX < 20)
+- **Regime-Switching Matrix** — Efficiency Ratio + rolling volatility trend route capital
+  between momentum and mean-reversion systems per symbol
+- **Portfolio defense mechanics** — drawdown circuit breaker (halve/freeze allocation at a
+  7% backtested drawdown) and time-based stop (force-liquidate stuck reversion trades after
+  5 trading days) surfaced alongside each backtest
+
+```bat
+run.bat momentum-reversion -o output/momentum_reversion.json
+```
+
+Outputs:
+
+- `output/momentum_reversion.json` — full dual-force analysis with market signals
+- `output/dual_force_playbook.json` — catalog of architectures and the risk-profile table
 
 ## Combined & Conditional Probability Expert
 
