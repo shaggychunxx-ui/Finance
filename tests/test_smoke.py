@@ -1042,6 +1042,9 @@ def test_crowding_quality_cli_registered() -> None:
     assert "crowding-quality" in RUNNERS, "crowding-quality missing from RUNNERS"
     assert "crowding-quality" in PRINTERS, "crowding-quality missing from PRINTERS"
 
+    BASE_VOLUME = 2_000_000.0
+    GME_VOLUME_SPIKE_MULTIPLIER = 3.0
+
     def _fake_ohlcv(self, symbol: str, *, range_: str = "3mo", interval: str = "1d") -> dict:
         n = 40
         close = 100.0
@@ -1051,7 +1054,7 @@ def test_crowding_quality_cli_registered() -> None:
             o = close * 0.999
             h = close * 1.01
             l = close * 0.99
-            v = 2_000_000.0 * (3.0 if symbol == "GME" and i >= n - 5 else 1.0)
+            v = BASE_VOLUME * (GME_VOLUME_SPIKE_MULTIPLIER if symbol == "GME" and i >= n - 5 else 1.0)
             closes.append(close)
             opens.append(o)
             highs.append(h)

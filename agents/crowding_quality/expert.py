@@ -84,7 +84,9 @@ ALPHA_ORIGIN_SCORE: dict[str, float] = {
     "Fundamental Directional": 8.0,
     "Retail Momentum/Technical": 2.0,
 }
-PARABOLIC_5D_RETURN_PCT = 15.0  # override to "technical" alpha origin above this
+PARABOLIC_5D_RETURN_THRESHOLD_PCT = 15.0  # override to "technical" alpha origin above this
+
+TRADING_DAYS_PER_YEAR = 252
 
 DEEP_LIQUIDITY_USD = 200_000_000
 MODERATE_LIQUIDITY_USD = 25_000_000
@@ -210,7 +212,7 @@ class CrowdingQualityExpert(BaseExpert):
             if closes[i - 1]
         ]
         realized_vol_pct = (
-            round(statistics.pstdev(returns) * (252 ** 0.5) * 100, 2) if len(returns) >= 2 else 0.0
+            round(statistics.pstdev(returns) * (TRADING_DAYS_PER_YEAR ** 0.5) * 100, 2) if len(returns) >= 2 else 0.0
         )
 
         period_high = max(closes)
@@ -237,7 +239,7 @@ class CrowdingQualityExpert(BaseExpert):
 
         ownership = OWNERSHIP_TAG.get(symbol, "Mixed")
         alpha_origin = ALPHA_ORIGIN_TAG.get(symbol, "Fundamental Directional")
-        if max_5d_return_pct >= PARABOLIC_5D_RETURN_PCT:
+        if max_5d_return_pct >= PARABOLIC_5D_RETURN_THRESHOLD_PCT:
             alpha_origin = "Retail Momentum/Technical"
 
         fundamental_decay_score = self._fundamental_decay_score(pct_from_high, realized_vol_pct)
