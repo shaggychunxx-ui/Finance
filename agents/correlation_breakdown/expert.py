@@ -444,7 +444,7 @@ class CorrelationBreakdownExpert(BaseExpert):
     ) -> list[str]:
         recs = [assessment.diversification_signal, assessment.tail_risk_regime, assessment.protection_posture]
         for p in pairs:
-            if p.convergence_flag:
+            if p.convergence_flag and p.calm_correlation is not None and p.stress_correlation is not None and p.delta is not None:
                 recs.append(
                     f"{p.symbol} ({p.name}): calm ρ={p.calm_correlation:+.2f} → stress ρ={p.stress_correlation:+.2f} "
                     f"(Δ{p.delta:+.2f}) — diversification benefit erodes in a crash"
@@ -586,8 +586,10 @@ class CorrelationBreakdownExpert(BaseExpert):
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")
             catalog = output.parent / "tail_risk_frameworks.json"
+            # Combine tail-risk frameworks and protection strategies into one sidecar catalog file.
+            catalog_payload = TAIL_RISK_FRAMEWORKS + PROTECTION_STRATEGIES
             catalog.write_text(
-                json.dumps(TAIL_RISK_FRAMEWORKS + PROTECTION_STRATEGIES, indent=2),
+                json.dumps(catalog_payload, indent=2),
                 encoding="utf-8",
             )
         return result

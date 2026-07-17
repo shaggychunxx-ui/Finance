@@ -317,7 +317,10 @@ def _print_correlation_breakdown(data: dict[str, Any]) -> None:
     print()
     print("  Tail risk (CVaR):")
     for m in data.get("tail_metrics", []):
-        print(f"    • {m.get('symbol')}: CVaR95 {m.get('cvar_95_pct')}% | CVaR99 {m.get('cvar_99_pct')}%")
+        print(
+            f"    • {m.get('symbol')}: CVaR95 {float(m.get('cvar_95_pct') or 0):.2f}% | "
+            f"CVaR99 {float(m.get('cvar_99_pct') or 0):.2f}%"
+        )
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
