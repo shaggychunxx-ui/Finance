@@ -49,8 +49,8 @@ INTRADAY_LEVERAGE_BELOW_THRESHOLD = 0.0
 
 # Maintenance Margin Requirement (MMR) tiers used to size the overnight
 # margin-squeeze illustration below.
-MMR_STANDARD_PCT = 27.5   # blue-chip stocks: 25%-30% MMR, midpoint used
-MMR_VOLATILE_PCT = 75.0   # volatile/penny/leveraged ETFs: 50%-100% MMR, midpoint used
+MMR_STANDARD_PCT = 27.5   # blue-chip stocks: 25%-30% MMR, 27.5% midpoint used
+MMR_VOLATILE_PCT = 75.0   # volatile/penny/leveraged ETFs: 50%-100% MMR, 75% midpoint used
 VOLATILE_ATR_THRESHOLD_PCT = 4.0  # ATR% at/above this -> broker likely requires elevated MMR
 
 # Illustrative below-threshold margin account used for the maintenance-margin
@@ -251,7 +251,7 @@ class MarginStressExpert(BaseExpert):
     def _analyze_symbol(self, symbol: str, name: str) -> SymbolMarginProfile | None:
         data = self.fetch_yahoo_ohlcv(symbol, range_="3mo", interval="1d")
         closes = data["close"]
-        if len(closes) < 15:
+        if len(closes) < 15:  # need a 14-period true-range window plus the anchor close
             return None
 
         last_close = closes[-1]
@@ -262,6 +262,8 @@ class MarginStressExpert(BaseExpert):
         recent_lows = data["low"][-window:]
 
         true_ranges = self._true_ranges(data)
+        # Uses all available true-range points if fewer than 14 are present
+        # (safe no-op slice), otherwise a standard 14-period ATR window.
         atr = statistics.mean(true_ranges[-14:]) if true_ranges else 0.0
         atr_pct = (atr / last_close) * 100 if last_close else 0.0
 
