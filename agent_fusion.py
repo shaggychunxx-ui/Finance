@@ -27,6 +27,7 @@ AGENT_DEFAULT_HORIZON: dict[str, str] = {
     "financial-data": "24h",
     "datascience": "24h",
     "order-execution": "24h",
+    "dark-pool-volume-profile": "24h",
     "sales-analytics": "1wk",
     "geopolitics": "1wk",
     "events": "1wk",
@@ -60,6 +61,7 @@ GENERALIST_AGENTS = frozenset({
     "research-statistics",
     "market-predictor",
     "order-execution",
+    "dark-pool-volume-profile",
     "data-steward",
     "records-management",
 })
@@ -90,6 +92,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "trading-economics": "macro",
     "sales-analytics": "consumer",
     "order-execution": "execution",
+    "dark-pool-volume-profile": "execution",
     "data-steward": "data_platform",
     "records-management": "data_platform",
     "market-predictor": "fusion",

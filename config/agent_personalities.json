@@ -162,6 +162,15 @@
       "defensive_bias": 0.6,
       "volatility_tolerance": 0.25
     },
+    "dark-pool-volume-profile": {
+      "label": "The Tape Reader",
+      "risk_appetite": 0.55,
+      "conviction": 0.7,
+      "patience": 0.6,
+      "contrarian": 0.35,
+      "defensive_bias": 0.4,
+      "volatility_tolerance": 0.45
+    },
     "data-steward": {
       "label": "The Steward",
       "risk_appetite": 0.4,

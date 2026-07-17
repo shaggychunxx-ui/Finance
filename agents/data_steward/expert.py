@@ -210,6 +210,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "dark-pool-volume-profile",
+        "agent": "Dark Pool & Volume Profile Expert",
+        "primary_output": "dark_pool_volume_profile.json",
+        "sidecars": ["volume_profile_methodology.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

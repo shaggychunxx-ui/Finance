@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Dark Pool & Volume Profile Expert** | `run.bat dark-pool-volume-profile` | Yahoo Finance (6mo daily OHLCV) + FINRA TRF proxy heuristics |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat dark-pool-volume-profile
 ```
 
 Or with options:
@@ -399,6 +401,16 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Dark Pool & Volume Profile Expert
+
+Reconstructs institutional order flow using Auction Market Theory:
+
+- Volume Profile per watchlist symbol: Point of Control (POC), Value Area High/Low (VAH/VAL), and High/Low Volume Nodes (HVN/LVN) built from 6-month daily OHLCV
+- FINRA TRF dark-pool concentration proxy — flags high-volume, tight-range sessions as a stand-in for off-exchange (dark pool / internalizer) accumulation, since live TRF/ADF tape prints aren't exposed by this public data source
+- Signature/late-print proxy — statistical volume outliers whose price revisits a prior POC/HVN, flagged as institutional defense candidates
+- Sweep vs. block execution classification is explicitly disclosed as out of scope (requires microsecond, multi-venue tick data not available here)
+- Balanced vs. imbalanced auction-state read per symbol with bullish/bearish/watch market signals
 
 ## Market Predictor
 

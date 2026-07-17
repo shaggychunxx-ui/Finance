@@ -16,6 +16,7 @@ from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.data_steward import run_data_steward_analysis
+from agents.dark_pool_volume_profile import run_dark_pool_volume_profile_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
@@ -977,6 +978,40 @@ def _print_logistics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_dark_pool_volume_profile(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("dark_pool_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Accumulation score: {metrics.get('accumulation_score')}  |  "
+        f"Imbalance score: {metrics.get('imbalance_score')}"
+    )
+    print()
+    print("  Symbol volume profiles:")
+    for s in data.get("symbol_volume_profiles", [])[:8]:
+        print(
+            f"    • {s.get('symbol')}: POC ${s.get('poc')} | VA ${s.get('val')}-${s.get('vah')} | "
+            f"TRF proxy {s.get('trf_proxy_ratio_pct')}% → {s.get('auction_state')}"
+        )
+    print()
+    if assessment:
+        print("  Dark pool assessment:")
+        for key in ("trf_concentration_signal", "signature_print_signal", "conclusion"):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_order_execution(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1264,6 +1299,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "agriculture": _print_agriculture,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
+    "dark-pool-volume-profile": _print_dark_pool_volume_profile,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1295,6 +1331,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
+    "dark-pool-volume-profile": run_dark_pool_volume_profile_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
@@ -1431,6 +1468,10 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "dark-pool-volume-profile":
+                catalog = args.output.parent / "volume_profile_methodology.json"
+                if catalog.exists():
+                    print(f"  Volume profile methodology catalog: {catalog}")
             if args.agent == "sec-filings":
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():
