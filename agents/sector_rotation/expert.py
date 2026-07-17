@@ -27,6 +27,31 @@ from agents.base import BaseExpert
 DASHBOARD_URL = "https://finance.yahoo.com/"
 BENCHMARK = "SPY"
 
+# RS-line trend/momentum tuning constants.
+LONG_SMA_WINDOW = 200
+MIN_POINTS_FOR_LONG_SMA = 210
+SHORT_SMA_MIN = 5
+SHORT_SMA_MAX = 20
+FALLBACK_SMA_BUFFER = 10
+MOMENTUM_LOOKBACK_PERIODS = 5
+MOMENTUM_SCALE_FACTOR = 3.0  # amplifies the 5-period RS-Ratio change into an RS-Momentum reading
+
+# Cycle-confidence scoring.
+CYCLE_CONFIDENCE_BASE = 0.35
+CYCLE_CONFIDENCE_SCALE = 0.65
+CYCLE_CONFIDENCE_MAX = 0.95
+
+# Rotation-strength normalization (RS-Ratio spread between top and bottom sector).
+ROTATION_SPREAD_NORMALIZER = 20.0
+
+# Signal-confidence weighting (deviation of RS-Ratio/RS-Momentum from the 100 baseline).
+CONFIDENCE_DEVIATION_SCALE = 8.0
+CONFIDENCE_BASE = 0.4
+CONFIDENCE_RATIO_WEIGHT = 0.35
+CONFIDENCE_MOMENTUM_WEIGHT = 0.25
+IMPROVING_SECTOR_BASE_CONFIDENCE = 0.42
+FALLBACK_NEUTRAL_CONFIDENCE = 0.4
+
 SECTOR_ETFS: dict[str, str] = {
     "XLK": "Technology",
     "XLC": "Communication Services",
@@ -162,7 +187,12 @@ class SectorRotationExpert(BaseExpert):
         if len(rs_line) < 30:
             return None
 
-        window = 200 if len(rs_line) >= 210 else max(20, min(50, len(rs_line) - 10))
+        window = (
+            LONG_SMA_WINDOW
+            if len(rs_line) >= MIN_POINTS_FOR_LONG_SMA
+            else max(SHORT_SMA_MAX, min(SHORT_SMA_MAX * 2.5, len(rs_line) - FALLBACK_SMA_BUFFER))
+        )
+        window = int(window)
         rs_sma = _sma(rs_line, window)
         current_rs = rs_line[-1]
         current_sma = rs_sma[-1]
@@ -174,7 +204,7 @@ class SectorRotationExpert(BaseExpert):
         # SMA, express current RS as a percent of that smoothing baseline
         # (centered on 100), then measure the 5-period rate of change of that
         # ratio as the momentum reading (also centered on 100).
-        short_window = min(20, max(5, len(rs_line) // 4))
+        short_window = min(SHORT_SMA_MAX, max(SHORT_SMA_MIN, len(rs_line) // 4))
         short_sma = _sma(rs_line, short_window)
         rs_ratio_series: list[float] = []
         for i, sma_val in enumerate(short_sma):
@@ -184,12 +214,12 @@ class SectorRotationExpert(BaseExpert):
             return None
         rs_ratio = round(rs_ratio_series[-1], 2)
 
-        lookback = 5
+        lookback = MOMENTUM_LOOKBACK_PERIODS
         if len(rs_ratio_series) > lookback:
             momentum_raw = rs_ratio_series[-1] - rs_ratio_series[-1 - lookback]
         else:
             momentum_raw = 0.0
-        rs_momentum = round(100.0 + momentum_raw * 3.0, 2)
+        rs_momentum = round(100.0 + momentum_raw * MOMENTUM_SCALE_FACTOR, 2)
 
         if rs_ratio >= 100 and rs_momentum >= 100:
             quadrant = "Leading"
@@ -230,7 +260,17 @@ class SectorRotationExpert(BaseExpert):
                 best_aligned = aligned
 
         phase_size = len(CYCLE_PLAYBOOK[best_phase]["sectors"])
-        confidence = round(min(0.95, 0.35 + 0.65 * (best_overlap / phase_size)), 3) if phase_size else 0.35
+        confidence = (
+            round(
+                min(
+                    CYCLE_CONFIDENCE_MAX,
+                    CYCLE_CONFIDENCE_BASE + CYCLE_CONFIDENCE_SCALE * (best_overlap / phase_size),
+                ),
+                3,
+            )
+            if phase_size
+            else CYCLE_CONFIDENCE_BASE
+        )
 
         return RotationAssessment(
             cycle_phase=best_phase,
@@ -277,7 +317,7 @@ class SectorRotationExpert(BaseExpert):
         ) if sectors else 0.0
         if sectors:
             spread = sectors[0].rs_ratio - sectors[-1].rs_ratio
-            rotation_strength = round(max(0.0, min(1.0, spread / 20.0)), 3)
+            rotation_strength = round(max(0.0, min(1.0, spread / ROTATION_SPREAD_NORMALIZER)), 3)
         else:
             rotation_strength = 0.0
 
@@ -297,6 +337,20 @@ class SectorRotationExpert(BaseExpert):
             data_source="Yahoo Finance API (RS line vs SPY, JdK RS-Ratio/Momentum proxy)",
         )
 
+    @staticmethod
+    def _deviation_confidence_base(
+        sector: SectorLine,
+        *,
+        include_momentum: bool = True,
+    ) -> float:
+        """Baseline confidence from how far RS-Ratio/RS-Momentum sit from the 100 baseline."""
+        ratio_dev = min(abs(sector.rs_ratio - 100.0) / CONFIDENCE_DEVIATION_SCALE, 1.0)
+        base = CONFIDENCE_BASE + CONFIDENCE_RATIO_WEIGHT * ratio_dev
+        if include_momentum:
+            momentum_dev = min(abs(sector.rs_momentum - 100.0) / CONFIDENCE_DEVIATION_SCALE, 1.0)
+            base += CONFIDENCE_MOMENTUM_WEIGHT * momentum_dev
+        return base
+
     def _market_signals(
         self,
         sectors: list[SectorLine],
@@ -305,12 +359,6 @@ class SectorRotationExpert(BaseExpert):
         from agent_signal_logic import build_market_signal
 
         signals: list[dict[str, Any]] = []
-
-        def confidence_for(sector: SectorLine) -> float:
-            ratio_dev = min(abs(sector.rs_ratio - 100.0) / 8.0, 1.0)
-            momentum_dev = min(abs(sector.rs_momentum - 100.0) / 8.0, 1.0)
-            base = 0.4 + 0.35 * ratio_dev + 0.25 * momentum_dev
-            return self.adjust_signal_confidence(sector.etf, "BULLISH", base)
 
         for sector in [s for s in sectors if s.quadrant == "Leading"][:3]:
             signals.append(
@@ -322,7 +370,11 @@ class SectorRotationExpert(BaseExpert):
                         f"RS-Ratio {sector.rs_ratio:.1f} / RS-Momentum {sector.rs_momentum:.1f}, "
                         f"trend filter {sector.trend_filter}"
                     ),
-                    confidence=confidence_for(sector),
+                    confidence=self.adjust_signal_confidence(
+                        sector.etf,
+                        "BULLISH",
+                        self._deviation_confidence_base(sector),
+                    ),
                     evidence={
                         "rs_ratio": sector.rs_ratio,
                         "rs_momentum": sector.rs_momentum,
@@ -345,7 +397,7 @@ class SectorRotationExpert(BaseExpert):
                     confidence=self.adjust_signal_confidence(
                         sector.etf,
                         "BEARISH",
-                        0.4 + 0.35 * min(abs(sector.rs_ratio - 100.0) / 8.0, 1.0),
+                        self._deviation_confidence_base(sector, include_momentum=False),
                     ),
                     evidence={
                         "rs_ratio": sector.rs_ratio,
@@ -363,7 +415,7 @@ class SectorRotationExpert(BaseExpert):
                     tickers=[sector.etf],
                     bias="NEUTRAL",
                     reason="RS-Momentum turning up while RS-Ratio still lags — early entry watchlist",
-                    confidence=self.adjust_signal_confidence(sector.etf, "NEUTRAL", 0.42),
+                    confidence=self.adjust_signal_confidence(sector.etf, "NEUTRAL", IMPROVING_SECTOR_BASE_CONFIDENCE),
                     evidence={"rs_ratio": sector.rs_ratio, "rs_momentum": sector.rs_momentum},
                 )
             )
@@ -375,7 +427,7 @@ class SectorRotationExpert(BaseExpert):
                     tickers=[BENCHMARK],
                     bias="NEUTRAL",
                     reason="Insufficient relative-strength data for a directional read",
-                    confidence=self.adjust_signal_confidence(BENCHMARK, "NEUTRAL", 0.4),
+                    confidence=self.adjust_signal_confidence(BENCHMARK, "NEUTRAL", FALLBACK_NEUTRAL_CONFIDENCE),
                 )
             )
         return signals
