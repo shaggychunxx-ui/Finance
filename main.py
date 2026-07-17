@@ -16,6 +16,7 @@ from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.data_steward import run_data_steward_analysis
+from agents.equity_structuring import run_equity_structuring_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
@@ -1143,6 +1144,48 @@ def _print_sec_filings(data: dict[str, Any]) -> None:
     _print_signals(data.get("market_signals", []))
 
 
+def _print_equity_structuring(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('resources_tracked', 0)} resources, "
+        f"{meta.get('offerings_count', 0)} offerings"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Dilution pressure: {summary.get('pressure_label')} "
+        f"(score {summary.get('dilution_pressure_score')})"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print(f"  Dashboard: {meta.get('dashboard', 'https://www.sec.gov/edgar/search/#')}")
+    print()
+    print("  Offering types:")
+    for offering_type, count in sorted(
+        summary.get("by_offering_type", {}).items(), key=lambda x: -x[1]
+    ):
+        print(f"    • {offering_type.replace('-', ' ').title()}: {count}")
+    print()
+    print("  Recent filings:")
+    for o in data.get("offerings", [])[:8]:
+        print(
+            f"    • [{o.get('offering_type', '?')}] {o.get('title', '')[:68]} "
+            f"— {o.get('form', '')} ({o.get('filed_date', '')})"
+        )
+    print()
+    print("  Investor checklist:")
+    for item in data.get("checklist", []):
+        print(f"    • {item}")
+    print()
+    _print_signals(data.get("market_signals", []))
+
+
 def _print_trading_economics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1269,6 +1312,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
+    "equity-structuring": _print_equity_structuring,
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
@@ -1300,6 +1344,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
+    "equity-structuring": run_equity_structuring_analysis,
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
@@ -1435,6 +1480,10 @@ def main() -> int:
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():
                     print(f"  SEC EDGAR resource catalog: {catalog}")
+            if args.agent == "equity-structuring":
+                catalog = args.output.parent / "equity_structuring_resources.json"
+                if catalog.exists():
+                    print(f"  Equity structuring resource catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():

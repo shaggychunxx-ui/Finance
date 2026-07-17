@@ -50,6 +50,7 @@ _PLATFORM_DEFAULTS: dict[str, dict[str, Any]] = {
     "agriculture": {"label": "The Crop Watcher", "risk_appetite": 0.44, "conviction": 0.66, "patience": 0.74, "contrarian": 0.36, "defensive_bias": 0.52, "volatility_tolerance": 0.46},
     "census": {"label": "The Demographer", "risk_appetite": 0.42, "conviction": 0.70, "patience": 0.76, "contrarian": 0.32, "defensive_bias": 0.48, "volatility_tolerance": 0.44},
     "sec-filings": {"label": "The Disclosure Analyst", "risk_appetite": 0.38, "conviction": 0.78, "patience": 0.68, "contrarian": 0.42, "defensive_bias": 0.56, "volatility_tolerance": 0.40},
+    "equity-structuring": {"label": "The Dilution Watchdog", "risk_appetite": 0.30, "conviction": 0.76, "patience": 0.65, "contrarian": 0.40, "defensive_bias": 0.66, "volatility_tolerance": 0.38},
     "migration": {"label": "The Flow Tracker", "risk_appetite": 0.40, "conviction": 0.72, "patience": 0.70, "contrarian": 0.44, "defensive_bias": 0.50, "volatility_tolerance": 0.42},
     "trading-economics": {"label": "The Macro Reader", "risk_appetite": 0.46, "conviction": 0.74, "patience": 0.64, "contrarian": 0.40, "defensive_bias": 0.46, "volatility_tolerance": 0.48},
     "patents": {"label": "The Innovation Scout", "risk_appetite": 0.70, "conviction": 0.60, "patience": 0.80, "contrarian": 0.35, "defensive_bias": 0.25, "volatility_tolerance": 0.58},

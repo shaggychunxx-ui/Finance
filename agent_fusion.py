@@ -84,6 +84,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "events": "intelligence",
     "patents": "intelligence",
     "sec-filings": "intelligence",
+    "equity-structuring": "intelligence",
     "migration": "intelligence",
     "census": "macro",
     "agriculture": "energy_grid",
@@ -154,6 +155,10 @@ AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
     "sec-filings": {
         "tickers": frozenset({"SPY", "QQQ", "XLF", "XLK", "XLE"}),
         "sectors": frozenset({"sec", "filing", "regulatory", "corporate", "disclosure"}),
+    },
+    "equity-structuring": {
+        "tickers": frozenset({"SPY", "IWM", "QQQ"}),
+        "sectors": frozenset({"dilution", "atm", "secondary offering", "follow-on", "equity issuance"}),
     },
     "migration": {
         "tickers": frozenset({"EWW", "EWZ", "INDA", "FXI", "EEM"}),

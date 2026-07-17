@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Corporate Equity Structuring Analyst** | `run.bat equity-structuring` | [SEC EDGAR Full Text Search](https://www.sec.gov/edgar/search/#) |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat equity-structuring
 ```
 
 Or with options:
@@ -399,6 +401,20 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Corporate Equity Structuring Analyst
+
+Tracks the post-IPO equity capital toolkit — dilution, At-the-Market (ATM)
+offerings, shelf registrations, and secondary (follow-on) offerings — via SEC
+EDGAR Full Text Search:
+
+- Classifies filings as ATM, shelf registration, dilutive follow-on (primary
+  shares), or non-dilutive secondary (insider/VC shares)
+- Computes a dilution pressure score/label weighted toward ATM and dilutive
+  follow-on activity
+- Surfaces bias-tagged market signals per offering type
+- Ships the investor evaluation checklist (prospectus type, dilution %,
+  use of proceeds, insider alignment)
 
 ## Market Predictor
 

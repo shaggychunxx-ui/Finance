@@ -67,6 +67,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "equity-structuring",
+        "agent": "Corporate Equity Structuring Analyst",
+        "primary_output": "equity_structuring.json",
+        "sidecars": ["equity_structuring_resources.json"],
+        "sources": ["SEC EDGAR Full Text Search"],
+        "owner": "platform",
+    },
+    {
         "command": "events",
         "agent": "World Events Tracker",
         "primary_output": "world_events.json",
