@@ -1032,6 +1032,36 @@ def test_backtest_loop_cli_argument_validation() -> None:
         assert loop_mod.main() == 2
 
 
+def test_china_em_divergence_cli_registered() -> None:
+    """china-em-divergence must appear in RUNNERS/PRINTERS and round-trip without error."""
+    import tempfile
+
+    import app_paths
+    from main import PRINTERS, RUNNERS
+
+    assert "china-em-divergence" in RUNNERS, "china-em-divergence missing from RUNNERS"
+    assert "china-em-divergence" in PRINTERS, "china-em-divergence missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    try:
+        out_file = out_dir / "china_em_divergence.json"
+        result = RUNNERS["china-em-divergence"](output=out_file)
+        assert isinstance(result, dict), "run_china_em_divergence_analysis must return a dict"
+        assert "regions" in result, "result must contain 'regions'"
+        assert "meta" in result, "result must contain 'meta'"
+        assert len(result["regions"]) == 8, "expected 8 region proxies"
+        assert (out_dir / "china_em_divergence_resources.json").exists(), (
+            "china_em_divergence_resources.json sidecar must be written"
+        )
+        # Printer must not raise on the result.
+        PRINTERS["china-em-divergence"](result)
+    finally:
+        app_paths.OUTPUT = original_output
+
+
 def _run_all() -> None:
     tests = [
         test_app_paths_consistent,
@@ -1061,6 +1091,7 @@ def _run_all() -> None:
         test_base_expert_watchlist_and_memory,
         test_trading_gate_cluster_and_eligibility,
         test_market_predictor_cli_registered,
+        test_china_em_divergence_cli_registered,
         test_market_predictor_loop_cycle_no_crash,
         test_backtest_loop_cycle_no_crash,
         test_backtest_loop_cli_argument_validation,

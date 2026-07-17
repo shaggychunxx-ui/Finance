@@ -203,6 +203,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "china-em-divergence",
+        "agent": "China / EM Divergence Expert",
+        "primary_output": "china_em_divergence.json",
+        "sidecars": ["china_em_divergence_resources.json"],
+        "sources": ["Yahoo Finance Chart API", "Calibrated China macro proxy"],
+        "owner": "platform",
+    },
+    {
         "command": "order-execution",
         "agent": "Order Execution & Market Microstructure Expert",
         "primary_output": "order_execution.json",

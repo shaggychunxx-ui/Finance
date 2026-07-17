@@ -86,6 +86,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "sec-filings": "intelligence",
     "migration": "intelligence",
     "census": "macro",
+    "china-em-divergence": "macro",
     "agriculture": "energy_grid",
     "trading-economics": "macro",
     "sales-analytics": "consumer",
@@ -162,6 +163,10 @@ AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
     "trading-economics": {
         "tickers": frozenset({"SPY", "TLT", "GLD", "UUP", "EEM"}),
         "sectors": frozenset({"macro", "rates", "inflation", "gdp", "economics"}),
+    },
+    "china-em-divergence": {
+        "tickers": frozenset({"FXI", "EWT", "EWY", "EWM", "VNM", "INDA", "EMXC", "EEM"}),
+        "sectors": frozenset({"macro", "china", "emerging markets", "semiconductor", "gdp"}),
     },
 }
 

@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from agents.agriculture import run_agriculture_analysis
 from agents.census import run_census_analysis
+from agents.china_em_divergence import run_china_em_divergence_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -250,6 +251,29 @@ def _print_geopolitics(data: dict[str, Any]) -> None:
                 f"  • {t.get('name')}: risk {t.get('risk_score')} "
                 f"({t.get('article_count')} articles)"
             )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_china_em_divergence(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('regions_analyzed', 0)} regions")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Decoupling: {metrics.get('decoupling_label')} ({metrics.get('decoupling_score')})")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for r in data.get("regions", []):
+        momentum = r.get("momentum_60d_pct")
+        momentum_str = f"{momentum:+.2f}%" if momentum is not None else "n/a"
+        print(f"  • {r.get('name')} ({r.get('ticker')}) [{r.get('role')}]: {momentum_str}")
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -1263,6 +1287,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
     "agriculture": _print_agriculture,
     "census": _print_census,
+    "china-em-divergence": _print_china_em_divergence,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
@@ -1294,6 +1319,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
+    "china-em-divergence": run_china_em_divergence_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
@@ -1447,6 +1473,10 @@ def main() -> int:
                 catalog = args.output.parent / "trading_economics_resources.json"
                 if catalog.exists():
                     print(f"  Trading Economics resource catalog: {catalog}")
+            if args.agent == "china-em-divergence":
+                catalog = args.output.parent / "china_em_divergence_resources.json"
+                if catalog.exists():
+                    print(f"  China / EM divergence resource catalog: {catalog}")
             if args.agent == "market-predictor":
                 print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":

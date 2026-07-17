@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **China / EM Divergence Expert** | `run.bat china-em-divergence` | [Yahoo Finance](https://finance.yahoo.com/) region ETF proxies + calibrated China macro snapshot |
 
 ## Quick start
 
@@ -400,7 +401,22 @@ Analyzes US weather hazards and hub forecasts:
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
 
+## China / EM Divergence Expert
+
+Tracks the 2026 "Great Growth Divergence": China's Q2 GDP slowdown and
+property/domestic-demand collapse versus the AI-chip driven boom in Taiwan
+and South Korea, plus the "China + 1" supply-chain reroute into Malaysia,
+Vietnam, and India.
+
+- Calibrated China macro snapshot (Q2/H1 GDP growth, fixed-asset investment,
+  retail sales, auto purchases, property investment)
+- Live 60-day momentum for region proxies (FXI, EWT, EWY, EWM, VNM, INDA,
+  EMXC, EEM) via Yahoo Finance
+- Decoupling score comparing AI-export beneficiaries against China
+- Sector signals per region with an "EM ex-China" tilt recommendation
+
 ## Market Predictor
+
 
 Fuses signals from all Finance agents into ranked, multi-horizon market predictions:
 
