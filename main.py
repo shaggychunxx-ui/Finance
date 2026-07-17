@@ -1162,7 +1162,7 @@ def _print_corporate_distress(data: dict[str, Any]) -> None:
         print(f"    • {zone}: {count}")
     print()
     print("  Symbol Distance-to-Default proxy:")
-    for s in sorted(data.get("symbol_distress_proxy", []), key=lambda x: x.get("distance_to_default", 0)):
+    for s in sorted(data.get("symbol_distress_proxy", []), key=lambda x: x.get("distance_to_default", float("inf"))):
         print(
             f"    • {s.get('symbol')}: DD {s.get('distance_to_default')} "
             f"({s.get('distress_zone')})"

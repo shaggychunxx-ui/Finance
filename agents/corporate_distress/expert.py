@@ -209,6 +209,7 @@ LIQUIDATION_ACCOUNTING_SHIFTS: list[dict[str, str]] = [
 ALTMAN_ZSCORE_MODEL: dict[str, Any] = {
     "name": "Altman Z-Score",
     "author": "Edward Altman",
+    # 0.999 (not 1.0) is Altman's original published coefficient for X5.
     "formula": "Z = 1.2*X1 + 1.4*X2 + 3.3*X3 + 0.6*X4 + 0.999*X5",
     "horizon_months": 24,
     "sub_ratios": [
@@ -471,7 +472,7 @@ class CorporateDistressExpert(BaseExpert):
         max_drawdown = 0.0
         for price in closes:
             peak = max(peak, price)
-            if peak:
+            if peak > 0:
                 max_drawdown = max(max_drawdown, (peak - price) / peak)
 
         window = min(len(closes), 126)
