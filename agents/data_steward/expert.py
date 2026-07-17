@@ -59,6 +59,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "quality-factor",
+        "agent": "Quality Factor Expert",
+        "primary_output": "quality_factor.json",
+        "sidecars": ["quality_factor_methodology.json"],
+        "sources": ["Yahoo Finance quoteSummary API"],
+        "owner": "platform",
+    },
+    {
         "command": "sec-filings",
         "agent": "SEC EDGAR Filings Analyst",
         "primary_output": "sec_filings.json",

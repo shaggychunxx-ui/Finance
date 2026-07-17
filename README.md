@@ -22,6 +22,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
+| **Quality Factor Expert** | `run.bat quality-factor` | Yahoo Finance quoteSummary + calibrated fundamentals proxy |
 | **Market Predictor** | `run.bat market-predictor` | Fuses all agent outputs into multi-horizon predictions |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
@@ -46,6 +47,7 @@ run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
 run.bat sales-analytics
+run.bat quality-factor
 run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
@@ -348,6 +350,27 @@ Outputs:
 - `output/sales_analytics.json` — full BI analysis with market signals
 - `output/sales_dashboard_data.json` — dashboard feed (auto-loaded by `sales_dashboard.html`)
 - `output/sales_dashboard_panels.json` — dashboard panel catalog
+
+## Quality Factor Expert
+
+Economic-moat / cash-compounding analysis across a 10-name benchmark universe
+spanning all four ROIC × FCF quadrants:
+
+- **ROIC vs. WACC economic spread** — NOPAT / Invested Capital vs. cost of capital, flags value creation vs. destruction
+- **Free Cash Flow metrics** — FCFF, FCFE, FCF conversion, FCF yield
+- **Earnings quality** — accrual ratio ((Net Income − FCF) / Total Assets)
+- **Sustainable growth rate** — ROIC × Reinvestment Rate
+- **Quadrant classification** — Compounder Machine, Paper Tiger Profits, Mature Cash Cow, Structural Value Trap
+- **Macro vulnerability flags** — valuation-premium risk, CapEx/inflation shock sensitivity, competitive reversion-to-the-mean risk
+
+```bat
+run.bat quality-factor -o output/quality_factor.json
+```
+
+Outputs:
+
+- `output/quality_factor.json` — full quality-factor report with market signals
+- `output/quality_factor_methodology.json` — ROIC/FCF formula and metric catalog
 
 ## Data Steward Expert
 

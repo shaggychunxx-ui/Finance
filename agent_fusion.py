@@ -40,6 +40,7 @@ AGENT_DEFAULT_HORIZON: dict[str, str] = {
     "empirical-probability": "1wk",
     "combined-conditional": "1wk",
     "research-statistics": "1mo",
+    "quality-factor": "1mo",
 }
 CLUSTER_WEIGHT_CAP = 0.45
 OUT_OF_DOMAIN_FACTOR = 0.3
@@ -95,6 +96,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "market-predictor": "fusion",
     "history": "intelligence",
     "etrade": "market_data",
+    "quality-factor": "quant",
 }
 
 # Agents that emit execution/platform signals — not directional price forecasts.
@@ -162,6 +164,10 @@ AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
     "trading-economics": {
         "tickers": frozenset({"SPY", "TLT", "GLD", "UUP", "EEM"}),
         "sectors": frozenset({"macro", "rates", "inflation", "gdp", "economics"}),
+    },
+    "quality-factor": {
+        "tickers": frozenset({"MSFT", "AAPL", "V", "MA", "COST", "NVDA", "XOM", "F", "BA", "DHI"}),
+        "sectors": frozenset({"quality", "roic", "fcf", "moat", "compounder", "factor investing"}),
     },
 }
 

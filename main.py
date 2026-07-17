@@ -27,6 +27,7 @@ from agents.meteorology import run_meteorology_analysis
 from agents.migration import run_migration_analysis
 from agents.order_execution import run_order_execution_analysis
 from agents.patents import run_patents_analysis
+from agents.quality_factor import run_quality_factor_analysis
 from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
@@ -1143,6 +1144,29 @@ def _print_sec_filings(data: dict[str, Any]) -> None:
     _print_signals(data.get("market_signals", []))
 
 
+def _print_quality_factor(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('companies_analyzed', 0)} companies")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Avg EVA spread: {metrics.get('avg_eva_spread')}")
+    quadrants = metrics.get("quadrant_counts", {})
+    print(f"  Quadrants: {', '.join(f'{k} ({v})' for k, v in quadrants.items())}")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for c in data.get("companies", []):
+        print(f"  • {c.get('symbol')} ({c.get('name')}): {c.get('quadrant')} — ROIC {c.get('roic')} vs WACC {c.get('wacc')}")
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_trading_economics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1281,6 +1305,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "meteorology": _print_meteorology,
     "order-execution": _print_order_execution,
     "patents": _print_patents,
+    "quality-factor": _print_quality_factor,
     "records-management": _print_records_management,
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
@@ -1312,6 +1337,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "meteorology": run_meteorology_analysis,
     "order-execution": run_order_execution_analysis,
     "patents": run_patents_analysis,
+    "quality-factor": run_quality_factor_analysis,
     "records-management": run_records_management_analysis,
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
