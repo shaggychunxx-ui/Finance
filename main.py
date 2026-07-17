@@ -113,6 +113,13 @@ def _print_markets(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _fmt3(value: Any) -> str:
+    try:
+        return f"{float(value):.3f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
 def _print_sector_rotation(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     assessment = data.get("assessment", {})
@@ -127,9 +134,12 @@ def _print_sector_rotation(data: dict[str, Any]) -> None:
         print()
     print(
         f"  Cycle phase: {assessment.get('cycle_phase')} "
-        f"(confidence {assessment.get('cycle_confidence')})"
+        f"(confidence {_fmt3(assessment.get('cycle_confidence'))})"
     )
-    print(f"  Breadth: {metrics.get('breadth_score')}  |  Rotation strength: {metrics.get('rotation_strength_score')}")
+    print(
+        f"  Breadth: {_fmt3(metrics.get('breadth_score'))}  |  "
+        f"Rotation strength: {_fmt3(metrics.get('rotation_strength_score'))}"
+    )
     print()
     print("  RRG quadrants (RS-Ratio / RS-Momentum):")
     for s in data.get("sectors", []):

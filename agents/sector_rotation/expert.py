@@ -33,6 +33,7 @@ MIN_POINTS_FOR_LONG_SMA = 210
 SHORT_SMA_MIN = 5
 SHORT_SMA_MAX = 20
 FALLBACK_SMA_BUFFER = 10
+FALLBACK_SMA_CAP = 50  # trend-filter window cap when fewer than MIN_POINTS_FOR_LONG_SMA closes exist
 MOMENTUM_LOOKBACK_PERIODS = 5
 MOMENTUM_SCALE_FACTOR = 3.0  # amplifies the 5-period RS-Ratio change into an RS-Momentum reading
 
@@ -190,7 +191,7 @@ class SectorRotationExpert(BaseExpert):
         window = (
             LONG_SMA_WINDOW
             if len(rs_line) >= MIN_POINTS_FOR_LONG_SMA
-            else max(SHORT_SMA_MAX, min(SHORT_SMA_MAX * 2.5, len(rs_line) - FALLBACK_SMA_BUFFER))
+            else max(SHORT_SMA_MAX, min(FALLBACK_SMA_CAP, len(rs_line) - FALLBACK_SMA_BUFFER))
         )
         window = int(window)
         rs_sma = _sma(rs_line, window)
