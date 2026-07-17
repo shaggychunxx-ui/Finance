@@ -225,6 +225,8 @@ class QualityFactorExpert(BaseExpert):
                 return float(value) if value is not None else None
 
             ebit = _raw(income, "ebit")
+            # Fallback to the U.S. federal statutory corporate tax rate when
+            # quoteSummary omits an effective rate (e.g. non-US filers/thin data).
             tax_rate = _raw(fin, "effectiveTaxRate") or 0.21
             total_assets = _raw(balance, "totalAssets")
             net_income = _raw(income, "netIncome")
@@ -238,7 +240,19 @@ class QualityFactorExpert(BaseExpert):
             if any(v is None for v in required) or not total_assets:
                 return None
 
-            invested_capital = total_assets * 0.55  # operating-approach approximation
+            # quoteSummary doesn't expose a ready-made invested-capital or
+            # per-company WACC figure, and net working capital deltas require
+            # a prior-period balance sheet we don't fetch here. These are
+            # simplifying approximations for the live path only — the
+            # curated PROXY_FUNDAMENTALS table carries real per-company WACC
+            # and delta_nwc values used whenever live data is unavailable:
+            #   * invested_capital ~= 55% of total assets (typical
+            #     operating-approach share of net working capital + net
+            #     fixed assets + intangibles for a large-cap operating co.)
+            #   * wacc is fixed at a 9% blended market-average estimate
+            #   * delta_nwc is treated as flat (0.0) since a single-period
+            #     balance sheet snapshot can't derive a working-capital delta
+            invested_capital = total_assets * 0.55
             return {
                 "ebit": ebit / 1e6,
                 "tax_rate": tax_rate,
