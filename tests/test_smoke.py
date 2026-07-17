@@ -934,6 +934,32 @@ def test_restore_same_cycle_agent_outputs() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_accruals_quality_cli_registered() -> None:
+    """accruals-quality must appear in RUNNERS/PRINTERS and run fully offline."""
+    import tempfile
+
+    from main import PRINTERS, RUNNERS
+
+    assert "accruals-quality" in RUNNERS, "accruals-quality missing from RUNNERS"
+    assert "accruals-quality" in PRINTERS, "accruals-quality missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    out_file = out_dir / "accruals_quality.json"
+    result = RUNNERS["accruals-quality"](output=out_file)
+    assert isinstance(result, dict), "run_accruals_quality_analysis must return a dict"
+    assert result.get("metrics"), "result must contain per-ticker metrics"
+    assert out_file.exists(), "accruals_quality.json must be written"
+    assert (out_dir / "accrual_forensic_frameworks.json").exists(), "sidecar catalog must be written"
+
+    cmpx = next(m for m in result["metrics"] if m["symbol"] == "CMPX")
+    assert cmpx["sloan_risk"] == "MODERATE"
+    assert 13.0 < cmpx["sloan_ratio_pct"] < 14.5
+
+    # Printer must not raise
+    PRINTERS["accruals-quality"](result)
+
+
 def test_market_predictor_cli_registered() -> None:
     """market-predictor must appear in RUNNERS and PRINTERS and round-trip without error."""
     import tempfile
@@ -1061,6 +1087,7 @@ def _run_all() -> None:
         test_base_expert_watchlist_and_memory,
         test_trading_gate_cluster_and_eligibility,
         test_market_predictor_cli_registered,
+        test_accruals_quality_cli_registered,
         test_market_predictor_loop_cycle_no_crash,
         test_backtest_loop_cycle_no_crash,
         test_backtest_loop_cli_argument_validation,

@@ -6,6 +6,7 @@ Intelligence agents for financial market analysis and a client-side world events
 
 | Agent | Command | Data source |
 |-------|---------|-------------|
+| **Accruals Quality Forensic Analyst** | `run.bat accruals-quality` | [SEC EDGAR XBRL Company Facts](https://data.sec.gov/api/xbrl/companyfacts/) (calibrated proxy fallback) |
 | **EIA Grid Monitor Analyst** | `run.bat electricity` | [EIA Grid Monitor US48](https://www.eia.gov/electricity/gridmonitor/dashboard/electric_overview/US48/US48) |
 | **Electrical Grid Analyst** | `run.bat grid` | [Grid Status Live](https://www.gridstatus.io/live), ERCOT, CAISO, EIA |
 | **Civil Transportation Analyst** | `run.bat transportation` | [data.transportation.gov](https://data.transportation.gov/) |
@@ -30,6 +31,7 @@ Intelligence agents for financial market analysis and a client-side world events
 ## Quick start
 
 ```bat
+run.bat accruals-quality
 run.bat electricity
 run.bat grid
 run.bat transportation
@@ -63,6 +65,28 @@ run.bat events -o output/world_events.json
 run.bat finance -o output/finance.json
 run.bat geopolitics --json
 ```
+
+## Accruals Quality Forensic Analyst
+
+Forensic accounting analysis of earnings quality — how closely reported net income
+maps to actual cash realizations, applied across a watchlist of large-cap tickers:
+
+- **Sloan Ratio** — `(Net Income - Operating CF - Investing CF) / Total Assets`, classified
+  Low (`-10%`–`+10%`), Moderate (`+10%`–`+25%`), or Severe (`>+25%`) accrual risk
+- **Modified Jones Model** — cross-sectional OLS separating normal accruals (revenue/PP&E
+  driven) from discretionary accruals (the residual, a proxy for earnings management)
+- **Beneish M-Score** — 8-ratio composite (DSRI, GMI, AQI, SGI, DEPI, SGAI, LVGI, TATA)
+  flagging statistically significant manipulation probability above `-1.78`
+- **DSO tracking** — Days Sales Outstanding drift as a receivables-quality red flag
+
+```bat
+run.bat accruals-quality -o output/accruals_quality.json
+```
+
+Outputs:
+
+- `output/accruals_quality.json` — full forensic accrual report per ticker
+- `output/accrual_forensic_frameworks.json` — methodology/resources catalog
 
 ## EIA Grid Monitor Analyst
 

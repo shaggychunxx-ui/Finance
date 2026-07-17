@@ -27,6 +27,14 @@ STALE_HOURS = 168
 
 AGENT_REGISTRY: list[dict[str, Any]] = [
     {
+        "command": "accruals-quality",
+        "agent": "Accruals Quality Forensic Analyst",
+        "primary_output": "accruals_quality.json",
+        "sidecars": ["accrual_forensic_frameworks.json"],
+        "sources": ["SEC EDGAR XBRL Company Facts API (calibrated proxy fallback)"],
+        "owner": "platform",
+    },
+    {
         "command": "electricity",
         "agent": "EIA Grid Monitor Analyst",
         "primary_output": "electricity.json",

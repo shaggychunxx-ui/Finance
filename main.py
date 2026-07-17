@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.accruals_quality import run_accruals_quality_analysis
 from agents.agriculture import run_agriculture_analysis
 from agents.census import run_census_analysis
 from agents.datascience import run_datascience_analysis
@@ -562,6 +563,39 @@ def _print_empirical_probability(data: dict[str, Any]) -> None:
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
         print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_accruals_quality(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('tickers_screened', 0)} tickers screened")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Avg Sloan Ratio: {summary.get('avg_sloan_ratio_pct')}% | "
+        f"Severe: {summary.get('severe_count')} | "
+        f"Moderate: {summary.get('moderate_count')} | "
+        f"Low: {summary.get('low_count')}"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print(f"  Methodology: {meta.get('dashboard', 'https://data.sec.gov/api/xbrl/companyfacts/')}")
+    print()
+    print("  Per-ticker forensic metrics:")
+    for m in sorted(data.get("metrics", []), key=lambda x: -x.get("sloan_ratio_pct", 0)):
+        print(
+            f"    • {m.get('symbol')} ({m.get('sloan_risk')}): "
+            f"Sloan {m.get('sloan_ratio_pct'):+.1f}%, "
+            f"M-Score {m.get('beneish_m_score'):+.2f}"
+            f"{' [manipulation flag]' if m.get('manipulation_flag') else ''}"
+        )
+    print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -1261,6 +1295,7 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
+    "accruals-quality": _print_accruals_quality,
     "agriculture": _print_agriculture,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
@@ -1292,6 +1327,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
+    "accruals-quality": run_accruals_quality_analysis,
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
