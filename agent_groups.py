@@ -475,6 +475,203 @@ GROUP_DOMAIN_HINTS: dict[str, dict[str, frozenset[str]]] = {
         "tickers": frozenset({"DBA", "WEAT", "CORN", "XLE", "UNG", "WOOD"}),
         "sectors": frozenset({"agriculture", "climate", "energy", "commodity"}),
     },
+    # Extended specialist domains (optimal investable proxies)
+    "fed-policy": {
+        "tickers": frozenset({"SPY", "TLT", "IEF", "TIP", "UUP", "XLF", "KRE"}),
+        "sectors": frozenset({"rates", "fed", "policy", "banks", "bonds", "macro"}),
+    },
+    "corporate-credit": {
+        "tickers": frozenset({"HYG", "LQD", "JNK", "TLT", "XLF", "SPY"}),
+        "sectors": frozenset({"credit", "bonds", "high yield", "investment grade", "banks"}),
+    },
+    "china-em-divergence": {
+        "tickers": frozenset({"FXI", "MCHI", "EEM", "ASHR", "KWEB", "SPY", "UUP"}),
+        "sectors": frozenset({"china", "emerging", "asia", "em", "international"}),
+    },
+    "agriculture": {
+        "tickers": frozenset({"DBA", "WEAT", "CORN", "SOYB", "MOO", "ADM", "DE"}),
+        "sectors": frozenset({"agriculture", "farm", "grain", "fertilizer", "ag"}),
+    },
+    "options-flow": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMD"}),
+        "sectors": frozenset({"options", "flow", "derivatives", "equity"}),
+    },
+    "day-trading-microstructure": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "AMD"}),
+        "sectors": frozenset({"microstructure", "intraday", "liquidity", "momentum"}),
+    },
+    "dark-pool-volume-profile": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA"}),
+        "sectors": frozenset({"dark pool", "volume", "accumulation", "block"}),
+    },
+    "market-makers": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "VIX", "VXX", "UVXY"}),
+        "sectors": frozenset({"market maker", "liquidity", "volatility", "hedging"}),
+    },
+    "borrow-fees": {
+        "tickers": frozenset({"GME", "AMC", "PLTR", "CVNA", "UPST", "BYND"}),
+        "sectors": frozenset({"short", "borrow", "hard to borrow", "squeeze"}),
+    },
+    "squeeze-mechanics": {
+        "tickers": frozenset({"GME", "AMC", "PLTR", "TSLA", "CVNA"}),
+        "sectors": frozenset({"squeeze", "short interest", "gamma", "retail"}),
+    },
+    "htb-dynamics": {
+        "tickers": frozenset({"GME", "AMC", "BYND", "UPST", "CVNA"}),
+        "sectors": frozenset({"hard to borrow", "short", "borrow fee", "locates"}),
+    },
+    "ftd-regsho": {
+        "tickers": frozenset({"GME", "AMC", "SPY", "IWM"}),
+        "sectors": frozenset({"ftd", "regsho", "fails to deliver", "settlement"}),
+    },
+    "bear-thesis": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "HYG", "XLF"}),
+        "sectors": frozenset({"bear", "short", "forensic", "credit", "accounting"}),
+    },
+    "margin-stress": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "XLF", "KRE", "VIX"}),
+        "sectors": frozenset({"margin", "leverage", "broker", "risk", "volatility"}),
+    },
+    "earnings-calendar": {
+        "tickers": frozenset({"SPY", "QQQ", "XLK", "XLF", "XLE"}),
+        "sectors": frozenset({"earnings", "event", "calendar", "guidance"}),
+    },
+    "estimate-revisions": {
+        "tickers": frozenset({"SPY", "QQQ", "XLK", "XLI", "XLY"}),
+        "sectors": frozenset({"estimates", "revisions", "analyst", "eps"}),
+    },
+    "insider-clusters": {
+        "tickers": frozenset({"SPY", "IWM", "XBI", "ARKK"}),
+        "sectors": frozenset({"insider", "form 4", "ownership", "cluster"}),
+    },
+    "sector-rotation": {
+        "tickers": frozenset({"XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLU", "XLRE", "XLB", "SPY"}),
+        "sectors": frozenset({"sector", "rotation", "cyclical", "defensive"}),
+    },
+    "quality-factor": {
+        "tickers": frozenset({"QUAL", "SPHQ", "JQUA", "SPY", "QQQ"}),
+        "sectors": frozenset({"quality", "factor", "roe", "profitability"}),
+    },
+    "momentum-reversion": {
+        "tickers": frozenset({"MTUM", "SPMO", "SPY", "QQQ", "IWM"}),
+        "sectors": frozenset({"momentum", "mean reversion", "factor"}),
+    },
+    "correlation-breakdown": {
+        "tickers": frozenset({"SPY", "TLT", "GLD", "UUP", "EEM", "HYG"}),
+        "sectors": frozenset({"correlation", "regime", "diversification", "macro"}),
+    },
+    "etf-mechanics": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "TLT", "HYG", "GLD"}),
+        "sectors": frozenset({"etf", "nav", "creation", "arbitrage", "flows"}),
+    },
+    "capital-return": {
+        "tickers": frozenset({"SCHD", "VIG", "DVY", "SPY", "XLP", "XLU"}),
+        "sectors": frozenset({"dividend", "buyback", "capital return", "income"}),
+    },
+    "equity-structuring": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "XLF"}),
+        "sectors": frozenset({"structure", "capital structure", "equity", "leverage"}),
+    },
+    "portfolio-frameworks": {
+        "tickers": frozenset({"SPY", "AGG", "TLT", "GLD", "EFA", "EEM"}),
+        "sectors": frozenset({"allocation", "portfolio", "asset class", "risk parity"}),
+    },
+    "long-squeeze-synergy": {
+        "tickers": frozenset({"GME", "AMC", "PLTR", "TSLA", "NVDA"}),
+        "sectors": frozenset({"squeeze", "gamma", "momentum", "short"}),
+    },
+    "risk-protection": {
+        "tickers": frozenset({"SPY", "TLT", "GLD", "SH", "PSQ", "VIX"}),
+        "sectors": frozenset({"hedge", "protection", "defensive", "volatility"}),
+    },
+    "risk-guardrail": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "TLT", "SH"}),
+        "sectors": frozenset({"risk", "guardrail", "drawdown", "limits"}),
+    },
+    "risk-mitigation": {
+        "tickers": frozenset({"SPY", "TLT", "GLD", "XLP", "XLU"}),
+        "sectors": frozenset({"risk", "mitigation", "hedge", "defensive"}),
+    },
+    "census": {
+        "tickers": frozenset({"XHB", "ITB", "XRT", "XLY", "SPY", "IYR"}),
+        "sectors": frozenset({"housing", "retail", "demographics", "construction"}),
+    },
+    "migration": {
+        "tickers": frozenset({"IYR", "VNQ", "XHB", "ITB", "SPY"}),
+        "sectors": frozenset({"migration", "housing", "real estate", "demographics"}),
+    },
+    "trading-economics": {
+        "tickers": frozenset({"SPY", "TLT", "UUP", "EEM", "GLD"}),
+        "sectors": frozenset({"macro", "economics", "global", "indicators"}),
+    },
+    "sec-filings": {
+        "tickers": frozenset({"SPY", "QQQ", "XLF", "XLE"}),
+        "sectors": frozenset({"sec", "filing", "disclosure", "10-k", "8-k"}),
+    },
+    "patents": {
+        "tickers": frozenset({"XBI", "IBB", "XLK", "QQQ", "ARKK"}),
+        "sectors": frozenset({"patent", "innovation", "biotech", "technology"}),
+    },
+    "events": {
+        "tickers": frozenset({"SPY", "GLD", "TLT", "UUP", "VIX"}),
+        "sectors": frozenset({"event", "news", "geopolitics", "risk"}),
+    },
+    "geopolitics": {
+        "tickers": frozenset({"SPY", "GLD", "USO", "XLE", "UUP", "EWU"}),
+        "sectors": frozenset({"geopolitics", "oil", "defense", "gold", "risk"}),
+    },
+    "content-integrity": {
+        "tickers": frozenset({"SPY", "QQQ"}),
+        "sectors": frozenset({"data quality", "integrity", "platform"}),
+    },
+    "crowding-quality": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "ARKK", "TSLA"}),
+        "sectors": frozenset({"crowding", "positioning", "quality", "factor"}),
+    },
+    "market-regime": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "TLT", "HYG", "GLD", "UUP"}),
+        "sectors": frozenset({"regime", "risk-on", "risk-off", "macro"}),
+    },
+    "fundamental-analyst": {
+        "tickers": frozenset({"SPY", "QQQ", "XLF", "XLE", "XLK"}),
+        "sectors": frozenset({"fundamental", "value", "earnings", "balance sheet"}),
+    },
+    "technical-pattern": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA"}),
+        "sectors": frozenset({"technical", "pattern", "chart", "momentum"}),
+    },
+    "sentiment-alt-data": {
+        "tickers": frozenset({"SPY", "QQQ", "XLY", "ARKK"}),
+        "sectors": frozenset({"sentiment", "alternative data", "retail", "positioning"}),
+    },
+    "adversarial-debate": {
+        "tickers": frozenset({"SPY", "QQQ", "IWM"}),
+        "sectors": frozenset({"debate", "bull bear", "thesis", "adversarial"}),
+    },
+    "electricity": {
+        "tickers": frozenset({"UNG", "USO", "XLE", "XLU", "VST", "NEE"}),
+        "sectors": frozenset({"utilities", "energy", "power", "gas", "electric", "grid"}),
+    },
+    "grid": {
+        "tickers": frozenset({"XLU", "VST", "NEE", "D", "SO", "AES"}),
+        "sectors": frozenset({"utilities", "grid", "power", "electric"}),
+    },
+    "meteorology": {
+        "tickers": frozenset({"UNG", "USO", "XLE", "WEAT", "DBA"}),
+        "sectors": frozenset({"energy", "agriculture", "weather", "gas", "oil"}),
+    },
+    "transportation": {
+        "tickers": frozenset({"UPS", "FDX", "UNP", "CSX", "DAL", "JETS"}),
+        "sectors": frozenset({"transport", "rail", "airline", "freight"}),
+    },
+    "logistics": {
+        "tickers": frozenset({"UPS", "FDX", "ZIM", "MATX", "UNP"}),
+        "sectors": frozenset({"logistics", "shipping", "freight", "supply chain"}),
+    },
+    "sales-analytics": {
+        "tickers": frozenset({"XRT", "WMT", "TGT", "COST", "HD", "AMZN"}),
+        "sectors": frozenset({"retail", "consumer", "sales", "staples"}),
+    },
 }
 
 

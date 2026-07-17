@@ -111,6 +111,48 @@ def test_projected_return_shows_horizon() -> None:
     assert merged.get("projected_return_pct") == 3.7
 
 
+def test_optimize_output_normalizes_bias() -> None:
+    from agents.optimize_output import normalize_bias, optimize_agent_output
+    import tempfile
+    from pathlib import Path
+    import json
+
+    assert normalize_bias("bullish") == "BULLISH"
+    assert normalize_bias("Bearish flow") == "BEARISH"
+    assert normalize_bias("golden-sweep") == "BULLISH"
+    assert normalize_bias("NEUTRAL") == "NEUTRAL"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "options_flow.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "meta": {"agent": "test"},
+                    "market_signals": [
+                        {"bias": "bullish", "tickers": ["SPY", "QQQ"], "reason": "test"},
+                        {"bias": "risk-off", "tickers": ["TLT"], "reason": "defensive"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        out = optimize_agent_output(path, "options-flow")
+        assert out is not None
+        assert out["market_signals"][0]["bias"] == "BULLISH"
+        assert out["market_signals"][1]["bias"] == "BEARISH"
+        assert any(r.get("symbol") == "SPY" for r in out.get("enhance_symbols") or [])
+
+
+def test_yahoo_option_chain_helper_exists() -> None:
+    from agents.base import BaseExpert
+    from agents.market_data.yahoo import fetch_option_chain
+
+    assert callable(fetch_option_chain)
+    expert = BaseExpert(agent_id="options-flow")
+    assert hasattr(expert, "fetch_yahoo_option_chain")
+    assert callable(expert.fetch_yahoo_option_chain)
+
+
 def test_external_deposits_excluded_from_profit() -> None:
     from account_profit import detect_external_flow_events, profit_metrics_for_account
 
@@ -1039,6 +1081,8 @@ def _run_all() -> None:
         test_record_pipeline_run_upsert,
         test_prediction_hit_logic,
         test_external_deposits_excluded_from_profit,
+        test_optimize_output_normalizes_bias,
+        test_yahoo_option_chain_helper_exists,
         test_import_core_modules,
         test_pipeline_memory_bundle_and_steering,
         test_intraday_prediction_horizons,

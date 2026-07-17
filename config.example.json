@@ -1,11 +1,16 @@
 {
+  "fred_api_key": "",
+  "eia_api_key": "",
+  "gridstatus_api_key": "",
+  "nass_api_key": "",
   "marinetraffic_api_key": "",
   "uspto_api_key": "",
-  "gridstatus_api_key": "",
-  "eia_api_key": "",
   "weather_hubs": [
     {"name": "New York", "lat": 40.7128, "lon": -74.0060},
     {"name": "Chicago", "lat": 41.8781, "lon": -87.6298},
-    {"name": "Houston", "lat": 29.7604, "lon": -95.3698}
-  ]
+    {"name": "Houston", "lat": 29.7604, "lon": -95.3698},
+    {"name": "Los Angeles", "lat": 34.0522, "lon": -118.2437},
+    {"name": "Atlanta", "lat": 33.7490, "lon": -84.3880}
+  ],
+  "_comment": "Optional API keys improve agent quality. Free: FRED (fred.stlouisfed.org), EIA (eia.gov), NASS (quickstats.nass.usda.gov). GridStatus and MarineTraffic may require paid plans."
 }

@@ -404,7 +404,9 @@ class OptionsFlowExpert(BaseExpert):
             signals.append(
                 {
                     "sector": "Options Flow",
-                    "bias": "golden-sweep",
+                    "bias": "BULLISH",
+                    "confidence": 0.72,
+                    "preferred_horizon": "24h",
                     "tickers": golden,
                     "reason": "At-ask, far-OTM, short-dated flow with $1M+ premium — high-conviction institutional bet.",
                 }
@@ -414,7 +416,9 @@ class OptionsFlowExpert(BaseExpert):
             signals.append(
                 {
                     "sector": "Options Flow",
-                    "bias": "bullish",
+                    "bias": "BULLISH",
+                    "confidence": 0.62,
+                    "preferred_horizon": "24h",
                     "tickers": bullish,
                     "reason": "Unusual call-side volume exceeding open interest, dominant over put-side premium.",
                 }
@@ -424,7 +428,9 @@ class OptionsFlowExpert(BaseExpert):
             signals.append(
                 {
                     "sector": "Options Flow",
-                    "bias": "bearish",
+                    "bias": "BEARISH",
+                    "confidence": 0.62,
+                    "preferred_horizon": "24h",
                     "tickers": bearish,
                     "reason": "Unusual put-side volume exceeding open interest, dominant over call-side premium.",
                 }
@@ -445,14 +451,31 @@ class OptionsFlowExpert(BaseExpert):
 
     def analyze(self) -> OptionsFlowReport:
         symbols: list[OptionsFlowSignal] = []
-        for symbol, name in WATCHLIST.items():
+        # Merge static options watchlist with pipeline live/trust/bullish names (liquid first).
+        watch: dict[str, str] = dict(WATCHLIST)
+        for sym in self.pipeline_watchlist_symbols(list(WATCHLIST.keys()), limit=14):
+            watch.setdefault(sym, sym)
+        # Always include SPY as benchmark / liquidity anchor.
+        watch.setdefault(BENCHMARK, WATCHLIST.get(BENCHMARK, "S&P 500"))
+
+        for symbol, name in watch.items():
+            if self.pipeline_should_skip_symbol(symbol):
+                continue
             row = self._analyze_symbol(symbol, name)
             if row:
                 symbols.append(row)
-            time.sleep(self.delay_seconds)
+                self.request_enhanced_data(
+                    symbol,
+                    reason="Options flow watchlist",
+                    priority=0.78 if row.golden_sweep_candidate else 0.7,
+                )
+            # Throttle is also applied inside fetch_yahoo_option_chain; light pause between names.
+            time.sleep(max(0.05, self.delay_seconds * 0.25))
 
         if not any(s.symbol == BENCHMARK for s in symbols):
-            raise RuntimeError("Unable to fetch SPY data for options flow analysis")
+            # Soft fallback: still emit report if other names worked
+            if not symbols:
+                raise RuntimeError("Unable to fetch option chain data for options flow analysis")
 
         assessment = self._assessment(symbols)
         expert_summary = self._expert_summary(assessment)

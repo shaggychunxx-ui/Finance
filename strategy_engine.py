@@ -946,6 +946,14 @@ def _run_platform_agent_body(
             result["degraded"] = True
 
         try:
+            from agents.optimize_output import optimize_agent_output
+
+            optimize_agent_output(out_path, agent_id)
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Output optimize skipped for {label}: {exc}")
+
+        try:
             from agents.enhancement import patch_agent_output_enhance_symbols
 
             patch_agent_output_enhance_symbols(out_path)
@@ -1104,6 +1112,12 @@ def _reapply_pipeline_patches(sources: list[dict[str, str]]) -> None:
         out_path = OUTPUT / src["file"]
         if not out_path.exists():
             continue
+        try:
+            from agents.optimize_output import optimize_agent_output
+
+            optimize_agent_output(out_path, aid)
+        except Exception:
+            pass
         try:
             from agent_personality import patch_agent_output_personality
 

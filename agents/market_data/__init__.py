@@ -12,6 +12,7 @@ from agents.market_data.yahoo import (
     fetch_chart_meta,
     fetch_closes,
     fetch_ohlcv,
+    fetch_option_chain,
 )
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "fetch_chart_meta",
     "fetch_closes",
     "fetch_ohlcv",
+    "fetch_option_chain",
     "merge_live_return_into_series",
     "quote_snapshot",
     "session_return_from_quote",
