@@ -31,6 +31,7 @@ from agents.records_management import run_records_management_analysis
 from agents.research_statistics import run_research_statistics_analysis
 from agents.sales_analytics import run_sales_analytics_analysis
 from agents.sec_filings import run_sec_filings_analysis
+from agents.sector_rotation import run_sector_rotation_analysis
 from agents.trading_economics import run_trading_economics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
@@ -108,6 +109,36 @@ def _print_markets(data: dict[str, Any]) -> None:
             f"{g.get('symbol')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
         ))
         print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_sector_rotation(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    assessment = data.get("assessment", {})
+    metrics = data.get("metrics", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — vs {meta.get('benchmark', 'SPY')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Cycle phase: {assessment.get('cycle_phase')} "
+        f"(confidence {assessment.get('cycle_confidence')})"
+    )
+    print(f"  Breadth: {metrics.get('breadth_score')}  |  Rotation strength: {metrics.get('rotation_strength_score')}")
+    print()
+    print("  RRG quadrants (RS-Ratio / RS-Momentum):")
+    for s in data.get("sectors", []):
+        print(
+            f"    [{s.get('quadrant')}] {s.get('sector')} ({s.get('etf')}): "
+            f"ratio {s.get('rs_ratio')} / momentum {s.get('rs_momentum')} "
+            f"(trend {s.get('trend_filter')})"
+        )
+    print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -1285,6 +1316,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "research-statistics": _print_research_statistics,
     "sales-analytics": _print_sales_analytics,
     "sec-filings": _print_sec_filings,
+    "sector-rotation": _print_sector_rotation,
     "theoretical-probability": _print_theoretical_probability,
     "trading-economics": _print_trading_economics,
     "transportation": _print_transportation,
@@ -1316,6 +1348,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "research-statistics": run_research_statistics_analysis,
     "sales-analytics": run_sales_analytics_analysis,
     "sec-filings": run_sec_filings_analysis,
+    "sector-rotation": run_sector_rotation_analysis,
     "theoretical-probability": run_theoretical_probability_analysis,
     "trading-economics": run_trading_economics_analysis,
     "transportation": run_transportation_analysis,

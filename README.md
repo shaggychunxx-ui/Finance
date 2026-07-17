@@ -15,6 +15,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
+| **Sector Rotation & Relative Strength Expert** | `run.bat sector-rotation` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
@@ -39,6 +40,7 @@ run.bat datascience
 run.bat finance
 run.bat financial-data
 run.bat markets
+run.bat sector-rotation
 run.bat geopolitics
 run.bat logistics
 run.bat theoretical-probability
@@ -203,6 +205,18 @@ Live US market analysis from Yahoo Finance:
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+## Sector Rotation & Relative Strength Expert
+
+Tracks relative strength of the 11 major sector ETFs against SPY and reads
+sector leadership through a simplified Relative Rotation Graph (RRG):
+
+- RS line (sector ETF price ÷ SPY price) with a moving-average trend filter
+- JdK-style RS-Ratio / RS-Momentum proxy for each sector, classified into the
+  four RRG quadrants: **Leading**, **Weakening**, **Lagging**, **Improving**
+- Business-cycle read (Early / Mid-Cycle / Late Cycle / Recession) matched
+  against the classic sector rotation playbook
+- Market signals for leading/lagging sectors and an improving-quadrant watchlist
 
 ## Geopolitics Expert
 

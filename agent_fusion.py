@@ -23,6 +23,7 @@ MIN_SAMPLES_REGIME = 4
 
 AGENT_DEFAULT_HORIZON: dict[str, str] = {
     "markets": "24h",
+    "sector-rotation": "1wk",
     "finance": "24h",
     "financial-data": "24h",
     "datascience": "24h",
@@ -48,6 +49,7 @@ HISTORICAL_BLEND = 0.35
 GENERALIST_AGENTS = frozenset({
     "finance",
     "markets",
+    "sector-rotation",
     "datascience",
     "financial-data",
     "google-finance",
@@ -71,6 +73,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "transportation": "transport_logistics",
     "logistics": "transport_logistics",
     "markets": "macro",
+    "sector-rotation": "macro",
     "finance": "macro",
     "financial-data": "macro",
     "google-finance": "macro",

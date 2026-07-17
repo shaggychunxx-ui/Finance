@@ -934,6 +934,75 @@ def test_restore_same_cycle_agent_outputs() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_sector_rotation_cli_registered() -> None:
+    """sector-rotation must appear in RUNNERS and PRINTERS, and its printer must not crash."""
+    from main import PRINTERS, RUNNERS
+
+    assert "sector-rotation" in RUNNERS, "sector-rotation missing from RUNNERS"
+    assert "sector-rotation" in PRINTERS, "sector-rotation missing from PRINTERS"
+
+    sample = {
+        "meta": {
+            "agent": "Sector Rotation & Relative Strength Expert",
+            "benchmark": "SPY",
+            "expert_summary": "test summary",
+        },
+        "assessment": {"cycle_phase": "Mid-Cycle", "cycle_confidence": 0.5},
+        "metrics": {"breadth_score": 0.3, "rotation_strength_score": 0.4},
+        "sectors": [
+            {
+                "etf": "XLK",
+                "sector": "Technology",
+                "quadrant": "Leading",
+                "rs_ratio": 101.6,
+                "rs_momentum": 100.1,
+                "trend_filter": "bullish",
+            }
+        ],
+        "market_signals": [],
+        "recommendations": [],
+    }
+    # Printer must not raise on a well-formed result.
+    PRINTERS["sector-rotation"](sample)
+
+
+def test_sector_rotation_quadrant_classification() -> None:
+    """RS-Ratio/RS-Momentum proxy must classify accelerating/declining sectors into RRG quadrants."""
+    from agents.sector_rotation.expert import SectorRotationExpert, _sma
+
+    assert _sma([1.0, 2.0, 3.0, 4.0, 5.0], 3) == [None, None, 2.0, 3.0, 4.0]
+
+    def build(pcts: list[float]) -> list[float]:
+        out = [100.0]
+        for p in pcts:
+            out.append(out[-1] * (1 + p))
+        return out[1:]
+
+    n = 260
+    bench = [100.0] * n
+    expert = SectorRotationExpert(pipeline_context={})
+
+    # Accelerating relative daily returns vs a flat benchmark -> Leading quadrant.
+    accel_pcts = [0.0002 + 0.000006 * i for i in range(n)]
+    sector_accel = build(accel_pcts)
+    expert._closes = lambda sym, s=sector_accel, b=bench: (b if sym == "SPY" else s)
+    leading = expert._sector_line("XLK", "Technology", bench)
+    assert leading is not None
+    assert leading.quadrant == "Leading"
+    assert leading.rs_ratio >= 100
+    assert leading.rs_momentum >= 100
+
+    # Worsening relative decline vs a flat benchmark -> Lagging quadrant.
+    worse_pcts = [-0.0002 - 0.000004 * i for i in range(n)]
+    sector_worse = build(worse_pcts)
+    expert._closes = lambda sym, s=sector_worse, b=bench: (b if sym == "SPY" else s)
+    lagging = expert._sector_line("XLB", "Materials", bench)
+    assert lagging is not None
+    assert lagging.quadrant == "Lagging"
+    assert lagging.rs_ratio < 100
+    assert lagging.rs_momentum < 100
+
+
 def test_market_predictor_cli_registered() -> None:
     """market-predictor must appear in RUNNERS and PRINTERS and round-trip without error."""
     import tempfile
@@ -1062,6 +1131,8 @@ def _run_all() -> None:
         test_trading_gate_cluster_and_eligibility,
         test_market_predictor_cli_registered,
         test_market_predictor_loop_cycle_no_crash,
+        test_sector_rotation_cli_registered,
+        test_sector_rotation_quadrant_classification,
         test_backtest_loop_cycle_no_crash,
         test_backtest_loop_cli_argument_validation,
     ]

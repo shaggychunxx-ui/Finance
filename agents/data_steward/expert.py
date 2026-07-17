@@ -115,6 +115,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "sector-rotation",
+        "agent": "Sector Rotation & Relative Strength Expert",
+        "primary_output": "sector_rotation.json",
+        "sidecars": [],
+        "sources": ["Yahoo Finance API"],
+        "owner": "platform",
+    },
+    {
         "command": "geopolitics",
         "agent": "Geopolitics Expert",
         "primary_output": "geopolitics.json",
