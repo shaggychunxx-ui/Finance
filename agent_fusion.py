@@ -40,6 +40,8 @@ AGENT_DEFAULT_HORIZON: dict[str, str] = {
     "empirical-probability": "1wk",
     "combined-conditional": "1wk",
     "research-statistics": "1mo",
+    "trading-economics": "1wk",
+    "fed-policy": "1wk",
 }
 CLUSTER_WEIGHT_CAP = 0.45
 OUT_OF_DOMAIN_FACTOR = 0.3
@@ -88,6 +90,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "census": "macro",
     "agriculture": "energy_grid",
     "trading-economics": "macro",
+    "fed-policy": "macro",
     "sales-analytics": "consumer",
     "order-execution": "execution",
     "data-steward": "data_platform",
@@ -162,6 +165,10 @@ AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
     "trading-economics": {
         "tickers": frozenset({"SPY", "TLT", "GLD", "UUP", "EEM"}),
         "sectors": frozenset({"macro", "rates", "inflation", "gdp", "economics"}),
+    },
+    "fed-policy": {
+        "tickers": frozenset({"TLT", "IEF", "SHY", "XLF", "KRE", "IWM", "HYG", "STPP"}),
+        "sectors": frozenset({"rates", "fed", "fomc", "sofr", "treasury", "swap", "duration", "credit"}),
     },
 }
 

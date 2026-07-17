@@ -210,6 +210,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "fed-policy",
+        "agent": "Fed Rate Policy & SOFR Curve Expert",
+        "primary_output": "fed_policy.json",
+        "sidecars": ["fed_policy_resources.json"],
+        "sources": ["FRED public CSV", "FOMC Summary of Economic Projections"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

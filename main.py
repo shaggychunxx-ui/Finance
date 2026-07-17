@@ -17,6 +17,7 @@ from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
+from agents.fed_policy import run_fed_policy_analysis
 from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
 from agents.geopolitics import run_geopolitics_analysis
@@ -1164,6 +1165,46 @@ def _print_trading_economics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_fed_policy(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    rates = data.get("rates", {})
+    median = data.get("median_range", {})
+    split = data.get("committee_split", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — {meta.get('dot_plot_participants', 0)} FOMC dots")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Stance: {metrics.get('hawkish_label')} (score {metrics.get('hawkish_score')}) | "
+        f"Median dot: {median.get('low')}%-{median.get('high')}%"
+    )
+    print(
+        f"  Split: {split.get('hold_or_cut')} hold/cut vs. {split.get('hike')} hike "
+        f"({split.get('half_point_hike')} at 50bp)"
+    )
+    print(f"  EFFR {rates.get('effr')}% | SOFR {rates.get('sofr')}% | 1M Term SOFR {rates.get('term_sofr_1mo')}%")
+    print(
+        f"  Curve: {metrics.get('curve_shape')} | 5Y {rates.get('treasury_5y')}% "
+        f"/ 10Y {rates.get('treasury_10y')}% ({metrics.get('ten_minus_five_bp')}bp)"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    for bucket in data.get("dot_plot", []):
+        tag = " (median)" if bucket.get("is_median") else " (current)" if bucket.get("is_current") else ""
+        print(
+            f"  • {bucket.get('range_low')}%-{bucket.get('range_high')}%: {bucket.get('dots')} dots "
+            f"— {bucket.get('label')}{tag}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_sales_analytics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     kpis = data.get("kpis", {})
@@ -1270,6 +1311,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
     "events": _print_events,
+    "fed-policy": _print_fed_policy,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
     "geopolitics": _print_geopolitics,
@@ -1301,6 +1343,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
     "events": run_events_analysis,
+    "fed-policy": run_fed_policy_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
     "geopolitics": run_geopolitics_analysis,
@@ -1447,6 +1490,10 @@ def main() -> int:
                 catalog = args.output.parent / "trading_economics_resources.json"
                 if catalog.exists():
                     print(f"  Trading Economics resource catalog: {catalog}")
+            if args.agent == "fed-policy":
+                catalog = args.output.parent / "fed_policy_resources.json"
+                if catalog.exists():
+                    print(f"  Fed policy resource catalog: {catalog}")
             if args.agent == "market-predictor":
                 print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":

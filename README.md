@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Fed Rate Policy & SOFR Curve Expert** | `run.bat fed-policy` | [FRED](https://fred.stlouisfed.org/) (SOFR/EFFR/Treasury), FOMC SEP dot plot |
 
 ## Quick start
 
