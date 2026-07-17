@@ -21,6 +21,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Empirical Probability Expert** | `run.bat empirical-probability` | Yahoo Finance (1yr daily history) |
 | **Combined & Conditional Probability Expert** | `run.bat combined-conditional` | Yahoo Finance (1yr daily history) |
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
+| **Estimate Revisions Expert** | `run.bat estimate-revisions` | [Yahoo Finance](https://finance.yahoo.com/) quoteSummary (earningsTrend, financialData) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Market Predictor** | `run.bat market-predictor` | Fuses all agent outputs into multi-horizon predictions |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
@@ -45,6 +46,7 @@ run.bat theoretical-probability
 run.bat empirical-probability
 run.bat combined-conditional
 run.bat research-statistics
+run.bat estimate-revisions
 run.bat sales-analytics
 run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
@@ -327,6 +329,27 @@ Outputs:
 
 - `output/research_statistics.json` — full statistical research report
 - `output/statistical_methods.json` — methods and formulas catalog
+
+## Estimate Revisions Expert
+
+Analyst EPS/revenue estimate revision momentum across a liquid large-cap watchlist:
+
+- **Diffusion index (breadth)** — (upward − downward revisions) / total analysts, 30-day window
+- **Revision magnitude** — FY1 consensus EPS % change over 7/30/60/90 days
+- **FY2-vs-FY1 acceleration** — confirms multi-year structural growth vs a single-quarter blip
+- **Quality/liquidity screen** — ADV ≥ $20M, ROE > 15%, positive trailing FCF
+- **Price confirmation** — price above 50-day and 200-day EMA
+- **Behavioral distortions** — analyst herding, late-cycle downward drift, post-guidance cliff
+- **Macro-to-micro transmission** — regime, sector rotation, and idiosyncratic layers
+
+```bat
+run.bat estimate-revisions -o output/estimate_revisions.json
+```
+
+Outputs:
+
+- `output/estimate_revisions.json` — full revision-momentum screen and signals
+- `output/estimate_revision_framework.json` — screening thresholds and behavioral/transmission reference
 
 ## Sales Analytics BI Expert
 

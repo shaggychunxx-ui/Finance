@@ -14,6 +14,7 @@ from agents.census import run_census_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
+from agents.estimate_revisions import run_estimate_revisions_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
@@ -108,6 +109,31 @@ def _print_markets(data: dict[str, Any]) -> None:
             f"{g.get('symbol')} {g.get('day_chg_pct'):+.2f}%" for g in gainers
         ))
         print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_estimate_revisions(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    passes = data.get("screen_passes", [])
+    print(f"  Full screen passes: {', '.join(passes) if passes else '(none)'}")
+    print()
+    print("  Diffusion index leaders (30d):")
+    for row in data.get("diffusion_leaders", [])[:5]:
+        print(f"    {row.get('symbol')}: {row.get('diffusion_index_30d'):+.2f}")
+    print()
+    print("  FY2-vs-FY1 acceleration leaders:")
+    for row in data.get("acceleration_leaders", [])[:5]:
+        print(f"    {row.get('symbol')}: {row.get('acceleration_pct'):+.2f}pp")
+    print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
 
@@ -1269,6 +1295,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "datascience": _print_datascience,
     "electricity": _print_electricity,
     "empirical-probability": _print_empirical_probability,
+    "estimate-revisions": _print_estimate_revisions,
     "events": _print_events,
     "financial-data": _print_financial_data,
     "finance": _print_finance,
@@ -1300,6 +1327,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,
     "empirical-probability": run_empirical_probability_analysis,
+    "estimate-revisions": run_estimate_revisions_analysis,
     "events": run_events_analysis,
     "financial-data": run_financial_data_analysis,
     "finance": run_finance_analysis,
@@ -1415,6 +1443,10 @@ def main() -> int:
                 catalog = args.output.parent / "probability_models.json"
                 if catalog.exists():
                     print(f"  Probability models catalog: {catalog}")
+            if args.agent == "estimate-revisions":
+                catalog = args.output.parent / "estimate_revision_framework.json"
+                if catalog.exists():
+                    print(f"  Estimate revision framework catalog: {catalog}")
             if args.agent == "empirical-probability":
                 catalog = args.output.parent / "empirical_experiments.json"
                 if catalog.exists():

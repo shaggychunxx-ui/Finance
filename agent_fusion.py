@@ -40,6 +40,7 @@ AGENT_DEFAULT_HORIZON: dict[str, str] = {
     "empirical-probability": "1wk",
     "combined-conditional": "1wk",
     "research-statistics": "1mo",
+    "estimate-revisions": "1mo",
 }
 CLUSTER_WEIGHT_CAP = 0.45
 OUT_OF_DOMAIN_FACTOR = 0.3
@@ -58,6 +59,7 @@ GENERALIST_AGENTS = frozenset({
     "empirical-probability",
     "combined-conditional",
     "research-statistics",
+    "estimate-revisions",
     "market-predictor",
     "order-execution",
     "data-steward",
@@ -81,6 +83,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "empirical-probability": "quant",
     "combined-conditional": "quant",
     "research-statistics": "quant",
+    "estimate-revisions": "quant",
     "events": "intelligence",
     "patents": "intelligence",
     "sec-filings": "intelligence",

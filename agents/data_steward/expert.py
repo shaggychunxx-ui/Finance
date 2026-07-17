@@ -187,6 +187,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "estimate-revisions",
+        "agent": "Estimate Revisions Expert",
+        "primary_output": "estimate_revisions.json",
+        "sidecars": ["estimate_revision_framework.json"],
+        "sources": ["Yahoo Finance quoteSummary (earningsTrend, financialData)", "Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
+    {
         "command": "sales-analytics",
         "agent": "Sales Analytics BI Expert",
         "primary_output": "sales_analytics.json",
