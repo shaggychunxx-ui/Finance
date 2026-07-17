@@ -214,7 +214,7 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "command": "fed-policy",
         "agent": "Fed Rate Policy & SOFR Curve Expert",
         "primary_output": "fed_policy.json",
-        "sidecars": ["fed_policy_resources.json"],
+        "sidecars": ["fed_policy_resources.json", "fed_policy_rate_timeline.json"],
         "sources": ["FRED public CSV", "FOMC Summary of Economic Projections"],
         "owner": "platform",
     },

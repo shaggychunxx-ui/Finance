@@ -169,8 +169,9 @@ PROXY_SNAPSHOT: dict[str, float] = {
 # stance). Used to give the report a "past years" view of the cycle rather
 # than only the latest print.
 RATE_CYCLE_HISTORY: list[dict[str, Any]] = [
-    {"date": "2019-07-31", "action": "cut", "target_low": 2.00, "target_high": 2.25, "note": "Mid-cycle adjustment cut #1"},
-    {"date": "2019-10-30", "action": "cut", "target_low": 1.50, "target_high": 1.75, "note": "Mid-cycle adjustment cut #3"},
+    {"date": "2019-07-31", "action": "cut", "target_low": 2.00, "target_high": 2.25, "note": "Mid-cycle adjustment cut #1 of 3"},
+    {"date": "2019-09-18", "action": "cut", "target_low": 1.75, "target_high": 2.00, "note": "Mid-cycle adjustment cut #2 of 3"},
+    {"date": "2019-10-30", "action": "cut", "target_low": 1.50, "target_high": 1.75, "note": "Mid-cycle adjustment cut #3 of 3"},
     {"date": "2020-03-15", "action": "cut", "target_low": 0.00, "target_high": 0.25, "note": "Emergency pandemic cut to zero lower bound"},
     {"date": "2022-03-16", "action": "hike", "target_low": 0.25, "target_high": 0.50, "note": "Start of the 2022-2023 hiking cycle"},
     {"date": "2022-12-14", "action": "hike", "target_low": 4.25, "target_high": 4.50, "note": "Step-down to 50bp after four 75bp hikes"},
@@ -189,7 +190,7 @@ SEP_FORWARD_PATH: list[dict[str, Any]] = [
     {"year": "2026", "median_low": 3.75, "median_high": 4.00, "label": "Current SEP year"},
     {"year": "2027", "median_low": 3.50, "median_high": 3.75, "label": "One cut priced by end-2027"},
     {"year": "2028", "median_low": 3.25, "median_high": 3.50, "label": "Gradual normalization continues"},
-    {"year": "longer_run", "median_low": 3.00, "median_high": 3.00, "label": "Longer-run neutral rate (R*) estimate"},
+    {"year": "Longer Run", "median_low": 3.00, "median_high": 3.00, "label": "Longer-run neutral rate (R*) estimate"},
 ]
 
 
