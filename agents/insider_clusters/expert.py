@@ -9,6 +9,10 @@ Only Code P (bona fide open-market purchases funded with personal capital)
 counts toward a cluster; Code M (derivative exercise) and Code A
 (grant/award) are structural compensation events and are excluded.
 
+The cluster window defaults to 15 calendar days (an approximation of the
+10-to-15 business day window analysts use); pass ``lookback_days`` to
+``InsiderClusterAnalyst`` to tune it.
+
 Insiders are ranked by a power hierarchy:
   Tier 1 — CEO / CFO (The Operators)
   Tier 2 — Chairman / Independent Directors (The Oversight)
