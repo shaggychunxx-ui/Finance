@@ -63,6 +63,21 @@ DRAWDOWN_CIRCUIT_BREAKER_PCT = 0.07
 VOL_RISING_THRESHOLD = 1.02
 VOL_DECLINING_THRESHOLD = 0.98
 
+# Regime-Switching Matrix thresholds (Efficiency Ratio + capital allocation split).
+ER_MOMENTUM_THRESHOLD = 0.6
+ER_REVERSION_THRESHOLD = 0.3
+FULL_ALLOCATION_PCT = 100.0
+NO_ALLOCATION_PCT = 0.0
+SPLIT_ALLOCATION_PCT = 50.0
+
+# Statistical Arbitrage with Momentum Overlay thresholds.
+ADX_BLOCKED_THRESHOLD = 30
+ADX_ALLOWED_THRESHOLD = 20
+ZSCORE_TRADE_THRESHOLD = 2.0
+
+# Backtest signal-confidence z-score parameter (fixed input to quant_signal_confidence).
+DEFAULT_ZSCORE_SIGNAL = -1.5
+
 # Evidence score weights (base term keeps the score away from zero when data is thin).
 EVIDENCE_ENTRY_WEIGHT = 0.35
 EVIDENCE_WIN_RATE_WEIGHT = 0.30
@@ -422,15 +437,15 @@ class MomentumReversionExpert(BaseExpert):
         else:
             vol_trend = "flat"
 
-        if efficiency_ratio > 0.6 and vol_trend == "rising":
+        if efficiency_ratio > ER_MOMENTUM_THRESHOLD and vol_trend == "rising":
             label = "Breakout Momentum Regime"
-            momentum_pct, reversion_pct = 100.0, 0.0
-        elif efficiency_ratio < 0.3 and vol_trend == "declining":
+            momentum_pct, reversion_pct = FULL_ALLOCATION_PCT, NO_ALLOCATION_PCT
+        elif efficiency_ratio < ER_REVERSION_THRESHOLD and vol_trend == "declining":
             label = "Mean-Reverting Chop Regime"
-            momentum_pct, reversion_pct = 0.0, 100.0
+            momentum_pct, reversion_pct = NO_ALLOCATION_PCT, FULL_ALLOCATION_PCT
         else:
             label = "Transitional / Mixed Regime"
-            momentum_pct, reversion_pct = 50.0, 50.0
+            momentum_pct, reversion_pct = SPLIT_ALLOCATION_PCT, SPLIT_ALLOCATION_PCT
 
         return RegimeMetric(
             symbol=symbol,
@@ -467,16 +482,16 @@ class MomentumReversionExpert(BaseExpert):
         z_score = round((spread[-1] - mean_spread) / std_spread, 3) if std_spread > 0 else 0.0
 
         adx_proxy = calculate_adx_proxy(spread)
-        if adx_proxy is not None and adx_proxy > 30:
+        if adx_proxy is not None and adx_proxy > ADX_BLOCKED_THRESHOLD:
             momentum_overlay = "BLOCKED"
-        elif adx_proxy is not None and adx_proxy < 20:
+        elif adx_proxy is not None and adx_proxy < ADX_ALLOWED_THRESHOLD:
             momentum_overlay = "ALLOWED"
         else:
             momentum_overlay = "CAUTION"
 
-        if momentum_overlay == "ALLOWED" and z_score >= 2.0:
+        if momentum_overlay == "ALLOWED" and z_score >= ZSCORE_TRADE_THRESHOLD:
             trade_signal = f"SHORT_{symbol_a}_LONG_{symbol_b}"
-        elif momentum_overlay == "ALLOWED" and z_score <= -2.0:
+        elif momentum_overlay == "ALLOWED" and z_score <= -ZSCORE_TRADE_THRESHOLD:
             trade_signal = f"LONG_{symbol_a}_SHORT_{symbol_b}"
         else:
             trade_signal = "NO_TRADE"
@@ -559,7 +574,7 @@ class MomentumReversionExpert(BaseExpert):
             conf = quant_signal_confidence(
                 momentum=1.0 if b.macro_filter_intact else 0.4,
                 mc_prob_up=b.win_rate,
-                z_score=-1.5,
+                z_score=DEFAULT_ZSCORE_SIGNAL,
             )
             signals.append(build_market_signal(
                 sector=f"{b.symbol} Trend-Pullback",
