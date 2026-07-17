@@ -174,6 +174,9 @@ COMPANY_NAMES: dict[str, str] = {
 }
 
 
+EPSILON = 1e-9  # fallback denominator to avoid division by zero on degenerate proxy data
+
+
 def _safe_div(numerator: float, denominator: float) -> float:
     if not denominator:
         return 0.0
@@ -279,21 +282,21 @@ class AccrualsQualityExpert(BaseExpert):
 
     @staticmethod
     def _beneish_components(y1: dict[str, float], y2: dict[str, float]) -> dict[str, float]:
-        dsri = _safe_div(_safe_div(y2["receivables"], y2["revenue"]), _safe_div(y1["receivables"], y1["revenue"]) or 1e-9)
+        dsri = _safe_div(_safe_div(y2["receivables"], y2["revenue"]), _safe_div(y1["receivables"], y1["revenue"]) or EPSILON)
         gm_y1 = _safe_div(y1["revenue"] - y1["cogs"], y1["revenue"])
         gm_y2 = _safe_div(y2["revenue"] - y2["cogs"], y2["revenue"])
-        gmi = _safe_div(gm_y1, gm_y2 or 1e-9)
+        gmi = _safe_div(gm_y1, gm_y2 or EPSILON)
         aqi_y1 = 1 - _safe_div(y1["current_assets"] + y1["ppe_gross"] + y1["securities"], y1["total_assets"])
         aqi_y2 = 1 - _safe_div(y2["current_assets"] + y2["ppe_gross"] + y2["securities"], y2["total_assets"])
-        aqi = _safe_div(aqi_y2, aqi_y1 or 1e-9)
-        sgi = _safe_div(y2["revenue"], y1["revenue"] or 1e-9)
+        aqi = _safe_div(aqi_y2, aqi_y1 or EPSILON)
+        sgi = _safe_div(y2["revenue"], y1["revenue"] or EPSILON)
         depi_y1 = _safe_div(y1["depreciation"], y1["depreciation"] + y1["ppe_gross"])
         depi_y2 = _safe_div(y2["depreciation"], y2["depreciation"] + y2["ppe_gross"])
-        depi = _safe_div(depi_y1, depi_y2 or 1e-9)
-        sgai = _safe_div(_safe_div(y2["sga"], y2["revenue"]), _safe_div(y1["sga"], y1["revenue"]) or 1e-9)
+        depi = _safe_div(depi_y1, depi_y2 or EPSILON)
+        sgai = _safe_div(_safe_div(y2["sga"], y2["revenue"]), _safe_div(y1["sga"], y1["revenue"]) or EPSILON)
         lvgi_y1 = _safe_div(y1["current_liabilities"] + y1["long_term_debt"], y1["total_assets"])
         lvgi_y2 = _safe_div(y2["current_liabilities"] + y2["long_term_debt"], y2["total_assets"])
-        lvgi = _safe_div(lvgi_y2, lvgi_y1 or 1e-9)
+        lvgi = _safe_div(lvgi_y2, lvgi_y1 or EPSILON)
         tata = _safe_div(y2["net_income"] - y2["ocf"], y2["total_assets"])
         return {
             "DSRI": round(dsri, 4),
@@ -327,7 +330,7 @@ class AccrualsQualityExpert(BaseExpert):
         rows: list[tuple[str, float, float, float, float]] = []
         for symbol, years in self.fundamentals.items():
             y1, y2 = years["year1"], years["year2"]
-            assets_prior = y1["total_assets"] or 1e-9
+            assets_prior = y1["total_assets"] or EPSILON
             total_accruals = y2["net_income"] - y2["ocf"]
             delta_rev = y2["revenue"] - y1["revenue"]
             delta_rec = y2["receivables"] - y1["receivables"]
