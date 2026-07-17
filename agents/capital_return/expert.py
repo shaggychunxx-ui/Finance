@@ -275,6 +275,7 @@ LIFE_CYCLE_ARCHETYPES: list[dict[str, str]] = [
             "Initiates large, flexible buyback programs to mop up excess cash without "
             "committing to rigid quarterly dividend payouts."
         ),
+        "example_metrics": "0-1% Dividend Yield / 1-3% Buyback Yield.",
     },
     {
         "stage": "Stage 3: Mature Cash Cow (Dual-Engine Total Yield)",
@@ -420,12 +421,14 @@ class CapitalReturnExpert(BaseExpert):
         dividend_only = sum(
             1
             for c in candidates
-            if c.dividend_yield_pct > 0 and c.buyback_yield_pct <= MIN_YIELD_THRESHOLD_PCT
+            if c.dividend_yield_pct > MIN_YIELD_THRESHOLD_PCT
+            and c.buyback_yield_pct <= MIN_YIELD_THRESHOLD_PCT
         )
         buyback_only = sum(
             1
             for c in candidates
-            if c.buyback_yield_pct > 0 and c.dividend_yield_pct <= MIN_YIELD_THRESHOLD_PCT
+            if c.buyback_yield_pct > MIN_YIELD_THRESHOLD_PCT
+            and c.dividend_yield_pct <= MIN_YIELD_THRESHOLD_PCT
         )
         dual_engine = sum(
             1
