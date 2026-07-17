@@ -21,6 +21,7 @@ from agents.finance import run_finance_analysis
 from agents.financial_data import run_financial_data_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
+from agents.insider_clusters import run_insider_clusters_analysis
 from agents.logistics import run_logistics_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
@@ -1143,6 +1144,45 @@ def _print_sec_filings(data: dict[str, Any]) -> None:
     _print_signals(data.get("market_signals", []))
 
 
+def _print_insider_clusters(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    summary = data.get("summary", {})
+    print()
+    print("=" * 60)
+    print(
+        f"  {meta.get('agent', 'Agent')} — "
+        f"{meta.get('transactions_count', 0)} Form 4 purchases, "
+        f"{meta.get('clusters_count', 0)} clusters"
+    )
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  Activity: {summary.get('activity_label')} "
+        f"(score {summary.get('cluster_activity_score')})"
+    )
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print(f"  Dashboard: {meta.get('dashboard', 'https://www.sec.gov/edgar/search/#/forms=4')}")
+    print()
+    print("  Insider tiers observed:")
+    for tier, count in sorted(summary.get("by_tier", {}).items(), key=lambda x: -x[1]):
+        print(f"    • {tier}: {count}")
+    print()
+    print("  Clusters:")
+    for c in data.get("clusters", [])[:6]:
+        print(
+            f"    • {c.get('ticker', '?')} ({c.get('company', '')}): "
+            f"{c.get('insider_count', 0)} insiders, "
+            f"{c.get('window_start', '')}→{c.get('window_end', '')}, "
+            f"conviction {c.get('conviction_score', 0)} [{c.get('bias', 'NEUTRAL')}]"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_trading_economics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1274,6 +1314,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "finance": _print_finance,
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
+    "insider-clusters": _print_insider_clusters,
     "logistics": _print_logistics,
     "migration": _print_migration,
     "markets": _print_markets,
@@ -1305,6 +1346,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "finance": run_finance_analysis,
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
+    "insider-clusters": run_insider_clusters_analysis,
     "logistics": run_logistics_analysis,
     "migration": run_migration_analysis,
     "markets": run_markets_analysis,
@@ -1435,6 +1477,10 @@ def main() -> int:
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():
                     print(f"  SEC EDGAR resource catalog: {catalog}")
+            if args.agent == "insider-clusters":
+                catalog = args.output.parent / "insider_cluster_playbook.json"
+                if catalog.exists():
+                    print(f"  Insider cluster playbook catalog: {catalog}")
             if args.agent == "sales-analytics":
                 feed = args.output.parent / "sales_dashboard_data.json"
                 if feed.exists():

@@ -15,6 +15,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
+| **Insider Form 4 Cluster Analyst** | `run.bat insider-clusters` | [SEC EDGAR Full Text Search](https://www.sec.gov/edgar/search/#/forms=4) (Form 4) |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
 | **Logistics Expert** | `run.bat logistics` | [MarineTraffic](https://www.marinetraffic.com/) AIS (optional key) |
 | **Theoretical Probability Expert** | `run.bat theoretical-probability` | Yahoo Finance (6mo daily history) |
@@ -203,6 +204,19 @@ Live US market analysis from Yahoo Finance:
 - 11 sector ETFs with day and 1-week performance ranking
 - Top 10 day gainers/losers and trending tickers
 - Risk-on/risk-off regime, breadth, momentum, and style tilt (QQQ vs IWM)
+
+## Insider Form 4 Cluster Analyst
+
+Screens [SEC EDGAR Full Text Search](https://www.sec.gov/edgar/search/#/forms=4) for Form 4
+open-market purchases (Transaction Code P) and flags high-conviction insider clusters:
+
+- Excludes Code M (option exercise) and Code A (grant/award) — only bona fide, cash-funded
+  open-market purchases count
+- Flags a cluster when 3+ distinct insiders buy the same ticker within a 15-business-day window
+- Ranks insiders by power hierarchy: Tier 1 CEO/CFO, Tier 2 Chairman/Independent Directors,
+  Tier 3 10% beneficial owners
+- Emits a conviction score per cluster and a bullish market signal for qualifying tickers
+- Writes an `insider_cluster_playbook.json` sidecar cataloging the tier hierarchy and thresholds
 
 ## Geopolitics Expert
 

@@ -1032,6 +1032,80 @@ def test_backtest_loop_cli_argument_validation() -> None:
         assert loop_mod.main() == 2
 
 
+def test_insider_clusters_cli_registered() -> None:
+    """insider-clusters must appear in RUNNERS and PRINTERS and round-trip without error."""
+    import tempfile
+
+    import app_paths
+    from main import PRINTERS, RUNNERS
+
+    assert "insider-clusters" in RUNNERS, "insider-clusters missing from RUNNERS"
+    assert "insider-clusters" in PRINTERS, "insider-clusters missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    try:
+        out_file = out_dir / "insider_clusters.json"
+        result = RUNNERS["insider-clusters"](output=out_file)
+        assert isinstance(result, dict), "run_insider_clusters_analysis must return a dict"
+        assert "meta" in result, "result must contain 'meta'"
+        assert "clusters" in result, "result must contain 'clusters'"
+        assert "market_signals" in result, "result must contain 'market_signals'"
+        # Printer must not raise on empty/no-data result
+        PRINTERS["insider-clusters"](result)
+        catalog_path = out_dir / "insider_cluster_playbook.json"
+        assert catalog_path.exists(), "insider_cluster_playbook.json sidecar must be written"
+    finally:
+        app_paths.OUTPUT = original_output
+
+
+def test_insider_clusters_min_three_insiders() -> None:
+    """A cluster must require at least 3 distinct insiders in the lookback window."""
+    from agents.insider_clusters.expert import InsiderClusterAnalyst, InsiderTransaction
+
+    txns = [
+        InsiderTransaction(
+            company="Example Corp",
+            ticker="EX",
+            cik="1",
+            role_label="Chief Executive Officer",
+            tier=1,
+            filed_date="2026-01-01",
+            link="",
+        ),
+        InsiderTransaction(
+            company="Example Corp",
+            ticker="EX",
+            cik="1",
+            role_label="Chief Financial Officer",
+            tier=1,
+            filed_date="2026-01-03",
+            link="",
+        ),
+    ]
+    clusters = InsiderClusterAnalyst._detect_clusters(txns)
+    assert clusters == [], "2 distinct insiders must not form a cluster"
+
+    txns.append(
+        InsiderTransaction(
+            company="Example Corp",
+            ticker="EX",
+            cik="1",
+            role_label="Chairman of the Board",
+            tier=2,
+            filed_date="2026-01-05",
+            link="",
+        )
+    )
+    clusters = InsiderClusterAnalyst._detect_clusters(txns)
+    assert len(clusters) == 1
+    assert clusters[0].ticker == "EX"
+    assert clusters[0].insider_count == 3
+    assert clusters[0].bias == "BULLISH"
+
+
 def _run_all() -> None:
     tests = [
         test_app_paths_consistent,
@@ -1064,6 +1138,8 @@ def _run_all() -> None:
         test_market_predictor_loop_cycle_no_crash,
         test_backtest_loop_cycle_no_crash,
         test_backtest_loop_cli_argument_validation,
+        test_insider_clusters_cli_registered,
+        test_insider_clusters_min_three_insiders,
     ]
     for test in tests:
         test()

@@ -67,6 +67,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "insider-clusters",
+        "agent": "Insider Form 4 Cluster Analyst",
+        "primary_output": "insider_clusters.json",
+        "sidecars": ["insider_cluster_playbook.json"],
+        "sources": ["SEC EDGAR Full Text Search (forms=4)"],
+        "owner": "platform",
+    },
+    {
         "command": "events",
         "agent": "World Events Tracker",
         "primary_output": "world_events.json",
