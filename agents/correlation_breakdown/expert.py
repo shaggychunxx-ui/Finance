@@ -452,8 +452,9 @@ class CorrelationBreakdownExpert(BaseExpert):
         worst = sorted(tail_metrics, key=lambda m: m.cvar_95_pct, reverse=True)[:3]
         for m in worst:
             recs.append(f"{m.symbol}: CVaR95 {m.cvar_95_pct:.2f}%, CVaR99 {m.cvar_99_pct:.2f}% — expected shortfall in the tail")
+        vix_display = f"{regime.vix_level:.2f}" if regime.vix_level is not None else "N/A"
         recs.append(
-            f"Regime: {regime.regime_label} (VIX {regime.vix_level}); "
+            f"Regime: {regime.regime_label} (VIX {vix_display}); "
             f"calm→panic switch prob {regime.calm_to_panic_switch_prob:.0%}, panic persistence {regime.panic_persistence_prob:.0%}"
         )
         for strat in PROTECTION_STRATEGIES:
@@ -587,7 +588,7 @@ class CorrelationBreakdownExpert(BaseExpert):
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")
             catalog = output.parent / "tail_risk_frameworks.json"
             # Combine tail-risk frameworks and protection strategies into one sidecar catalog file.
-            catalog_payload = TAIL_RISK_FRAMEWORKS + PROTECTION_STRATEGIES
+            catalog_payload: list[dict[str, Any]] = [*TAIL_RISK_FRAMEWORKS, *PROTECTION_STRATEGIES]
             catalog.write_text(
                 json.dumps(catalog_payload, indent=2),
                 encoding="utf-8",
