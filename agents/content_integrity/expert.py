@@ -231,6 +231,10 @@ WATCHLIST: dict[str, str] = {
 CRITICAL_MANIPULATION_KEYWORDS = {
     "deepfake", "hacked account", "fabricated filing", "fraudulent statement", "hoax",
 }
+# Substring keyword — deliberately matches "impersonate"/"impersonation"/"impersonator"
+# (e.g. "account impersonating a newswire"). Broad by design: this heuristic
+# feeds an ensemble risk *tier*, not a standalone moderation decision, so
+# occasional false positives on legitimate uses are acceptable here.
 HIGH_MANIPULATION_KEYWORDS = {
     "fake screenshot", "impersonat", "spoofed account", "doctored", "bogus statement",
     "phishing", "fake tweet",
@@ -238,6 +242,19 @@ HIGH_MANIPULATION_KEYWORDS = {
 MEDIUM_MANIPULATION_KEYWORDS = {
     "unverified claim", "denies report", "clarifies statement", "rumor", "unconfirmed",
 }
+
+# Confidence scoring bounds for the ticker-level market signals below: a base
+# confidence per flagged ticker, an increment per additional corroborating
+# headline, and a cap so confidence never reaches full certainty.
+TICKER_SIGNAL_MAX_CONFIDENCE = 0.85
+TICKER_SIGNAL_BASE_CONFIDENCE = 0.5
+TICKER_SIGNAL_CONFIDENCE_PER_HIT = 0.12
+
+# Confidence scoring bounds for the broad-market stress signal: scales with
+# the recency-weighted ensemble risk score, capped below full certainty.
+BROAD_MARKET_MAX_CONFIDENCE = 0.8
+BROAD_MARKET_BASE_CONFIDENCE = 0.45
+BROAD_MARKET_CONFIDENCE_PER_RISK_POINT = 0.2
 
 # Homoglyph / leet-speak de-obfuscation table — a small illustrative slice of
 # the "Real-Time Normalization" stage described in the pipeline.
@@ -348,6 +365,11 @@ class ContentIntegrityExpert(BaseExpert):
 
     @staticmethod
     def _proxy_headlines() -> list[dict[str, Any]]:
+        """Calibration examples only — used when live BBC/NPR feeds are unreachable.
+
+        Timestamped with today's date so risk-decay math treats them as
+        current rather than stale; not representative of any real event.
+        """
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         return [
             {"title": "Company denies report of executive resignation after fake tweet circulates", "pub_date": today, "source": "Proxy", "link": "", "description": ""},
@@ -430,7 +452,10 @@ class ContentIntegrityExpert(BaseExpert):
                 ticker_hits.setdefault(t, []).append(f)
 
         for ticker, hits in ticker_hits.items():
-            conf = min(0.85, 0.5 + len(hits) * 0.12)
+            conf = min(
+                TICKER_SIGNAL_MAX_CONFIDENCE,
+                TICKER_SIGNAL_BASE_CONFIDENCE + len(hits) * TICKER_SIGNAL_CONFIDENCE_PER_HIT,
+            )
             signals.append(
                 build_market_signal(
                     sector=f"Equity — {WATCHLIST.get(ticker, ticker)}",
@@ -454,7 +479,11 @@ class ContentIntegrityExpert(BaseExpert):
                         f"Recency-weighted disinformation risk score {stress_score:.2f} "
                         f"from {len(critical_or_high)} critical/high-risk headlines."
                     ),
-                    confidence=min(0.8, 0.45 + stress_score * 0.2),
+                    confidence=min(
+                        BROAD_MARKET_MAX_CONFIDENCE,
+                        BROAD_MARKET_BASE_CONFIDENCE
+                        + stress_score * BROAD_MARKET_CONFIDENCE_PER_RISK_POINT,
+                    ),
                 )
             )
 
