@@ -72,6 +72,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "logistics": "transport_logistics",
     "markets": "macro",
     "finance": "macro",
+    "capital-return": "macro",
     "financial-data": "macro",
     "google-finance": "macro",
     "yahoo-finance": "macro",

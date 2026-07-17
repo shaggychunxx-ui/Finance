@@ -15,6 +15,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.capital_return import run_capital_return_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -224,6 +225,50 @@ def _print_finance(data: dict[str, Any]) -> None:
         for key in ("regime", "sector_rotation", "mathematical_edge", "crypto_signal"):
             if assessment.get(key):
                 print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
+def _print_capital_return(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(f"  Avg total shareholder yield: {metrics.get('avg_total_shareholder_yield_pct')}%")
+    print(
+        f"  Dividend-only: {metrics.get('dividend_only_count')} | "
+        f"Buyback-only: {metrics.get('buyback_only_count')} | "
+        f"Dual-engine: {metrics.get('dual_engine_count')}"
+    )
+    print(f"  Sources: {meta.get('data_source')}")
+    print()
+    print("  Total shareholder yield leaders:")
+    for c in sorted(
+        data.get("candidates", []),
+        key=lambda x: -(x.get("total_shareholder_yield_pct") or -999),
+    )[:8]:
+        print(
+            f"    • {c.get('symbol')} ({c.get('stage')}): "
+            f"div {c.get('dividend_yield_pct')}% + buyback {c.get('buyback_yield_pct')}% = "
+            f"{c.get('total_shareholder_yield_pct'):+.2f}% — {c.get('capital_efficiency_label')}"
+        )
+    print()
+    if assessment:
+        print("  Assessment:")
+        print(f"    • {assessment.get('regime')}")
+        print(f"    • Top total-yield leader: {assessment.get('top_total_yield_leader')}")
+        for alert in assessment.get("dividend_risk_alerts", []):
+            print(f"    • Dividend risk: {alert}")
+        for flag in assessment.get("buyback_quality_flags", []):
+            print(f"    • Buyback quality: {flag}")
         print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
@@ -1262,6 +1307,7 @@ def _print_market_predictor(data: dict[str, Any]) -> None:
 PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "accuracy-benchmark": _print_accuracy_benchmark,
     "agriculture": _print_agriculture,
+    "capital-return": _print_capital_return,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
     "data-steward": _print_data_steward,
@@ -1293,6 +1339,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
 RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "accuracy-benchmark": run_accuracy_benchmark_cli,
     "agriculture": run_agriculture_analysis,
+    "capital-return": run_capital_return_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
@@ -1411,6 +1458,10 @@ def main() -> int:
                 catalog = args.output.parent / "google_finance_views.json"
                 if catalog.exists():
                     print(f"  Google Finance views: {catalog}")
+            if args.agent == "capital-return":
+                catalog = args.output.parent / "capital_return_playbook.json"
+                if catalog.exists():
+                    print(f"  Capital return playbook catalog: {catalog}")
             if args.agent == "theoretical-probability":
                 catalog = args.output.parent / "probability_models.json"
                 if catalog.exists():

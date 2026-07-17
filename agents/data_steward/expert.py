@@ -99,6 +99,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "capital-return",
+        "agent": "Capital Return Strategy Expert",
+        "primary_output": "capital_return.json",
+        "sidecars": ["capital_return_playbook.json"],
+        "sources": ["Yahoo Finance API", "Curated capital-return fundamentals"],
+        "owner": "platform",
+    },
+    {
         "command": "financial-data",
         "agent": "Yahoo Finance Statistical Analyst",
         "primary_output": "financial_data.json",

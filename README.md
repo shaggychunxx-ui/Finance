@@ -13,6 +13,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **World Events Tracker** | `run.bat events` | BBC World / NPR RSS |
 | **Data Science Expert** | `run.bat datascience` | Yahoo Finance (6mo daily history) |
 | **Google Finance Beta Analyst** | `run.bat finance` | [Google Finance Beta](https://www.google.com/finance/beta) |
+| **Capital Return Strategy Expert** | `run.bat capital-return` | Yahoo Finance (live price / 52-week range) + curated dividend/buyback fundamentals |
 | **Yahoo Finance Statistical Analyst** | `run.bat financial-data` | [Yahoo Finance](https://finance.yahoo.com/) |
 | **Market Analyst Expert** | `run.bat markets` | [Yahoo Finance](https://finance.yahoo.com/) API |
 | **Geopolitics Expert** | `run.bat geopolitics` | BBC World / NPR RSS (+ optional GDELT) |
@@ -37,6 +38,7 @@ run.bat patents
 run.bat events
 run.bat datascience
 run.bat finance
+run.bat capital-return
 run.bat financial-data
 run.bat markets
 run.bat geopolitics
@@ -61,6 +63,7 @@ run.bat transportation -o output/transportation.json
 run.bat patents -o output/patents.json
 run.bat events -o output/world_events.json
 run.bat finance -o output/finance.json
+run.bat capital-return -o output/capital_return.json
 run.bat geopolitics --json
 ```
 
@@ -173,7 +176,28 @@ Outputs:
 - `output/finance.json` — full analysis with trading opportunities and market signals
 - `output/google_finance_views.json` — dashboard view catalog
 
+## Capital Return Strategy Expert
+
+Analyzes how mature corporations deploy excess free cash flow between the two dominant shareholder-return vectors — cash dividends and share buybacks:
+
+- Covers 16 tickers spanning the corporate capital-allocation life cycle: **high-growth disrupters** (zero returns), **maturing growth** (opportunistic buybacks), and **mature cash cows** (dual-engine total yield)
+- Blends live Yahoo Finance price/52-week-range data with curated dividend yield, buyback yield, payout ratio, ROIC, and WACC profiles
+- **Total Shareholder Yield** = Dividend Yield + Net Buyback Yield, ranked per ticker
+- Flags **dividend cut risk** (high payout ratio amid price weakness) and **buyback quality** (value-creating repurchases below-average valuation vs. value-destroying repurchases near 52-week highs)
+- Reinvestment efficiency label from the ROIC-vs-WACC spread (reinvest vs. return capital)
+- Dividend lifecycle dates, qualified/ordinary tax treatment, dividend-vs-buyback structural comparison, and life-cycle archetypes captured in a sidecar playbook catalog
+
+```bat
+run.bat capital-return -o output/capital_return.json
+```
+
+Outputs:
+
+- `output/capital_return.json` — full analysis with candidate rankings and market signals
+- `output/capital_return_playbook.json` — dividend/buyback methodology playbook catalog
+
 ## Yahoo Finance Statistical Analyst
+
 
 Mathematician/market analyst statistical analysis of [Yahoo Finance](https://finance.yahoo.com/):
 
