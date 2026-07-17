@@ -193,7 +193,7 @@ class SectorRotationExpert(BaseExpert):
             if len(rs_line) >= MIN_POINTS_FOR_LONG_SMA
             else max(SHORT_SMA_MAX, min(FALLBACK_SMA_CAP, len(rs_line) - FALLBACK_SMA_BUFFER))
         )
-        window = int(window)
+        window = min(int(window), len(rs_line))
         rs_sma = _sma(rs_line, window)
         current_rs = rs_line[-1]
         current_sma = rs_sma[-1]

@@ -113,6 +113,13 @@ def _print_markets(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _fmt1(value: Any) -> str:
+    try:
+        return f"{float(value):.1f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
 def _fmt3(value: Any) -> str:
     try:
         return f"{float(value):.3f}"
@@ -145,7 +152,7 @@ def _print_sector_rotation(data: dict[str, Any]) -> None:
     for s in data.get("sectors", []):
         print(
             f"    [{s.get('quadrant')}] {s.get('sector')} ({s.get('etf')}): "
-            f"ratio {s.get('rs_ratio')} / momentum {s.get('rs_momentum')} "
+            f"ratio {_fmt1(s.get('rs_ratio'))} / momentum {_fmt1(s.get('rs_momentum'))} "
             f"(trend {s.get('trend_filter')})"
         )
     print()
