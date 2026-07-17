@@ -6,8 +6,9 @@ Desktop app that connects Finance agent research to your E*TRADE brokerage accou
 
 1. Run **Install ETrade Trader.bat** (creates `.venv` and desktop shortcut).
 2. Copy `etrade_config.example.json` → `etrade_config.json` and add your [E*TRADE developer](https://developer.etrade.com) consumer key/secret.
-3. Launch **ETrade Trader** → **Settings** → Connect → confirm your account.
-4. Start in **Sandbox** (paper money) before switching to Production.
+3. Launch **ETrade Unified Trader** (recommended) — Long + Short sleeves in one window — or standalone **ETrade Trader** / **ETrade Short Trader**.
+4. **Settings** → Connect → confirm account (each sleeve can use its own account and dry-run flag).
+5. Start in **Sandbox** / practice mode before going live.
 
 Optional: **Install ETrade Background.bat** keeps agents and trading running when the GUI is closed.
 

@@ -266,12 +266,44 @@ def build_day_trade_plan(
     if total_value <= 0:
         total_value = sum(float(p.get("market_value", 0)) for p in positions) + float(buying_power or 0)
 
+    # Shared capital + long-only qty map (never treat shorts as sellable longs)
+    try:
+        from sleeve_policy import (
+            blocked_symbols_for_new_entry,
+            long_position_map,
+            shared_capital_budget,
+        )
+
+        long_map = long_position_map(positions)
+        pos_qty = {
+            sym: int(float(p.get("quantity") or 0)) for sym, p in long_map.items()
+        }
+        blocked_new = blocked_symbols_for_new_entry("long", positions)
+        budget = shared_capital_budget(float(total_value), sleeve="long", balance=balance)
+        shared_deploy = float(budget.get("deployable_usd") or 0)
+        sleeve_ceiling = float(budget.get("sleeve_ceiling_usd") or shared_deploy or 0)
+        long_mv = sum(float(p.get("market_value") or 0) for p in long_map.values())
+        # Remaining room under the buy-app capital cap (USD or %)
+        capital_headroom = max(0.0, sleeve_ceiling - long_mv) if sleeve_ceiling > 0 else 0.0
+        if shared_deploy > 0:
+            buying_power = min(float(buying_power or shared_deploy), shared_deploy)
+        if capital_headroom > 0 or sleeve_ceiling > 0:
+            buying_power = min(float(buying_power or 0), capital_headroom)
+    except Exception:
+        pos_qty = {
+            str(p.get("symbol", "")).upper(): int(float(p.get("quantity") or 0))
+            for p in positions
+            if str(p.get("position_type") or "LONG").upper() != "SHORT"
+            and float(p.get("quantity") or 0) > 0
+        }
+        blocked_new = set()
+        budget = {}
+
     candidates = _agent_portfolio_candidates() if agent_controlled else _daily_candidates()
     if agent_controlled and not candidates:
         candidates = _daily_candidates()
     day_positions = _position_objects(state)
     held_symbols = {p.symbol for p in day_positions}
-    pos_qty = {str(p.get("symbol", "")).upper(): int(p.get("quantity", 0)) for p in positions}
 
     orders: list[TradeOrder] = []
     minutes_left = minutes_to_market_close()
@@ -354,6 +386,8 @@ def build_day_trade_plan(
                 sym = cand["symbol"]
                 if not sym or sym in held_symbols:
                     continue
+                if sym in blocked_new:
+                    continue
                 if not agent_controlled and (
                     cand["predicted_return_pct"] < min_return or cand["confidence"] < min_conf
                 ):
@@ -411,8 +445,20 @@ def build_day_trade_plan(
                 open_slots -= 1
 
     cash_buffer = float(strategy.get("cash_buffer_pct", DEFAULT_CASH_BUFFER_PCT))
+    investable = total_value * (1 - cash_buffer / 100)
+    try:
+        ceiling = float((budget or {}).get("sleeve_ceiling_usd") or 0)
+        if ceiling > 0:
+            investable = min(investable, ceiling)
+        if budget:
+            meta_budget = budget
+        else:
+            meta_budget = {}
+    except Exception:
+        meta_budget = {}
     meta = {
         "mode": "day_trading",
+        "sleeve": "long",
         "objective": "grow_account_value_intraday",
         "session_date": state.get("session_date"),
         "open_day_positions": len(day_positions),
@@ -420,6 +466,8 @@ def build_day_trade_plan(
         "flatten_before_close": should_flatten,
         "minutes_to_close": minutes_left,
     }
+    if meta_budget:
+        meta["shared_capital_budget"] = meta_budget
 
     plan = StrategyPlan(
         generated_at=datetime.now(timezone.utc).isoformat(),
@@ -427,14 +475,22 @@ def build_day_trade_plan(
         account_name=account_name,
         sandbox=client.config.sandbox,
         total_account_value=total_value,
-        investable_usd=total_value * (1 - cash_buffer / 100),
+        investable_usd=investable,
         cash_buffer_pct=cash_buffer,
         regime={"session": "day_trading", "market_open": is_day_trading_session()},
         target_holdings=[],
-        current_positions=positions,
+        current_positions=[
+            {"symbol": s, "quantity": q, "position_type": "LONG"} for s, q in pos_qty.items()
+        ],
         orders=orders,
         meta=meta,
     )
+    try:
+        from sleeve_policy import apply_sleeve_to_plan
+
+        apply_sleeve_to_plan(plan, sleeve="long", positions=positions)
+    except Exception:
+        pass
     try:
         from trade_guards import apply_trade_guards_to_plan
 

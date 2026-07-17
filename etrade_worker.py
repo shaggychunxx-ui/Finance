@@ -35,6 +35,7 @@ LOG_FILE = OUTPUT / "etrade_worker.log"
 STATE_FILE = OUTPUT / "etrade_worker_state.json"
 LOCK_FILE = OUTPUT / "etrade_worker.lock"
 CONFIG_PATH = ROOT / "etrade_config.json"
+SHORT_CONFIG_PATH = ROOT / "short_etrade_config.json"
 SERVICE_CHECK_SECONDS = 60
 SERVICE_MUTEX_NAME = "Local\\FinanceETradeWorkerService"
 _service_mutex_handle: int | None = None
@@ -65,36 +66,147 @@ def automation_paused(config_path: Path = CONFIG_PATH) -> bool:
     return bool(worker_settings(config_path).get("paused", False))
 
 
-def set_automation_paused(paused: bool, config_path: Path = CONFIG_PATH) -> dict[str, Any]:
-    """Pause or resume all automation (desktop Stop all / Resume all)."""
+def _is_short_config(config_path: Path) -> bool:
+    name = config_path.name.lower()
+    return "short" in name
+
+
+def _day_config_keys(config_path: Path) -> tuple[str, ...]:
+    if _is_short_config(config_path):
+        return ("short_day_trading", "day_trading")
+    return ("day_trading",)
+
+
+def _apply_pause_to_config(config_path: Path, paused: bool) -> dict[str, Any]:
+    """Pause or resume one sleeve config (long or short)."""
     from etrade_api.config import read_config_raw, write_config_raw
+
+    if not config_path.exists():
+        return {
+            "path": str(config_path.name),
+            "skipped": True,
+            "paused": paused,
+            "message": f"{config_path.name} not found",
+        }
 
     raw = read_config_raw(config_path)
     worker = dict(raw.get("background_worker", {}))
-    worker["paused"] = paused
+    is_short = _is_short_config(config_path)
+
     if paused:
+        # Preserve prior flags so Resume restores each sleeve correctly
+        if not worker.get("paused"):
+            worker["pause_snapshot"] = {
+                "auto_execute": bool(worker.get("auto_execute", not is_short)),
+                "day_trading": bool(worker.get("day_trading", True)),
+                "live_trading": bool(worker.get("live_trading", False)),
+            }
+        worker["paused"] = True
         worker["auto_execute"] = False
         worker["day_trading"] = False
         worker["live_trading"] = False
     else:
-        worker["auto_execute"] = True
-        worker["day_trading"] = True
-        dry = bool(worker.get("dry_run", False))
-        worker["live_trading"] = not dry
+        snap = worker.get("pause_snapshot") if isinstance(worker.get("pause_snapshot"), dict) else {}
+        worker["paused"] = False
+        if snap:
+            worker["auto_execute"] = bool(snap.get("auto_execute", not is_short))
+            worker["day_trading"] = bool(snap.get("day_trading", True))
+            dry = bool(worker.get("dry_run", is_short))
+            live = snap.get("live_trading")
+            if live is None:
+                worker["live_trading"] = bool(worker["auto_execute"]) and not dry
+            else:
+                worker["live_trading"] = bool(live) and not dry
+            worker.pop("pause_snapshot", None)
+        else:
+            # Legacy resume (no snapshot): long defaults on; short keeps dry-run-friendly defaults
+            if is_short:
+                worker["auto_execute"] = bool(worker.get("auto_execute", False))
+                worker["day_trading"] = True
+                dry = bool(worker.get("dry_run", True))
+                worker["live_trading"] = bool(worker["auto_execute"]) and not dry
+            else:
+                worker["auto_execute"] = True
+                worker["day_trading"] = True
+                dry = bool(worker.get("dry_run", False))
+                worker["live_trading"] = not dry
+
     raw["background_worker"] = worker
-    day_cfg = dict(raw.get("day_trading", {}))
-    day_cfg["enabled"] = not paused
-    raw["day_trading"] = day_cfg
+    day_enabled = (not paused) and bool(worker.get("day_trading", True))
+    for key in _day_config_keys(config_path):
+        if key in raw or key == _day_config_keys(config_path)[0]:
+            day_cfg = dict(raw.get(key) or {})
+            day_cfg["enabled"] = day_enabled
+            raw[key] = day_cfg
     write_config_raw(config_path, raw)
-    msg = "All automation stopped (mobile)." if paused else "Automation resumed (mobile)."
+
+    return {
+        "path": config_path.name,
+        "paused": paused,
+        "auto_execute": bool(worker.get("auto_execute")),
+        "day_trading": bool(worker.get("day_trading")),
+        "dry_run": bool(worker.get("dry_run")),
+        "live_trading": bool(worker.get("live_trading")),
+        "skipped": False,
+    }
+
+
+def set_automation_paused(
+    paused: bool,
+    config_path: Path | None = None,
+    *,
+    both_sleeves: bool = True,
+) -> dict[str, Any]:
+    """Pause or resume automation (desktop Stop all / Resume all / mobile).
+
+    By default this stops **both** the buy (long) app and the short app,
+    including their headless background workers — one Stop all for the pair.
+    """
+    long_path = CONFIG_PATH
+    short_path = SHORT_CONFIG_PATH
+
+    if both_sleeves:
+        targets = [long_path, short_path]
+    else:
+        targets = [Path(config_path) if config_path is not None else long_path]
+
+    sleeve_results: list[dict[str, Any]] = []
+    for path in targets:
+        try:
+            sleeve_results.append(_apply_pause_to_config(path, paused))
+        except Exception as exc:
+            sleeve_results.append(
+                {
+                    "path": getattr(path, "name", str(path)),
+                    "paused": paused,
+                    "error": str(exc),
+                    "skipped": True,
+                }
+            )
+
+    msg = (
+        "All automation stopped on buy + short apps (and workers)."
+        if paused
+        else "Automation resumed on buy + short apps."
+    )
+    if not both_sleeves:
+        msg = "All automation stopped." if paused else "Automation resumed."
     _log(msg)
-    settings = worker_settings(config_path)
+
+    # Prefer long-sleeve flags for mobile API compatibility; include both results.
+    primary = next((r for r in sleeve_results if r.get("path") == long_path.name and not r.get("skipped")), None)
+    if primary is None and sleeve_results:
+        primary = next((r for r in sleeve_results if not r.get("skipped")), sleeve_results[0])
+    primary = primary or {}
+
     return {
         "paused": paused,
-        "auto_execute": bool(settings.get("auto_execute")),
-        "day_trading": bool(settings.get("day_trading")),
-        "dry_run": bool(settings.get("dry_run")),
-        "live_trading": bool(settings.get("live_trading")),
+        "both_sleeves": both_sleeves,
+        "auto_execute": bool(primary.get("auto_execute", False)),
+        "day_trading": bool(primary.get("day_trading", False)),
+        "dry_run": bool(primary.get("dry_run", False)),
+        "live_trading": bool(primary.get("live_trading", False)),
+        "sleeves": sleeve_results,
         "message": msg,
     }
 

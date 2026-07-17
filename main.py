@@ -35,6 +35,48 @@ from agents.trading_economics import run_trading_economics_analysis
 from agents.theoretical_probability import run_theoretical_probability_analysis
 from agents.transportation import run_transportation_analysis
 from agents.market_predictor import run_market_predictor_analysis
+from agents.adversarial_debate import run_adversarial_debate_analysis
+from agents.bear_thesis import run_bear_thesis_analysis
+from agents.consumer_sentiment import run_consumer_sentiment_analysis
+from agents.cpi import run_cpi_analysis
+from agents.day_trading_microstructure import run_day_trading_microstructure_analysis
+from agents.earthdata import run_earthdata_analysis
+from agents.economy import run_economy_analysis
+from agents.fred import run_fred_analysis
+from agents.ftd_regsho import run_ftd_regsho_analysis
+from agents.ftse100 import run_ftse100_analysis
+from agents.fundamental_analyst import run_fundamental_analyst_analysis
+from agents.htb_dynamics import run_htb_dynamics_analysis
+from agents.long_squeeze_synergy import run_long_squeeze_synergy_analysis
+from agents.market_regime import run_market_regime_analysis
+from agents.nikkei import run_nikkei_analysis
+from agents.portfolio_frameworks import run_portfolio_frameworks_analysis
+from agents.risk_guardrail import run_risk_guardrail_analysis
+from agents.risk_mitigation import run_risk_mitigation_analysis
+from agents.risk_protection import run_risk_protection_analysis
+from agents.sentiment_alt_data import run_sentiment_alt_data_analysis
+from agents.squeeze_mechanics import run_squeeze_mechanics_analysis
+from agents.technical_pattern import run_technical_pattern_analysis
+from agents.borrow_fees import run_borrow_fees_analysis
+from agents.capital_return import run_capital_return_analysis
+from agents.china_em_divergence import run_china_em_divergence_analysis
+from agents.content_integrity import run_content_integrity_analysis
+from agents.corporate_credit import run_corporate_credit_analysis
+from agents.correlation_breakdown import run_correlation_breakdown_analysis
+from agents.crowding_quality import run_crowding_quality_analysis
+from agents.dark_pool_volume_profile import run_dark_pool_volume_profile_analysis
+from agents.earnings_calendar import run_earnings_calendar_analysis
+from agents.equity_structuring import run_equity_structuring_analysis
+from agents.estimate_revisions import run_estimate_revisions_analysis
+from agents.etf_mechanics import run_etf_mechanics_analysis
+from agents.fed_policy import run_fed_policy_analysis
+from agents.insider_clusters import run_insider_clusters_analysis
+from agents.margin_stress import run_margin_stress_analysis
+from agents.market_makers import run_market_maker_analysis
+from agents.momentum_reversion import run_momentum_reversion_analysis
+from agents.options_flow import run_options_flow_analysis
+from agents.quality_factor import run_quality_factor_analysis
+from agents.sector_rotation import run_sector_rotation_analysis
 from historical_simulation import run_accuracy_benchmark_cli, run_historical_simulation_cli
 
 
@@ -1319,6 +1361,48 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "theoretical-probability": run_theoretical_probability_analysis,
     "trading-economics": run_trading_economics_analysis,
     "transportation": run_transportation_analysis,
+    "adversarial-debate": run_adversarial_debate_analysis,
+    "bear-thesis": run_bear_thesis_analysis,
+    "consumer-sentiment": run_consumer_sentiment_analysis,
+    "cpi": run_cpi_analysis,
+    "day-trading-microstructure": run_day_trading_microstructure_analysis,
+    "earthdata": run_earthdata_analysis,
+    "economy": run_economy_analysis,
+    "fred": run_fred_analysis,
+    "ftd-regsho": run_ftd_regsho_analysis,
+    "ftse100": run_ftse100_analysis,
+    "fundamental-analyst": run_fundamental_analyst_analysis,
+    "htb-dynamics": run_htb_dynamics_analysis,
+    "long-squeeze-synergy": run_long_squeeze_synergy_analysis,
+    "market-regime": run_market_regime_analysis,
+    "nikkei": run_nikkei_analysis,
+    "portfolio-frameworks": run_portfolio_frameworks_analysis,
+    "risk-guardrail": run_risk_guardrail_analysis,
+    "risk-mitigation": run_risk_mitigation_analysis,
+    "risk-protection": run_risk_protection_analysis,
+    "sentiment-alt-data": run_sentiment_alt_data_analysis,
+    "squeeze-mechanics": run_squeeze_mechanics_analysis,
+    "technical-pattern": run_technical_pattern_analysis,
+    "borrow-fees": run_borrow_fees_analysis,
+    "capital-return": run_capital_return_analysis,
+    "china-em-divergence": run_china_em_divergence_analysis,
+    "content-integrity": run_content_integrity_analysis,
+    "corporate-credit": run_corporate_credit_analysis,
+    "correlation-breakdown": run_correlation_breakdown_analysis,
+    "crowding-quality": run_crowding_quality_analysis,
+    "dark-pool-volume-profile": run_dark_pool_volume_profile_analysis,
+    "earnings-calendar": run_earnings_calendar_analysis,
+    "equity-structuring": run_equity_structuring_analysis,
+    "estimate-revisions": run_estimate_revisions_analysis,
+    "etf-mechanics": run_etf_mechanics_analysis,
+    "fed-policy": run_fed_policy_analysis,
+    "insider-clusters": run_insider_clusters_analysis,
+    "margin-stress": run_margin_stress_analysis,
+    "market-makers": run_market_maker_analysis,
+    "momentum-reversion": run_momentum_reversion_analysis,
+    "options-flow": run_options_flow_analysis,
+    "quality-factor": run_quality_factor_analysis,
+    "sector-rotation": run_sector_rotation_analysis,
 }
 
 

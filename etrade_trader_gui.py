@@ -79,6 +79,7 @@ from etrade_api.oauth import (
     OAuthPending,
     authenticate,
     finish_authorization,
+    is_expired_for_day,
     load_tokens,
     normalize_verifier,
     revoke_access_token,
@@ -260,7 +261,29 @@ class OAuthVerifyDialog(tk.Toplevel):
 
 
 class ETradeTraderApp(tk.Frame):
-    def __init__(self, parent: tk.Misc | None = None) -> None:
+    def __init__(
+        self,
+        parent: tk.Misc | None = None,
+        *,
+        path_bundle: dict[str, Any] | None = None,
+        embedded: bool = False,
+        app_title: str | None = None,
+        layout_key: str = "etrade_trader",
+        manage_window_close: bool = True,
+    ) -> None:
+        # Per-instance paths so Long + Short can live in one process/UI.
+        bundle = path_bundle or {}
+        self.CONFIG_PATH = Path(bundle.get("config", CONFIG_PATH))
+        self.CONFIG_EXAMPLE = Path(bundle.get("config_example", CONFIG_EXAMPLE))
+        self.PLAN_FILE = Path(bundle.get("plan", PLAN_FILE))
+        self.DAY_STATE_FILE = Path(bundle.get("day_state", DAY_STATE_FILE))
+        self.DAY_PLAN_FILE = Path(bundle.get("day_plan", DAY_PLAN_FILE))
+        self.WORKER_LOG = Path(bundle.get("worker_log", WORKER_LOG))
+        self.APP_LOG = Path(bundle.get("app_log", APP_LOG))
+        self._embedded = bool(embedded)
+        self._layout_key = layout_key
+        self._app_title = app_title or "E*TRADE Trader — Finance Agents"
+
         if parent is None:
             self._window = tk.Tk()
             parent = self._window
@@ -268,17 +291,21 @@ class ETradeTraderApp(tk.Frame):
             self._window = parent.winfo_toplevel()
         super().__init__(parent, bg=BG)
 
-        self._window.title("E*TRADE Trader — Finance Agents")
-        self._window.configure(bg=BG)
-        self._m = ScreenMetrics(self._window, window_profile="trader")
-        self._layout_save_after_id: str | None = None
-        saved_layout = load_ui_layout("etrade_trader")
-        saved_geometry = str(saved_layout.get("geometry") or "").strip()
-        if saved_geometry and "x" in saved_geometry:
-            self._window.geometry(saved_geometry)
+        if not self._embedded:
+            self._window.title(self._app_title)
+            self._window.configure(bg=BG)
+            self._m = ScreenMetrics(self._window, window_profile="trader")
+            self._layout_save_after_id: str | None = None
+            saved_layout = load_ui_layout(self._layout_key)
+            saved_geometry = str(saved_layout.get("geometry") or "").strip()
+            if saved_geometry and "x" in saved_geometry:
+                self._window.geometry(saved_geometry)
+            else:
+                self._window.geometry(f"{self._m.win_w}x{self._m.win_h}")
+            self._window.minsize(self._m.px(980), self._m.px(640))
         else:
-            self._window.geometry(f"{self._m.win_w}x{self._m.win_h}")
-        self._window.minsize(self._m.px(980), self._m.px(640))
+            self._m = ScreenMetrics(self._window, window_profile="trader")
+            self._layout_save_after_id = None
         self.pack(fill=tk.BOTH, expand=True)
 
         self._config: ETradeConfig | None = None
@@ -318,6 +345,10 @@ class ETradeTraderApp(tk.Frame):
         self._auto_execute_var = tk.BooleanVar(value=True)
         self._day_trading_var = tk.BooleanVar(value=True)
         self._dry_run_var = tk.BooleanVar(value=False)
+        # Buy-app capital cap: pct | usd | off
+        self._capital_cap_mode_var = tk.StringVar(value="pct")
+        self._capital_cap_pct_var = tk.StringVar(value="75")
+        self._capital_cap_usd_var = tk.StringVar(value="5000")
         self._sandbox_var = tk.BooleanVar(value=True)
         self._oob_var = tk.BooleanVar(value=False)
         self._key_var = tk.StringVar()
@@ -340,7 +371,7 @@ class ETradeTraderApp(tk.Frame):
         load_palette_from_prefs()
         sync_module_globals(sys.modules[__name__])
 
-        if CONFIG_PATH.exists():
+        if self.CONFIG_PATH.exists():
             try:
                 self._load_trading_settings_from_config()
                 self._refresh_automation_snapshot()
@@ -349,9 +380,10 @@ class ETradeTraderApp(tk.Frame):
 
         self._build_styles()
         self._build_ui()
-        self._window.protocol("WM_DELETE_WINDOW", self._on_close)
-        self._window.report_callback_exception = self._on_tk_exception
-        self._window.after(100, self._ensure_visible)
+        if manage_window_close and not self._embedded:
+            self._window.protocol("WM_DELETE_WINDOW", self._on_close)
+            self._window.report_callback_exception = self._on_tk_exception
+            self._window.after(100, self._ensure_visible)
         self._poll_ui()
         self._bootstrap_config()
         self._load_cached_plan()
@@ -373,7 +405,7 @@ class ETradeTraderApp(tk.Frame):
         try:
             from etrade_worker import worker_settings
 
-            return worker_settings(CONFIG_PATH)
+            return worker_settings(self.CONFIG_PATH)
         except Exception:
             return {}
 
@@ -406,7 +438,7 @@ class ETradeTraderApp(tk.Frame):
         try:
             from etrade_worker import gui_should_defer_to_worker
 
-            return gui_should_defer_to_worker(CONFIG_PATH)
+            return gui_should_defer_to_worker(self.CONFIG_PATH)
         except Exception:
             return False
 
@@ -477,12 +509,12 @@ class ETradeTraderApp(tk.Frame):
             self._cached_pipeline_at = pipeline_at
             self._refresh_reports_ui(select_latest=True)
 
-        if PLAN_FILE.exists():
+        if self.PLAN_FILE.exists():
             try:
-                mtime = PLAN_FILE.stat().st_mtime
+                mtime = self.PLAN_FILE.stat().st_mtime
                 if mtime != self._cached_plan_mtime:
                     self._cached_plan_mtime = mtime
-                    data = load_strategy_plan(PLAN_FILE)
+                    data = load_strategy_plan(self.PLAN_FILE)
                     if data:
                         self._plan = plan_from_dict(data)
                         self._render_plan(self._plan, focus_orders_tab=False)
@@ -500,7 +532,7 @@ class ETradeTraderApp(tk.Frame):
         self._update_bg_status()
 
     def _load_trading_settings_from_config(self) -> None:
-        raw = _read_config_file(CONFIG_PATH)
+        raw = _read_config_file(self.CONFIG_PATH)
         worker = raw.get("background_worker", {})
         if "auto_execute" in worker:
             self._auto_execute_var.set(bool(worker["auto_execute"]))
@@ -514,6 +546,32 @@ class ETradeTraderApp(tk.Frame):
             self._dry_run_var.set(bool(worker["dry_run"]))
         self._automation_paused = bool(worker.get("paused", False))
         self._gui_defers_to_worker = self._gui_should_defer_to_worker()
+        self._load_capital_cap_from_raw(raw)
+
+    def _load_capital_cap_from_raw(self, raw: dict[str, Any]) -> None:
+        sp = raw.get("sleeve_policy") if isinstance(raw.get("sleeve_policy"), dict) else {}
+        mode = str(sp.get("long_capital_cap_mode") or "pct").strip().lower()
+        if mode in {"usd", "dollar", "dollars", "fixed", "amount", "$"}:
+            mode = "usd"
+        elif mode in {"off", "none", "disabled"}:
+            mode = "off"
+        else:
+            mode = "pct"
+        self._capital_cap_mode_var.set(mode)
+        pct = sp.get("long_max_deploy_pct", 75.0)
+        try:
+            self._capital_cap_pct_var.set(str(float(pct)).rstrip("0").rstrip(".") if float(pct) != int(float(pct)) else str(int(float(pct))))
+        except (TypeError, ValueError):
+            self._capital_cap_pct_var.set("75")
+        usd = sp.get("long_max_capital_usd", 5000.0)
+        try:
+            usd_f = float(usd or 0)
+            self._capital_cap_usd_var.set(
+                str(int(usd_f)) if usd_f == int(usd_f) else f"{usd_f:.2f}"
+            )
+        except (TypeError, ValueError):
+            self._capital_cap_usd_var.set("5000")
+        self._update_capital_cap_ui_state()
 
     def _refresh_automation_snapshot(self) -> None:
         self._automation_snapshot = (
@@ -545,7 +603,7 @@ class ETradeTraderApp(tk.Frame):
         if self._shutting_down:
             return
         try:
-            raw = read_config_raw(CONFIG_PATH)
+            raw = read_config_raw(self.CONFIG_PATH)
         except Exception:
             return
         worker = raw.get("background_worker", {})
@@ -580,7 +638,7 @@ class ETradeTraderApp(tk.Frame):
         self._apply_automation_ui_state()
 
     def _persist_trading_settings(self) -> None:
-        raw = read_config_raw(CONFIG_PATH)
+        raw = read_config_raw(self.CONFIG_PATH)
         worker = dict(raw.get("background_worker", {}))
         auto = bool(self._auto_execute_var.get())
         day = bool(self._day_trading_var.get())
@@ -593,10 +651,123 @@ class ETradeTraderApp(tk.Frame):
         day_cfg = dict(raw.get("day_trading", {}))
         day_cfg["enabled"] = day
         raw["day_trading"] = day_cfg
+        self._apply_capital_cap_to_raw(raw)
         try:
-            write_config_raw(CONFIG_PATH, raw)
+            write_config_raw(self.CONFIG_PATH, raw)
+            self._sync_sleeve_policy_to_short_config(raw.get("sleeve_policy") or {})
         except OSError:
             pass
+
+    def _apply_capital_cap_to_raw(self, raw: dict[str, Any]) -> None:
+        sp = dict(raw.get("sleeve_policy") or {})
+        mode = str(self._capital_cap_mode_var.get() or "pct").strip().lower()
+        if mode not in {"pct", "usd", "off"}:
+            mode = "pct"
+        sp["long_capital_cap_mode"] = mode
+        try:
+            pct = float(str(self._capital_cap_pct_var.get()).replace("%", "").strip() or 75)
+        except ValueError:
+            pct = 75.0
+        pct = max(0.0, min(100.0, pct))
+        sp["long_max_deploy_pct"] = pct
+        try:
+            usd = float(str(self._capital_cap_usd_var.get()).replace("$", "").replace(",", "").strip() or 0)
+        except ValueError:
+            usd = 0.0
+        sp["long_max_capital_usd"] = max(0.0, usd)
+        sp.setdefault("enabled", True)
+        sp.setdefault("shared_capital", True)
+        sp.setdefault("short_max_deploy_pct", 35.0)
+        sp.setdefault("shared_cash_buffer_pct", 5.0)
+        sp.setdefault("forbid_opposite_side", True)
+        sp.setdefault("forbid_same_symbol_both_sleeves", True)
+        sp.setdefault("coordinate_for_profit", True)
+        raw["sleeve_policy"] = sp
+
+    def _sync_sleeve_policy_to_short_config(self, sleeve_policy: dict[str, Any]) -> None:
+        """Keep short app sleeve_policy in sync so both apps share one capital view."""
+        short_path = ROOT / "short_etrade_config.json"
+        if not short_path.exists() or not isinstance(sleeve_policy, dict):
+            return
+        try:
+            short_raw = read_config_raw(short_path)
+            short_raw["sleeve_policy"] = dict(sleeve_policy)
+            write_config_raw(short_path, short_raw)
+        except OSError:
+            pass
+
+    def _on_capital_cap_changed(self) -> None:
+        self._update_capital_cap_ui_state()
+        self._persist_trading_settings()
+        mode = self._capital_cap_mode_var.get()
+        if mode == "usd":
+            msg = f"Buy capital cap: fixed ${self._capital_cap_usd_var.get()}"
+        elif mode == "off":
+            msg = "Buy capital cap: off (uses full free equity / buying power)"
+        else:
+            msg = f"Buy capital cap: {self._capital_cap_pct_var.get()}% of free equity"
+        self._log_line(msg)
+        self._refresh_capital_cap_status()
+
+    def _update_capital_cap_ui_state(self) -> None:
+        mode = str(self._capital_cap_mode_var.get() or "pct")
+        pct_state = tk.NORMAL if mode == "pct" else tk.DISABLED
+        usd_state = tk.NORMAL if mode == "usd" else tk.DISABLED
+        if hasattr(self, "_capital_cap_pct_entry"):
+            try:
+                self._capital_cap_pct_entry.configure(state=pct_state)
+            except tk.TclError:
+                pass
+        if hasattr(self, "_capital_cap_usd_entry"):
+            try:
+                self._capital_cap_usd_entry.configure(state=usd_state)
+            except tk.TclError:
+                pass
+
+    def _refresh_capital_cap_status(self) -> None:
+        if not hasattr(self, "_capital_cap_status"):
+            return
+        mode = str(self._capital_cap_mode_var.get() or "pct")
+        try:
+            from sleeve_policy import shared_capital_budget
+
+            # Prefer live account value when known; else show config-only summary
+            total = 0.0
+            bal = getattr(self, "_last_balance", None)
+            if isinstance(bal, dict):
+                total = float(bal.get("total_account_value") or 0)
+            if total <= 0:
+                total = float(getattr(self, "_balance_total_value", 0) or 0)
+            raw = _read_config_file(self.CONFIG_PATH)
+            sp = raw.get("sleeve_policy") if isinstance(raw.get("sleeve_policy"), dict) else {}
+            if total > 0:
+                budget = shared_capital_budget(total, sleeve="long", policy=sp)
+                ceiling = budget.get("sleeve_ceiling_usd", 0)
+                self._capital_cap_status.configure(
+                    text=(
+                        f"This buy app may use up to ${float(ceiling):,.0f} "
+                        f"of ${total:,.0f} account value "
+                        f"({mode if mode != 'off' else 'no soft cap'})."
+                    ),
+                    fg=ACCENT2,
+                )
+            elif mode == "usd":
+                self._capital_cap_status.configure(
+                    text=f"Fixed cap: ${self._capital_cap_usd_var.get()} (connect account to see vs equity).",
+                    fg=MUTED,
+                )
+            elif mode == "off":
+                self._capital_cap_status.configure(
+                    text="No soft capital cap — full free equity / buying power may be used.",
+                    fg=MUTED,
+                )
+            else:
+                self._capital_cap_status.configure(
+                    text=f"Cap: {self._capital_cap_pct_var.get()}% of free equity (after cash buffer).",
+                    fg=MUTED,
+                )
+        except Exception:
+            self._capital_cap_status.configure(text="Capital limit ready.", fg=MUTED)
 
     def _on_trade_setting_changed(self) -> None:
         if self._automation_paused and (self._auto_execute_var.get() or self._day_trading_var.get()):
@@ -650,7 +821,10 @@ class ETradeTraderApp(tk.Frame):
             self._btn_stop_all.configure(text="Resume all", bg=UP, activebackground="#00c853")
             if hasattr(self, "_automation_status_label"):
                 self._automation_status_label.configure(
-                    text="All automation is stopped — no agents, plans, or trades will run until you resume.",
+                    text=(
+                        "All automation is stopped on BOTH buy and short apps — "
+                        "no agents, plans, or trades until you resume."
+                    ),
                     fg=WARN,
                 )
         else:
@@ -658,11 +832,13 @@ class ETradeTraderApp(tk.Frame):
             if hasattr(self, "_automation_status_label"):
                 if self._gui_defers_to_worker:
                     hint = (
-                        "Low-CPU mode — the headless worker runs automation; this window only shows status."
+                        "Low-CPU mode — the headless worker runs automation; this window only shows status. "
+                        "Stop all halts buy + short apps."
                     )
                 else:
                     hint = (
-                        "Agents, strategy, swing orders, and day trading run automatically in the background."
+                        "Agents, strategy, swing orders, and day trading run in the background. "
+                        "Stop all halts buy + short apps together."
                     )
                 self._automation_status_label.configure(text=hint, fg=MUTED)
 
@@ -675,30 +851,31 @@ class ETradeTraderApp(tk.Frame):
     def _stop_all_automation(self) -> None:
         if not messagebox.askyesno(
             "Stop all",
-            "Stop all background automation?\n\n"
+            "Stop all background automation on BOTH apps?\n\n"
             "This halts agents, strategy updates, swing trades, and day trading "
-            "in this app and the headless worker until you resume.",
+            "for the buy app and the short app (and both headless workers) until you resume.",
         ):
             return
         from etrade_worker import set_automation_paused
 
         self._cancel_background_schedules()
-        set_automation_paused(True, CONFIG_PATH)
+        # both_sleeves=True (default): long + short configs/workers
+        set_automation_paused(True, self.CONFIG_PATH, both_sleeves=True)
         self._load_trading_settings_from_config()
         self._refresh_automation_snapshot()
         self._apply_automation_ui_state()
-        self._log_line("All automation stopped.")
-        self._set_status("All automation stopped", WARN)
+        self._log_line("All automation stopped on buy + short apps.")
+        self._set_status("All automation stopped (buy + short)", WARN)
 
     def _resume_all_automation(self) -> None:
         from etrade_worker import set_automation_paused
 
-        set_automation_paused(False, CONFIG_PATH)
+        set_automation_paused(False, self.CONFIG_PATH, both_sleeves=True)
         self._load_trading_settings_from_config()
         self._refresh_automation_snapshot()
         self._apply_automation_ui_state()
-        self._log_line("Automation resumed — agents, swing, and day trading re-enabled.")
-        self._set_status("Automation resumed", UP)
+        self._log_line("Automation resumed on buy + short apps.")
+        self._set_status("Automation resumed (buy + short)", UP)
         self._apply_automation_running_state()
 
     def _build_styles(self) -> None:
@@ -888,7 +1065,10 @@ class ETradeTraderApp(tk.Frame):
         ).pack(anchor="w", padx=pad_x, pady=(self._m.px(14), self._m.px(4)))
         tk.Label(
             body,
-            text="Everything runs automatically in the background. Use Stop all when you want everything to halt.",
+            text=(
+                "Everything runs automatically in the background. "
+                "Use Stop all to halt BOTH the buy and short apps (and their workers)."
+            ),
             bg=BG, fg=MUTED, font=self._m.font(10), wraplength=self._m.px(900), justify=tk.LEFT,
         ).pack(anchor="w", padx=pad_x, pady=(0, self._m.px(12)))
 
@@ -961,6 +1141,74 @@ class ETradeTraderApp(tk.Frame):
             command=self._on_trade_setting_changed,
         ).pack(anchor="w", pady=(self._m.px(4), 0))
 
+        # --- Capital limit: max $ or % of account the buy app may deploy ---
+        cap_panel = self._panel(body, title="Capital limit (buy app)")
+        cap_panel.pack(fill=tk.X, padx=pad_x, pady=(0, self._m.px(10)))
+        cin_cap = cap_panel._inner  # type: ignore[attr-defined]
+        tk.Label(
+            cin_cap,
+            text=(
+                "Limit how much of your account this buy app can use. "
+                "Example: account has $20,000 — set a fixed $5,000, or a percentage of free equity."
+            ),
+            bg=PANEL, fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
+        ).pack(anchor="w", pady=(self._m.px(8), self._m.px(6)))
+
+        mode_row = tk.Frame(cin_cap, bg=PANEL)
+        mode_row.pack(fill=tk.X, pady=(0, self._m.px(6)))
+        for value, label in (
+            ("pct", "Percentage of free equity"),
+            ("usd", "Fixed dollar amount"),
+            ("off", "No limit (full free equity)"),
+        ):
+            tk.Radiobutton(
+                mode_row,
+                text=label,
+                variable=self._capital_cap_mode_var,
+                value=value,
+                bg=PANEL,
+                fg=TEXT,
+                selectcolor=CARD_BG,
+                activebackground=PANEL,
+                activeforeground=TEXT,
+                font=self._m.font(10),
+                command=self._on_capital_cap_changed,
+            ).pack(anchor="w", pady=1)
+
+        fields = tk.Frame(cin_cap, bg=PANEL)
+        fields.pack(fill=tk.X, pady=(self._m.px(4), self._m.px(4)))
+
+        pct_row = tk.Frame(fields, bg=PANEL)
+        pct_row.pack(fill=tk.X, pady=2)
+        tk.Label(pct_row, text="Max % of free equity", bg=PANEL, fg=TEXT, font=self._m.font(9), width=22, anchor="w").pack(side=tk.LEFT)
+        self._capital_cap_pct_entry = tk.Entry(
+            pct_row, textvariable=self._capital_cap_pct_var, bg=CARD_BG, fg=TEXT,
+            insertbackground=TEXT, relief=tk.FLAT, font=self._m.font(10), width=10,
+        )
+        self._capital_cap_pct_entry.pack(side=tk.LEFT, ipady=4, padx=(0, 6))
+        tk.Label(pct_row, text="%", bg=PANEL, fg=MUTED, font=self._m.font(9)).pack(side=tk.LEFT)
+        self._capital_cap_pct_entry.bind("<FocusOut>", lambda _e: self._on_capital_cap_changed())
+        self._capital_cap_pct_entry.bind("<Return>", lambda _e: self._on_capital_cap_changed())
+
+        usd_row = tk.Frame(fields, bg=PANEL)
+        usd_row.pack(fill=tk.X, pady=2)
+        tk.Label(usd_row, text="Max dollars ($)", bg=PANEL, fg=TEXT, font=self._m.font(9), width=22, anchor="w").pack(side=tk.LEFT)
+        self._capital_cap_usd_entry = tk.Entry(
+            usd_row, textvariable=self._capital_cap_usd_var, bg=CARD_BG, fg=TEXT,
+            insertbackground=TEXT, relief=tk.FLAT, font=self._m.font(10), width=10,
+        )
+        self._capital_cap_usd_entry.pack(side=tk.LEFT, ipady=4, padx=(0, 6))
+        tk.Label(usd_row, text="e.g. 5000", bg=PANEL, fg=MUTED, font=self._m.font(9)).pack(side=tk.LEFT)
+        self._capital_cap_usd_entry.bind("<FocusOut>", lambda _e: self._on_capital_cap_changed())
+        self._capital_cap_usd_entry.bind("<Return>", lambda _e: self._on_capital_cap_changed())
+
+        self._capital_cap_status = tk.Label(
+            cin_cap, text="", bg=PANEL, fg=MUTED, font=self._m.font(9), wraplength=self._m.px(700), justify=tk.LEFT,
+        )
+        self._capital_cap_status.pack(anchor="w", pady=(self._m.px(4), 0))
+        self._update_capital_cap_ui_state()
+        self._refresh_capital_cap_status()
+
         control = self._panel(body, title="Automation control")
         control.pack(fill=tk.X, padx=pad_x, pady=(0, self._m.px(14)))
         cin = control._inner  # type: ignore[attr-defined]
@@ -1032,22 +1280,32 @@ class ETradeTraderApp(tk.Frame):
         self._set_card(self._card_reports, f"{fresh}/{total}", ACCENT2 if fresh else MUTED)
 
     def _build_ui(self) -> None:
-        pad = self._pad()
+        pad = self._m.px(8) if self._embedded else self._pad()
 
         header = tk.Frame(self, bg=BG)
-        header.pack(fill=tk.X, padx=pad, pady=(self._m.px(10), self._m.px(4)))
+        header.pack(fill=tk.X, padx=pad, pady=(self._m.px(4 if self._embedded else 10), self._m.px(2 if self._embedded else 4)))
         title_row = tk.Frame(header, bg=BG)
         title_row.pack(fill=tk.X)
         title_block = tk.Frame(title_row, bg=BG)
         title_block.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(title_block, text="E*TRADE Trader", bg=BG, fg=TEXT, font=self._m.font(18, "bold")).pack(anchor="w")
-        tk.Label(
-            title_block,
-            text="Agent research · automated swing & day trading",
-            bg=BG,
-            fg=MUTED,
-            font=self._m.font(9),
-        ).pack(anchor="w", pady=(self._m.px(2), 0))
+        if self._embedded:
+            # Compact one-line header when nested in unified UI
+            tk.Label(
+                title_block,
+                text=self._app_title,
+                bg=BG,
+                fg=TEXT,
+                font=self._m.font(12, "bold"),
+            ).pack(side=tk.LEFT)
+        else:
+            tk.Label(title_block, text="E*TRADE Trader", bg=BG, fg=TEXT, font=self._m.font(18, "bold")).pack(anchor="w")
+            tk.Label(
+                title_block,
+                text="Agent research · automated swing & day trading",
+                bg=BG,
+                fg=MUTED,
+                font=self._m.font(9),
+            ).pack(anchor="w", pady=(self._m.px(2), 0))
         self._env_badge = tk.Label(
             title_row,
             text="  Not configured  ",
@@ -1062,9 +1320,9 @@ class ETradeTraderApp(tk.Frame):
         self._env_badge.pack(side=tk.RIGHT, anchor="n")
 
         conn = tk.Frame(self, bg=CARD_BG, highlightbackground=BORDER, highlightthickness=1)
-        conn.pack(fill=tk.X, padx=pad, pady=(0, self._m.px(4)))
+        conn.pack(fill=tk.X, padx=pad, pady=(0, self._m.px(2 if self._embedded else 4)))
         conn_inner = tk.Frame(conn, bg=CARD_BG)
-        conn_inner.pack(fill=tk.X, padx=self._m.px(10), pady=self._m.px(6))
+        conn_inner.pack(fill=tk.X, padx=self._m.px(8 if self._embedded else 10), pady=self._m.px(4 if self._embedded else 6))
 
         conn_row = tk.Frame(conn_inner, bg=CARD_BG)
         conn_row.pack(fill=tk.X)
@@ -1670,7 +1928,7 @@ class ETradeTraderApp(tk.Frame):
         self._setup_canvas.yview_moveto(fraction)
 
     def _go_to_next_setup_step(self) -> None:
-        raw = _read_config_file(CONFIG_PATH)
+        raw = _read_config_file(self.CONFIG_PATH)
         keys_ok = _config_keys_valid(raw) or (
             self._key_var.get().strip() and self._secret_var.get().strip()
             and self._key_var.get().strip() not in ("", "YOUR_CONSUMER_KEY")
@@ -1727,7 +1985,7 @@ class ETradeTraderApp(tk.Frame):
             self._secret_status.configure(text="Required", fg=MUTED)
 
     def _setup_completion_state(self) -> tuple[int, int, list[bool]]:
-        raw = _read_config_file(CONFIG_PATH)
+        raw = _read_config_file(self.CONFIG_PATH)
         form_valid = (
             self._key_var.get().strip() not in ("", "YOUR_CONSUMER_KEY")
             and self._secret_var.get().strip() not in ("", "YOUR_CONSUMER_SECRET")
@@ -1819,21 +2077,21 @@ class ETradeTraderApp(tk.Frame):
         self._notebook.select(self._tab_setup)
 
     def _create_config_file(self) -> None:
-        if CONFIG_PATH.exists():
-            messagebox.showinfo("Config Exists", f"{CONFIG_PATH.name} already exists. Edit the fields below and click Save Settings.")
+        if self.CONFIG_PATH.exists():
+            messagebox.showinfo("Config Exists", f"{self.CONFIG_PATH.name} already exists. Edit the fields below and click Save Settings.")
             return
-        if CONFIG_EXAMPLE.exists():
-            shutil.copy(CONFIG_EXAMPLE, CONFIG_PATH)
+        if self.CONFIG_EXAMPLE.exists():
+            shutil.copy(self.CONFIG_EXAMPLE, self.CONFIG_PATH)
         else:
-            _write_config_file(CONFIG_PATH, {"consumer_key": "", "consumer_secret": "", "sandbox": True})
+            _write_config_file(self.CONFIG_PATH, {"consumer_key": "", "consumer_secret": "", "sandbox": True})
         self._load_settings_form()
-        self._log_line(f"Created {CONFIG_PATH.name}")
+        self._log_line(f"Created {self.CONFIG_PATH.name}")
         self._setup_save_status.configure(text="Config file created — enter your keys", fg=ACCENT2)
 
     def _load_settings_form(self) -> None:
-        raw = _read_config_file(CONFIG_PATH)
-        if not raw and CONFIG_EXAMPLE.exists():
-            raw = _read_config_file(CONFIG_EXAMPLE)
+        raw = _read_config_file(self.CONFIG_PATH)
+        if not raw and self.CONFIG_EXAMPLE.exists():
+            raw = _read_config_file(self.CONFIG_EXAMPLE)
         self._key_var.set(raw.get("consumer_key", ""))
         secret = raw.get("consumer_secret", "")
         if secret in ("", "YOUR_CONSUMER_SECRET"):
@@ -1854,7 +2112,7 @@ class ETradeTraderApp(tk.Frame):
             sandbox=bool(self._sandbox_var.get()),
             callback_url=callback or DEFAULT_CALLBACK_URL,
             use_oob=bool(self._oob_var.get()),
-            config_path=CONFIG_PATH,
+            config_path=self.CONFIG_PATH,
         )
 
     def _persist_settings_from_form(self, *, silent: bool = False) -> ETradeConfig | None:
@@ -1865,9 +2123,9 @@ class ETradeTraderApp(tk.Frame):
                 messagebox.showwarning("Missing Fields", str(exc))
             return None
 
-        existing = _read_config_file(CONFIG_PATH)
-        if not existing and CONFIG_EXAMPLE.exists():
-            existing = _read_config_file(CONFIG_EXAMPLE)
+        existing = _read_config_file(self.CONFIG_PATH)
+        if not existing and self.CONFIG_EXAMPLE.exists():
+            existing = _read_config_file(self.CONFIG_EXAMPLE)
         existing["consumer_key"] = config.consumer_key
         existing["consumer_secret"] = config.consumer_secret
         existing["sandbox"] = config.sandbox
@@ -1881,7 +2139,7 @@ class ETradeTraderApp(tk.Frame):
         })
 
         try:
-            _write_config_file(CONFIG_PATH, existing)
+            _write_config_file(self.CONFIG_PATH, existing)
             self._config = config
             self._update_env_badge(config.sandbox)
             self._setup_save_status.configure(text="✓ Settings saved", fg=UP)
@@ -2133,10 +2391,10 @@ class ETradeTraderApp(tk.Frame):
             patch["trades_notebook_tab"] = int(self._trades_notebook.index(self._trades_notebook.select()))
         except tk.TclError:
             pass
-        save_ui_layout("etrade_trader", patch)
+        save_ui_layout(getattr(self, "_layout_key", "etrade_trader"), patch)
 
     def _restore_saved_layout(self) -> None:
-        layout = load_ui_layout("etrade_trader")
+        layout = load_ui_layout(getattr(self, "_layout_key", "etrade_trader"))
         if layout.get("trades_detail_hidden"):
             if not self._trades_detail_hidden:
                 self._toggle_trades_detail_panel()
@@ -2172,7 +2430,7 @@ class ETradeTraderApp(tk.Frame):
             return
         try:
             if self._trades_detail_hidden:
-                layout = load_ui_layout("etrade_trader")
+                layout = load_ui_layout(getattr(self, "_layout_key", "etrade_trader"))
                 ratio = float(layout.get("trades_split_ratio") or 0.64)
                 place_pane_ratio(self._trades_splitter, ratio, min_total=self._m.px(700))
                 self._trades_detail_hidden = False
@@ -2596,7 +2854,7 @@ class ETradeTraderApp(tk.Frame):
             range_key = self._balance_growth_chart.range_key
         baseline = self._balance_growth_baseline
         account_key = self._current_account_key()
-        config_selected = get_selected_account(CONFIG_PATH)
+        config_selected = get_selected_account(self.CONFIG_PATH)
         try:
             from analysis_history import get_account_growth
 
@@ -2682,7 +2940,7 @@ class ETradeTraderApp(tk.Frame):
         )
 
         account_key = self._current_account_key()
-        config_selected = get_selected_account(CONFIG_PATH)
+        config_selected = get_selected_account(self.CONFIG_PATH)
         accounts_meta = growth.get("accounts") if isinstance(growth.get("accounts"), dict) else {}
         scoped_points = points_for_account(list(growth.get("points") or []), account_key)
         baseline = resolve_opening_balance_for_account(
@@ -2898,7 +3156,7 @@ class ETradeTraderApp(tk.Frame):
                     day_pos = pos
                     break
             if context == "day_order":
-                plan_data = load_strategy_plan(DAY_PLAN_FILE)
+                plan_data = load_strategy_plan(self.DAY_PLAN_FILE)
                 if plan_data:
                     try:
                         day_plan = plan_from_dict(plan_data)
@@ -3189,25 +3447,25 @@ class ETradeTraderApp(tk.Frame):
 
     def _bootstrap_config(self) -> None:
         self._load_settings_form()
-        if not CONFIG_PATH.exists():
+        if not self.CONFIG_PATH.exists():
             self._env_badge.configure(text="  Setup required  ", fg=WARN, bg="#3d3200")
             self._set_status("Open Settings to enter your API keys", WARN)
             self._show_setup_tab()
             self._update_setup_progress()
             return
         try:
-            if not _config_keys_valid(_read_config_file(CONFIG_PATH)):
+            if not _config_keys_valid(_read_config_file(self.CONFIG_PATH)):
                 self._env_badge.configure(text="  Keys needed  ", fg=WARN, bg="#3d3200")
                 self._set_status("Enter API keys in Settings and click Save Settings", WARN)
                 self._show_setup_tab()
                 self._update_setup_progress()
                 return
-            self._config = load_config(CONFIG_PATH)
+            self._config = load_config(self.CONFIG_PATH)
             self._load_trading_settings_from_config()
             self._sync_trade_flags()
             self._update_automation_control_ui()
             self._update_env_badge(self._config.sandbox)
-            persisted = get_selected_account(CONFIG_PATH)
+            persisted = get_selected_account(self.CONFIG_PATH)
             if persisted:
                 self._persisted_account_key = persisted.get("account_id_key")
                 saved_label = (persisted.get("display_label") or "").strip()
@@ -3215,17 +3473,44 @@ class ETradeTraderApp(tk.Frame):
                     self._set_status(f"Restoring saved account: {saved_label}…", ACCENT2)
             tokens = load_tokens(self._config.token_path, self._config.sandbox)
             if tokens:
-                self._client = ETradeClient(self._config, tokens)
-                self._schedule(self._on_connected)
+                if is_expired_for_day(tokens):
+                    self._set_status(
+                        "Session expired (E*TRADE tokens reset at midnight ET) — click Connect",
+                        WARN,
+                    )
+                    self._log_line(
+                        "Saved access token is past midnight US/Eastern — full Connect required."
+                    )
+                else:
+                    self._client = ETradeClient(self._config, tokens)
+                    self._schedule(self._on_connected)
             else:
-                self._set_status("Settings loaded — connect to E*TRADE in Settings", ACCENT2)
+                # Tokens may exist for the *other* environment (sandbox vs production).
+                other = load_tokens(self._config.token_path, not self._config.sandbox)
+                env = "Sandbox" if self._config.sandbox else "Production"
+                if other is not None:
+                    other_env = "Sandbox" if other.sandbox else "Production"
+                    self._set_status(
+                        f"Keys OK — click Connect for {env} "
+                        f"(saved login is {other_env}, which does not match)",
+                        WARN,
+                    )
+                    self._log_line(
+                        f"Token file is for {other_env} but config is {env}. "
+                        "Click Connect to authorize this environment."
+                    )
+                else:
+                    self._set_status(
+                        f"Settings loaded — click Connect to sign in ({env})",
+                        ACCENT2,
+                    )
         except Exception as exc:
             self._log_line(f"Config error: {exc}")
             self._show_setup_tab()
         self._update_setup_progress()
 
     def _load_cached_plan(self) -> None:
-        data = load_strategy_plan(PLAN_FILE)
+        data = load_strategy_plan(self.PLAN_FILE)
         if not data:
             return
         try:
@@ -3245,7 +3530,7 @@ class ETradeTraderApp(tk.Frame):
         try:
             from etrade_worker import gui_should_defer_to_worker
 
-            self._gui_defers_to_worker = gui_should_defer_to_worker(CONFIG_PATH)
+            self._gui_defers_to_worker = gui_should_defer_to_worker(self.CONFIG_PATH)
         except Exception:
             self._gui_defers_to_worker = False
 
@@ -3254,7 +3539,7 @@ class ETradeTraderApp(tk.Frame):
         if self._gui_defers_to_worker:
             self._log_line(
                 "Low-CPU mode: headless worker runs agents and trading — this window is display-only. "
-                f"See {WORKER_LOG.name}."
+                f"See {self.WORKER_LOG.name}."
             )
         else:
             self._log_line(
@@ -3309,7 +3594,7 @@ class ETradeTraderApp(tk.Frame):
 
             if not self._client:
                 return
-            ran = run_day_trading_for_client(self._client, config_path=CONFIG_PATH)
+            ran = run_day_trading_for_client(self._client, config_path=self.CONFIG_PATH)
             self._schedule(self._refresh_day_trading_panel)
             self._schedule(self._update_bg_status)
             if ran:
@@ -3424,8 +3709,10 @@ class ETradeTraderApp(tk.Frame):
                 or bal.get("net_cash")
                 or 0
             )
+            self._balance_total_value = float(total_value or 0)
             self._schedule(self._set_card, self._card_value, f"${total_value:,.0f}")
             self._schedule(self._set_card, self._card_cash, f"${buying_power:,.0f}")
+            self._schedule(self._refresh_capital_cap_status)
             try:
                 from analysis_history import get_account_growth, record_account_value
 
@@ -3466,7 +3753,7 @@ class ETradeTraderApp(tk.Frame):
             self._confirmed_account_idx = None
             self._persisted_account_key = None
             try:
-                clear_selected_account(CONFIG_PATH)
+                clear_selected_account(self.CONFIG_PATH)
             except OSError as exc:
                 self._log_line(f"Could not clear saved account: {exc}")
             self._clear_account_cards()
@@ -3507,7 +3794,7 @@ class ETradeTraderApp(tk.Frame):
             save_selected_account(
                 acct["account_id_key"],
                 display_label=label,
-                path=CONFIG_PATH,
+                path=self.CONFIG_PATH,
             )
             self._persisted_account_key = acct["account_id_key"]
         except OSError as exc:
@@ -3530,10 +3817,10 @@ class ETradeTraderApp(tk.Frame):
             pass
 
     def _read_day_state(self) -> dict[str, Any]:
-        if not DAY_STATE_FILE.exists():
+        if not self.DAY_STATE_FILE.exists():
             return {}
         try:
-            return json.loads(DAY_STATE_FILE.read_text(encoding="utf-8"))
+            return json.loads(self.DAY_STATE_FILE.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
 
@@ -3587,7 +3874,7 @@ class ETradeTraderApp(tk.Frame):
                 ),
             )
 
-        plan_data = load_strategy_plan(DAY_PLAN_FILE)
+        plan_data = load_strategy_plan(self.DAY_PLAN_FILE)
         if plan_data:
             try:
                 day_plan = plan_from_dict(plan_data)
@@ -3634,7 +3921,7 @@ class ETradeTraderApp(tk.Frame):
             acct = self._selected_account()
             if not acct or not self._client:
                 return
-            settings = load_day_trade_settings(CONFIG_PATH)
+            settings = load_day_trade_settings(self.CONFIG_PATH)
             state = load_day_state()
             plan = build_day_trade_plan(
                 self._client,
@@ -3798,7 +4085,7 @@ class ETradeTraderApp(tk.Frame):
             sanitize_credential(self._key_var.get(), KEY_PLACEHOLDER)
             and sanitize_credential(self._secret_var.get(), SECRET_PLACEHOLDER)
         )
-        if not _config_keys_valid(_read_config_file(CONFIG_PATH)) and not form_has_keys:
+        if not _config_keys_valid(_read_config_file(self.CONFIG_PATH)) and not form_has_keys:
             messagebox.showinfo(
                 "Setup Required",
                 "Enter your Consumer Key and Secret in the Setup tab,\n"
@@ -3881,7 +4168,7 @@ class ETradeTraderApp(tk.Frame):
     def _connect_thread(self, config: ETradeConfig | None = None, epoch: int = 0) -> None:
         dialog_scheduled = False
         try:
-            self._config = config or load_config(CONFIG_PATH)
+            self._config = config or load_config(self.CONFIG_PATH)
             if self._config.use_oob:
                 pending = self._run_network_task(start_authorization, self._config)
                 if epoch != self._connect_epoch:
@@ -4031,7 +4318,7 @@ class ETradeTraderApp(tk.Frame):
                     keys.append(key)
         if self._persisted_account_key and self._persisted_account_key not in keys:
             keys.append(self._persisted_account_key)
-        persisted = get_selected_account(CONFIG_PATH)
+        persisted = get_selected_account(self.CONFIG_PATH)
         if persisted:
             key = persisted.get("account_id_key")
             if key and key not in keys:
@@ -4039,7 +4326,7 @@ class ETradeTraderApp(tk.Frame):
             if key:
                 self._persisted_account_key = key
         if not keys:
-            plan_data = load_strategy_plan(PLAN_FILE)
+            plan_data = load_strategy_plan(self.PLAN_FILE)
             if plan_data:
                 key = str(plan_data.get("account_id_key") or "").strip()
                 if key:
@@ -4064,12 +4351,12 @@ class ETradeTraderApp(tk.Frame):
                     self._confirmed_account_idx = i + 1
                     self._set_account_combo_index(i + 1)
                     self._log_line(f"Restored trading account: {labels[i]}")
-                    if not get_selected_account(CONFIG_PATH):
+                    if not get_selected_account(self.CONFIG_PATH):
                         try:
                             save_selected_account(
                                 acct["account_id_key"],
                                 display_label=labels[i],
-                                path=CONFIG_PATH,
+                                path=self.CONFIG_PATH,
                             )
                             self._persisted_account_key = acct["account_id_key"]
                             self._log_line("Saved restored account for background worker and restarts.")
@@ -4287,9 +4574,11 @@ class ETradeTraderApp(tk.Frame):
     def _render_plan(self, plan: StrategyPlan, focus_orders_tab: bool = True) -> None:
         self._set_card(self._card_value, f"${plan.total_account_value:,.0f}")
         self._set_card(self._card_orders, str(len(plan.orders)), WARN if plan.orders else UP)
+        self._balance_total_value = float(plan.total_account_value or 0)
         self._update_balance_tab(plan.total_account_value)
         self._update_history_tab()
         self._update_attribution_tab()
+        self._refresh_capital_cap_status()
 
         from position_analysis import projected_return_compact
 

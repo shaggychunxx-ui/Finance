@@ -192,6 +192,18 @@ def build_short_day_trade_plan(
 
     capital_pct = float(settings.get("capital_pct", 15.0))
     sleeve = total_value * capital_pct / 100.0
+    # Shared capital pool — soft short ceiling from sleeve policy
+    try:
+        from sleeve_policy import blocked_symbols_for_new_entry, shared_capital_budget
+
+        budget = shared_capital_budget(total_value, sleeve="short", balance=balance)
+        deployable = float(budget.get("deployable_usd") or 0)
+        if deployable > 0:
+            sleeve = min(sleeve, deployable)
+        blocked_new = blocked_symbols_for_new_entry("short", positions)
+    except Exception:
+        blocked_new = set()
+        budget = {}
     max_trade = float(settings.get("max_trade_usd", 500.0))
     min_trade = float(settings.get("min_trade_usd", 75.0))
     max_positions = int(settings.get("max_positions", 2))
@@ -256,6 +268,8 @@ def build_short_day_trade_plan(
             sym = cand["symbol"]
             if sym in held:
                 continue
+            if sym in blocked_new:
+                continue
             ret = float(cand.get("predicted_return_pct") or 0)
             conf = float(cand.get("confidence") or 0)
             # Need predicted drop of at least min_drop (ret is negative when bearish)
@@ -315,7 +329,19 @@ def build_short_day_trade_plan(
         target_holdings=[],
         current_positions=[p.to_dict() for p in remaining_positions],
         orders=orders,
-        meta={"mode": "short_day_trading", "side": "short", "session_date": session},
+        meta={
+            "mode": "short_day_trading",
+            "side": "short",
+            "sleeve": "short",
+            "session_date": session,
+            "shared_capital_budget": budget,
+        },
     )
+    try:
+        from sleeve_policy import apply_sleeve_to_plan
+
+        apply_sleeve_to_plan(plan, sleeve="short", positions=positions)
+    except Exception:
+        pass
     _write_json(SHORT_DAY_PLAN_FILE, plan.to_dict())
     return plan

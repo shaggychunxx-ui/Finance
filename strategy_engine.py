@@ -285,17 +285,32 @@ def _prioritize_growth_orders(
 
 
 def _position_map(positions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    out: dict[str, dict[str, Any]] = {}
-    for pos in positions:
-        sym = pos.get("symbol", "").upper()
-        if not sym:
-            continue
-        if sym in out:
-            out[sym]["quantity"] += pos.get("quantity", 0)
-            out[sym]["market_value"] += pos.get("market_value", 0)
-        else:
-            out[sym] = dict(pos)
-    return out
+    """Long-sleeve position map only (shorts isolated for Short Trader)."""
+    try:
+        from sleeve_policy import long_position_map
+
+        return long_position_map(positions)
+    except Exception:
+        out: dict[str, dict[str, Any]] = {}
+        for pos in positions:
+            sym = str(pos.get("symbol", "")).upper()
+            if not sym:
+                continue
+            ptype = str(pos.get("position_type") or "LONG").upper()
+            qty = float(pos.get("quantity") or 0)
+            if ptype == "SHORT" or qty < 0:
+                continue
+            if sym in out:
+                out[sym]["quantity"] = float(out[sym].get("quantity") or 0) + qty
+                out[sym]["market_value"] = float(out[sym].get("market_value") or 0) + float(
+                    pos.get("market_value") or 0
+                )
+            else:
+                row = dict(pos)
+                row["symbol"] = sym
+                row["position_type"] = "LONG"
+                out[sym] = row
+        return out
 
 
 def build_strategy_plan(
@@ -319,6 +334,30 @@ def build_strategy_plan(
     if total_value <= 0:
         raise ValueError("Could not determine account value from E*TRADE balance/portfolio.")
 
+    # Shared capital + joint profit coordination with short sleeve
+    try:
+        from sleeve_coordinator import coordinate_sleeves
+        from sleeve_policy import (
+            blocked_symbols_for_new_entry,
+            save_sleeve_snapshot,
+            shared_capital_budget,
+        )
+
+        coordinate_sleeves(total_account_value=float(total_value))
+        budget = shared_capital_budget(float(total_value), sleeve="long", balance=balance)
+        # Use full sleeve ceiling for target sizing (not BP-clipped deployable),
+        # so a $5k capital cap allocates against $5k even when cash is low
+        # because existing long holdings already use part of the budget.
+        investable_cap = float(
+            budget.get("sleeve_ceiling_usd") or budget.get("deployable_usd") or 0
+        )
+        blocked_new = blocked_symbols_for_new_entry("long", positions)
+        save_sleeve_snapshot(positions=positions, total_account_value=float(total_value))
+    except Exception:
+        investable_cap = 0.0
+        blocked_new = set()
+        budget = {}
+
     if portfolio is None:
         portfolio = generate_portfolio(OUTPUT, notional_usd=total_value)
         save_portfolio(portfolio, PORTFOLIO_FILE)
@@ -330,6 +369,8 @@ def build_strategy_plan(
         min_trade_usd = float(settings.get("min_trade_usd", min_trade_usd))
 
     investable = total_value * (1 - cash_buffer_pct / 100)
+    if investable_cap > 0:
+        investable = min(investable, investable_cap)
     targets = portfolio.get("holdings", [])
     symbols = {h["symbol"].upper() for h in targets} | set(pos_map.keys())
     prices: dict[str, float] = {}
@@ -370,6 +411,9 @@ def build_strategy_plan(
             continue
 
         if delta > 0:
+            # Shared capital OK — but never open long against short sleeve
+            if sym in blocked_new:
+                continue
             qty = int(delta // price)
             action = "BUY"
         else:
@@ -486,6 +530,9 @@ def build_strategy_plan(
     plan_meta["agent_controlled"] = agent_controlled
     plan_meta["growth_mode"] = settings.get("growth_mode", True)
     plan_meta["optimize_profit_horizons"] = settings.get("optimize_profit_horizons", True)
+    plan_meta["sleeve"] = "long"
+    if budget:
+        plan_meta["shared_capital_budget"] = budget
     try:
         from profit_optimizer import load_horizon_weights
 
@@ -505,6 +552,8 @@ def build_strategy_plan(
     except Exception:
         pass
 
+    # Plan inventory is long sleeve only so UI/trims never see shorts as longs
+    long_positions_list = list(pos_map.values())
     plan = StrategyPlan(
         generated_at=datetime.now(timezone.utc).isoformat(),
         account_id_key=account_id_key,
@@ -515,10 +564,16 @@ def build_strategy_plan(
         cash_buffer_pct=cash_buffer_pct,
         regime=portfolio.get("regime", {}),
         target_holdings=targets,
-        current_positions=positions,
+        current_positions=long_positions_list,
         orders=orders,
         meta=plan_meta,
     )
+    try:
+        from sleeve_policy import apply_sleeve_to_plan
+
+        apply_sleeve_to_plan(plan, sleeve="long", positions=positions)
+    except Exception:
+        pass
     try:
         from trading_gate import apply_trading_gates_to_plan, load_trading_gate_settings
 
@@ -667,6 +722,18 @@ def execute_orders(
             except Exception:
                 pass
         apply_trade_guards_to_plan(plan, balance, day_state=day_state)
+    except Exception:
+        pass
+
+    # Final sleeve isolation: never let long path touch shorts (or vice versa if meta says short)
+    try:
+        from sleeve_policy import apply_sleeve_to_plan
+
+        positions = client.get_portfolio(plan.account_id_key)
+        sleeve = str((plan.meta or {}).get("sleeve") or (plan.meta or {}).get("side") or "long")
+        if sleeve not in {"long", "short"}:
+            sleeve = "short" if str((plan.meta or {}).get("mode") or "").startswith("short") else "long"
+        apply_sleeve_to_plan(plan, sleeve=sleeve, positions=positions)  # type: ignore[arg-type]
     except Exception:
         pass
 
@@ -1081,6 +1148,19 @@ def run_agent_pipeline(
         cycle_id = None
     log_catalog_changes(on_progress, check_remote=check_remote)
     try:
+        from agent_groups import register_groups_into_fusion, all_groups_summary
+
+        register_groups_into_fusion()
+        if on_progress:
+            groups = all_groups_summary()
+            on_progress(
+                f"Agent groups: {len(groups)} teams organizing "
+                f"{sum(g['member_count'] for g in groups)} specialists by role."
+            )
+    except Exception as exc:
+        if on_progress:
+            on_progress(f"Agent group registration note: {exc}")
+    try:
         from etrade_market_enhancer import run_proactive_etrade_enhancement
 
         run_proactive_etrade_enhancement(on_progress=on_progress)
@@ -1088,6 +1168,33 @@ def run_agent_pipeline(
         if on_progress:
             on_progress(f"Proactive E*TRADE enhancement skipped: {exc}")
     sources = active_agent_sources(check_remote=check_remote)
+    # Prefer group order: risk first, then short mechanics, then core alpha, platform last
+    try:
+        from agent_groups import agent_trading_role
+
+        role_rank = {
+            "risk_gate": 0,
+            "risk_overlay": 1,
+            "short_alpha": 2,
+            "regime": 3,
+            "sector_specialist": 4,
+            "alpha": 5,
+            "intraday": 6,
+            "allocator": 7,
+            "execution": 8,
+            "platform": 9,
+            "fusion": 10,
+        }
+        sources = sorted(
+            sources,
+            key=lambda s: (
+                role_rank.get(agent_trading_role(str(s.get("id") or "")), 5),
+                str(s.get("category") or ""),
+                str(s.get("label") or ""),
+            ),
+        )
+    except Exception:
+        pass
     pipeline_started_at = datetime.now(timezone.utc)
     ok = 0
     skipped = 0

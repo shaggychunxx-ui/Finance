@@ -352,7 +352,7 @@
     <div id="confirmModal" class="modal-backdrop" aria-hidden="true">
       <div class="modal">
         <h3>Stop all automation?</h3>
-        <p>This halts agents, strategy updates, swing trades, and day trading until you resume.</p>
+        <p>This halts agents, strategy, swing, and day trading on <strong>both buy and short apps</strong> (and their workers) until you resume.</p>
         <div class="modal-actions">
           <button type="button" class="modal-cancel" id="confirmCancelBtn">Cancel</button>
           <button type="button" class="modal-confirm" id="confirmStopBtn">Stop all</button>
@@ -372,7 +372,7 @@
         <div class="control-bar">
           <button type="button" id="automationBtn" class="action-btn stop">Stop all</button>
           <div class="control-hint" id="automationHint">
-            Halts agents, strategy updates, swing trades, and day trading until you resume.
+            Halts buy + short apps: agents, strategy, swing, and day trading until you resume.
           </div>
         </div>
         <div class="cards" id="homeCards"></div>
@@ -648,11 +648,11 @@
       if (paused) {
         btn.textContent = "Resume all";
         btn.className = "action-btn resume";
-        hint.textContent = "All automation is stopped. Tap Resume all to restart agents and trading.";
+        hint.textContent = "Buy + short apps are stopped. Tap Resume all to restart both.";
       } else {
         btn.textContent = "Stop all";
         btn.className = "action-btn stop";
-        hint.textContent = "Halts agents, strategy updates, swing trades, and day trading until you resume.";
+        hint.textContent = "Halts buy + short apps: agents, strategy, swing, and day trading until you resume.";
       }
     }
 
@@ -673,7 +673,7 @@
         if (data.status) renderStatus(data.status);
         else await refresh();
         showToast(
-          paused ? "Automation resumed." : "All automation stopped.",
+          paused ? "Automation resumed on buy + short." : "All automation stopped on buy + short.",
           "ok"
         );
       } catch (e) {

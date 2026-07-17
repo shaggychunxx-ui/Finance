@@ -112,14 +112,24 @@ def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
 
 
 def _merge_entry(agent_id: str, raw: dict[str, Any] | None) -> PersonalityTraits:
-    base = dict(_PLATFORM_DEFAULTS.get(agent_id, {}))
+    aid = str(agent_id or "").replace("_", "-")
+    base = dict(_PLATFORM_DEFAULTS.get(aid, _PLATFORM_DEFAULTS.get(agent_id, {})))
+    # Group defaults fill gaps so new agents inherit group conduct traits
+    try:
+        from agent_groups import group_personality_seed
+
+        seed = group_personality_seed(aid)
+        for key, value in seed.items():
+            base.setdefault(key, value)
+    except Exception:
+        pass
     if raw:
         base.update(raw)
     traits = {key: _clamp(base.get(key, DEFAULT_TRAITS[key])) for key in TRAIT_KEYS}
     return PersonalityTraits(
-        agent_id=agent_id,
-        label=str(base.get("label") or agent_id.replace("-", " ").title()),
-        voice=str(base.get("voice") or ""),
+        agent_id=aid,
+        label=str(base.get("label") or aid.replace("-", " ").title()),
+        voice=str(base.get("voice") or base.get("conduct") or ""),
         **traits,
     )
 
@@ -347,7 +357,13 @@ def _score_to_bias(score: float) -> str:
     return "NEUTRAL"
 
 
-def adjust_bias(bias: str, traits: PersonalityTraits, *, reason: str = "") -> str:
+def adjust_bias(
+    bias: str,
+    traits: PersonalityTraits,
+    *,
+    reason: str = "",
+    agent_id: str = "",
+) -> str:
     text = str(bias or "NEUTRAL").upper()
     score = BIAS_SCORES.get(text, 0.0)
     score += (traits.risk_appetite - 0.5) * 0.45
@@ -361,6 +377,21 @@ def adjust_bias(bias: str, traits: PersonalityTraits, *, reason: str = "") -> st
             score += traits.contrarian * 0.25
     if traits.defensive_bias >= 0.6 and "growth" in reason_l and text == "BULLISH":
         score -= 0.12
+    # Group posture nudges (short / risk groups behave defensively)
+    try:
+        from agent_groups import agent_posture
+
+        posture = agent_posture(agent_id or traits.agent_id)
+        if posture == "short_lean":
+            score -= 0.18
+        elif posture == "defensive":
+            score -= 0.14
+        elif posture == "long_lean":
+            score += 0.08
+        elif posture == "intraday" and text == "NEUTRAL":
+            score += 0.0
+    except Exception:
+        pass
     return _score_to_bias(score)
 
 
@@ -381,6 +412,14 @@ def adjust_confidence(
 
 
 def personality_horizon_preference(agent_id: str) -> str:
+    try:
+        from agent_groups import agent_horizon
+
+        horizon = agent_horizon(agent_id)
+        if horizon in {"1m", "1h", "24h", "1wk", "1mo", "1yr"}:
+            return horizon
+    except Exception:
+        pass
     traits = get_agent_personality(agent_id)
     if traits.patience >= 0.72:
         return "1mo"
@@ -399,11 +438,22 @@ def personality_fusion_factor(agent_id: str, *, regime_posture: str = "neutral")
     return _clamp(0.9 + 0.12 * traits.conviction, 0.85, 1.15)
 
 
-def _patch_signal_row(row: dict[str, Any], traits: PersonalityTraits, temperature: int | None) -> None:
+def _patch_signal_row(
+    row: dict[str, Any],
+    traits: PersonalityTraits,
+    temperature: int | None,
+    *,
+    agent_id: str = "",
+) -> None:
     if not isinstance(row, dict):
         return
     reason = str(row.get("reason") or row.get("sector") or "")
-    row["bias"] = adjust_bias(str(row.get("bias", "NEUTRAL")), traits, reason=reason)
+    row["bias"] = adjust_bias(
+        str(row.get("bias", "NEUTRAL")),
+        traits,
+        reason=reason,
+        agent_id=agent_id or traits.agent_id,
+    )
     if "confidence" in row:
         row["confidence"] = round(adjust_confidence(row.get("confidence", 0.5), traits, temperature=temperature), 3)
 
@@ -467,9 +517,17 @@ def patch_agent_output_personality(path: Path, agent_id: str) -> bool:
         temperature_i = None
 
     for sig in data.get("market_signals", []) or []:
-        _patch_signal_row(sig, traits, temperature_i)
+        _patch_signal_row(sig, traits, temperature_i, agent_id=agent_id)
     _patch_predictions_block(data, traits, temperature_i)
     _patch_lists(data, traits, temperature_i)
+
+    try:
+        from agent_groups import apply_group_conduct_to_report
+
+        data = apply_group_conduct_to_report(data, agent_id)
+        meta = data.setdefault("meta", {}) if isinstance(data.get("meta"), dict) else meta
+    except Exception:
+        pass
 
     meta["personality"] = traits.as_dict()
     meta["personality"]["temperature"] = temperature_i
@@ -477,6 +535,17 @@ def patch_agent_output_personality(path: Path, agent_id: str) -> bool:
     tune_summary = personality_tune_summary(agent_id)
     if tune_summary:
         meta["personality"]["tune_summary"] = tune_summary
+    try:
+        from agent_groups import agent_group, agent_conduct
+
+        g = agent_group(agent_id)
+        meta["personality"]["group"] = g.get("id")
+        meta["personality"]["group_label"] = g.get("label")
+        meta["personality"]["posture"] = g.get("posture")
+        meta["personality"]["trading_role"] = g.get("trading_role")
+        meta["personality"]["conduct"] = agent_conduct(agent_id)
+    except Exception:
+        pass
     meta["preferred_horizon"] = personality_horizon_preference(agent_id)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return True

@@ -15,6 +15,7 @@ MIN_WEIGHT_PCT = 3.0
 HORIZON_WEIGHTS = {"24h": 0.4, "1wk": 0.65, "1mo": 1.0, "1yr": 0.8}
 BIAS_SCORES = {"BULLISH": 1.0, "NEUTRAL": 0.15, "BEARISH": -1.0}
 
+# Core outputs always ingested (order is stable for logging).
 AGENT_OUTPUTS = [
     "markets.json",
     "finance.json",
@@ -23,6 +24,31 @@ AGENT_OUTPUTS = [
     "sales_analytics.json",
     "geopolitics.json",
     "market_predictions.json",
+    # Short / microstructure specialists (GitHub copilot branches)
+    "bear_thesis.json",
+    "htb_dynamics.json",
+    "squeeze_mechanics.json",
+    "ftd_regsho.json",
+    "risk_mitigation.json",
+    "day_trading_microstructure.json",
+    "long_squeeze_synergy.json",
+    "portfolio_frameworks.json",
+    "risk_protection.json",
+    # Fundamental / technical / regime suite
+    "fundamental_analyst.json",
+    "technical_pattern.json",
+    "adversarial_debate.json",
+    "risk_guardrail.json",
+    "market_regime.json",
+    "sentiment_alt_data.json",
+    # Macro / index / alt-data
+    "fred.json",
+    "cpi.json",
+    "economy.json",
+    "consumer_sentiment.json",
+    "ftse100.json",
+    "nikkei.json",
+    "earthdata.json",
 ]
 
 AGENT_SOURCE_IDS = {
@@ -34,6 +60,28 @@ AGENT_SOURCE_IDS = {
     "sales_analytics",
     "geopolitics",
     "market-predictor",
+    "bear-thesis",
+    "htb-dynamics",
+    "squeeze-mechanics",
+    "ftd-regsho",
+    "risk-mitigation",
+    "day-trading-microstructure",
+    "long-squeeze-synergy",
+    "portfolio-frameworks",
+    "risk-protection",
+    "fundamental-analyst",
+    "technical-pattern",
+    "adversarial-debate",
+    "risk-guardrail",
+    "market-regime",
+    "sentiment-alt-data",
+    "fred",
+    "cpi",
+    "economy",
+    "consumer-sentiment",
+    "ftse100",
+    "nikkei",
+    "earthdata",
 }
 NON_AGENT_SOURCES = frozenset({"regime", "etrade", "history", "profit-optimizer"})
 
@@ -624,6 +672,25 @@ def generate_portfolio(
     regime = _detect_regime(output_dir)
     if not agent_controlled:
         _apply_regime_sleeve(scores, regime)
+
+    # Joint sleeve coordination: boost long-assigned names, soft-penalize short-only ideas
+    try:
+        from sleeve_coordinator import coordinate_sleeves, preferred_sleeve_for_symbol
+
+        coordinate_sleeves(total_account_value=float(notional_usd or 0) or None)
+        for ticker in scores.values():
+            side = preferred_sleeve_for_symbol(ticker.symbol)
+            if side == "long":
+                ticker.score += 0.22
+                ticker.sources.add("sleeve-coord-long")
+                ticker.notes.append("Joint sleeve: assigned long for profit max")
+            elif side == "short":
+                ticker.score -= 0.35
+                ticker.sources.add("sleeve-coord-short")
+                ticker.notes.append("Joint sleeve: reserved for short book")
+        sources_used.append("sleeve_coordination.json")
+    except Exception:
+        pass
 
     context: dict[str, Any] = {}
     try:

@@ -17,29 +17,33 @@ PLAN_FILE = SHORT_PLAN_FILE
 
 
 def _short_positions(positions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Map symbol -> short position (absolute quantity)."""
-    out: dict[str, dict[str, Any]] = {}
-    for pos in positions:
-        sym = str(pos.get("symbol", "")).upper()
-        if not sym:
-            continue
-        ptype = str(pos.get("position_type") or "LONG").upper()
-        qty = float(pos.get("quantity") or 0)
-        # SHORT type or negative quantity
-        if ptype == "SHORT" or qty < 0:
-            abs_qty = int(abs(qty))
-            if abs_qty <= 0:
+    """Map symbol -> short position (absolute quantity). Longs never included."""
+    try:
+        from sleeve_policy import short_position_map
+
+        return short_position_map(positions)
+    except Exception:
+        out: dict[str, dict[str, Any]] = {}
+        for pos in positions:
+            sym = str(pos.get("symbol", "")).upper()
+            if not sym:
                 continue
-            mv = float(pos.get("market_value") or 0)
-            out[sym] = {
-                "symbol": sym,
-                "quantity": abs_qty,
-                "market_value": abs(mv),
-                "price": float(pos.get("price") or 0),
-                "cost_basis": float(pos.get("cost_basis") or 0),
-                "position_type": "SHORT",
-            }
-    return out
+            ptype = str(pos.get("position_type") or "LONG").upper()
+            qty = float(pos.get("quantity") or 0)
+            if ptype == "SHORT" or qty < 0:
+                abs_qty = int(abs(qty))
+                if abs_qty <= 0:
+                    continue
+                mv = float(pos.get("market_value") or 0)
+                out[sym] = {
+                    "symbol": sym,
+                    "quantity": abs_qty,
+                    "market_value": abs(mv),
+                    "price": float(pos.get("price") or 0),
+                    "cost_basis": float(pos.get("cost_basis") or 0),
+                    "position_type": "SHORT",
+                }
+        return out
 
 
 def build_short_strategy_plan(
@@ -50,7 +54,7 @@ def build_short_strategy_plan(
     portfolio: dict[str, Any] | None = None,
     settings: dict[str, Any] | None = None,
 ) -> StrategyPlan:
-    """Rebalance short book toward agent bearish targets."""
+    """Rebalance short book toward agent bearish targets (short sleeve only)."""
     ensure_short_dirs()
     settings = settings or load_short_strategy_settings()
     balance = client.get_balance(account_id_key)
@@ -68,9 +72,31 @@ def build_short_strategy_plan(
     if total_value <= 0:
         raise ValueError("Could not determine account value for short plan.")
 
+    # Shared capital + joint profit coordination with long sleeve
+    try:
+        from sleeve_coordinator import coordinate_sleeves
+        from sleeve_policy import (
+            blocked_symbols_for_new_entry,
+            save_sleeve_snapshot,
+            shared_capital_budget,
+        )
+
+        coordinate_sleeves(total_account_value=total_value)
+        budget = shared_capital_budget(total_value, sleeve="short", balance=balance)
+        investable = float(budget.get("deployable_usd") or 0)
+        blocked_new = blocked_symbols_for_new_entry("short", positions)
+        save_sleeve_snapshot(positions=positions, total_account_value=total_value)
+    except Exception:
+        cash_buffer = float(settings.get("cash_buffer_pct", 20.0))
+        max_book_pct = float(settings.get("max_short_book_pct", 40.0))
+        investable = total_value * (1 - cash_buffer / 100) * (max_book_pct / 100)
+        blocked_new = set()
+        budget = {}
+
     cash_buffer = float(settings.get("cash_buffer_pct", 20.0))
     max_book_pct = float(settings.get("max_short_book_pct", 40.0))
-    investable = total_value * (1 - cash_buffer / 100) * (max_book_pct / 100)
+    # Honor short book % as additional soft cap on the shared pool
+    investable = min(investable, total_value * (1 - cash_buffer / 100) * (max_book_pct / 100))
     min_drift = float(settings.get("min_drift_pct", 2.0))
     min_trade = float(settings.get("min_trade_usd", 75.0))
 
@@ -79,7 +105,12 @@ def build_short_strategy_plan(
         save_short_portfolio(portfolio)
 
     targets = portfolio.get("holdings") or []
-    target_by_sym = {str(h["symbol"]).upper(): h for h in targets if h.get("symbol")}
+    # Drop targets blocked by long sleeve positions/claims
+    target_by_sym = {
+        str(h["symbol"]).upper(): h
+        for h in targets
+        if h.get("symbol") and str(h["symbol"]).upper() not in blocked_new
+    }
     symbols = set(target_by_sym) | set(short_map)
 
     prices: dict[str, float] = {}
@@ -218,17 +249,25 @@ def build_short_strategy_plan(
         investable_usd=investable,
         cash_buffer_pct=cash_buffer,
         regime=portfolio.get("regime") or {},
-        target_holdings=targets,
+        target_holdings=list(target_by_sym.values()),
         current_positions=list(short_map.values()),
         orders=orders,
         meta={
             "mode": "short_swing",
             "side": "short",
+            "sleeve": "short",
             "max_short_book_pct": max_book_pct,
+            "shared_capital_budget": budget,
             "margin_buying_power": balance.get("margin_buying_power"),
             "cash_buying_power": balance.get("cash_buying_power"),
         },
     )
+    try:
+        from sleeve_policy import apply_sleeve_to_plan
+
+        apply_sleeve_to_plan(plan, sleeve="short", positions=positions)
+    except Exception:
+        pass
     return plan
 
 

@@ -1182,6 +1182,142 @@ def agriculture_market_impact_signals(
     return signals
 
 
+def earthdata_stress_confidence(
+    *,
+    environmental_stress: float,
+    anomaly_count: int = 0,
+    collections_online: int = 0,
+) -> float:
+    """NASA Earthdata environmental-stress reading strength for market-impact signals."""
+    stress_factor = _clamp((float(environmental_stress or 0.0) - 35.0) / 45.0, 0.0, 1.0)
+    anomaly_factor = _clamp(int(anomaly_count) / 4.0, 0.0, 1.0)
+    online_factor = _clamp(int(collections_online) / 6.0, 0.0, 1.0)
+    return round(_clamp(0.38 + 0.3 * stress_factor + 0.2 * anomaly_factor + 0.1 * online_factor), 3)
+
+
+def earthdata_market_impact_signals(
+    *,
+    environmental_stress: float,
+    stress_label: str = "",
+    wildfire_signal: float = 0.0,
+    drought_signal: float = 0.0,
+    sst_anomaly_signal: float = 0.0,
+    flood_signal: float = 0.0,
+    anomaly_count: int = 0,
+    collections_online: int = 0,
+    source: str = "earthdata",
+) -> list[dict[str, Any]]:
+    """Translate NASA Earthdata satellite observations into market-facing expressions."""
+    signals: list[dict[str, Any]] = []
+    stress = float(environmental_stress or 0.0)
+    label = str(stress_label or "").strip()
+    evidence_base: dict[str, Any] = {
+        "environmental_stress": round(stress, 1),
+        "wildfire_signal": round(float(wildfire_signal or 0.0), 2),
+        "drought_signal": round(float(drought_signal or 0.0), 2),
+        "sst_anomaly_signal": round(float(sst_anomaly_signal or 0.0), 2),
+        "flood_signal": round(float(flood_signal or 0.0), 2),
+        "anomaly_count": int(anomaly_count),
+        "source": source,
+    }
+    conf = earthdata_stress_confidence(
+        environmental_stress=stress,
+        anomaly_count=anomaly_count,
+        collections_online=collections_online,
+    )
+
+    if float(wildfire_signal or 0.0) >= 0.55:
+        signals.append(
+            build_market_impact_signal(
+                sector="Utilities / Insurance Risk",
+                tickers=["XLU", "XLF"],
+                bias="BEARISH",
+                reason=(
+                    "Elevated VIIRS/FIRMS active-fire detections ??? wildfire liability and "
+                    "property-casualty loss risk for utilities and insurers"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="wildfire_risk",
+            )
+        )
+
+    if float(drought_signal or 0.0) >= 0.55:
+        signals.append(
+            build_market_impact_signal(
+                sector="Agriculture Inputs / Materials",
+                tickers=["XLB", "XLI"],
+                bias="BEARISH",
+                reason=(
+                    "SMAP soil-moisture and GRACE-FO groundwater deficits point to drought "
+                    "stress on crop yields and agricultural input demand"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="drought_stress",
+            )
+        )
+
+    if float(sst_anomaly_signal or 0.0) >= 0.55:
+        signals.append(
+            build_market_impact_signal(
+                sector="Energy / Commodities",
+                tickers=["XLE", "USO", "UNG"],
+                bias="NEUTRAL",
+                reason=(
+                    "MUR sea-surface-temperature anomaly consistent with an ENSO signal ??? "
+                    "watch for energy-demand and commodity weather-risk repricing"
+                ),
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="sst_anomaly",
+            )
+        )
+
+    if float(flood_signal or 0.0) >= 0.55:
+        signals.append(
+            build_market_impact_signal(
+                sector="Supply Chain / Industrials",
+                tickers=["XLI", "SPY"],
+                bias="BEARISH",
+                reason=(
+                    "GPM IMERG precipitation extremes signal flood risk to logistics "
+                    "corridors and industrial supply chains"
+                ),
+                confidence=max(0.4, conf - 0.03),
+                evidence=evidence_base,
+                domain_context="flood_risk",
+            )
+        )
+
+    if stress >= 65.0 and not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market / Climate Risk",
+                tickers=["SPY", "XLU"],
+                bias="NEUTRAL",
+                reason=f"Elevated environmental stress ({label or 'elevated'}) ??? diffuse climate-risk watch",
+                confidence=conf,
+                evidence=evidence_base,
+                domain_context="broad_stress",
+            )
+        )
+
+    if not signals:
+        signals.append(
+            build_market_impact_signal(
+                sector="Broad Market",
+                tickers=["SPY"],
+                bias="NEUTRAL",
+                reason=f"NASA Earthdata observations show no acute macro tilt ({label or 'stable'})",
+                confidence=0.42,
+                evidence=evidence_base,
+                domain_context="baseline",
+            )
+        )
+
+    return signals
+
 def sales_consumer_market_impact_signals(
     *,
     consumer_strength: float,

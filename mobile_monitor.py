@@ -156,13 +156,18 @@ def _lan_access_url(port: int, token: str) -> str | None:
 
 def collect_status() -> dict[str, Any]:
     from agents.platform_catalog import full_agent_catalog
-    from etrade_worker import automation_paused, load_worker_state, worker_settings
+    from etrade_worker import SHORT_CONFIG_PATH, automation_paused, load_worker_state, worker_settings
 
     config_raw = _read_json(CONFIG_PATH)
     monitor_cfg = load_monitor_config()
     worker_cfg = worker_settings(CONFIG_PATH)
     worker_state = load_worker_state()
-    paused = automation_paused(CONFIG_PATH)
+    long_paused = automation_paused(CONFIG_PATH)
+    short_raw = _read_json(SHORT_CONFIG_PATH)
+    short_worker = short_raw.get("background_worker") if isinstance(short_raw.get("background_worker"), dict) else {}
+    short_paused = bool(short_worker.get("paused", False))
+    # Stop all applies to both sleeves; treat either as paused for the master switch
+    paused = long_paused or short_paused
 
     connected = False
     env = "not_configured"
@@ -234,10 +239,15 @@ def collect_status() -> dict[str, Any]:
         },
         "automation": {
             "paused": paused,
+            "both_sleeves": True,
+            "long_paused": long_paused,
+            "short_paused": short_paused,
             "auto_execute": bool(worker_cfg.get("auto_execute", True)),
             "day_trading": bool(worker_cfg.get("day_trading", True)),
             "dry_run": bool(worker_cfg.get("dry_run", False)),
             "live_trading": bool(worker_cfg.get("live_trading", True)),
+            "short_auto_execute": bool(short_worker.get("auto_execute", False)),
+            "short_day_trading": bool(short_worker.get("day_trading", True)),
         },
         "agents": {"fresh": fresh, "total": total},
         "worker": {

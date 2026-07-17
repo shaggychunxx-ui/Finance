@@ -165,5 +165,17 @@
     "plan": "Every 30 min — rebuild strategy plan from agent research",
     "live_trading": "Every 15 min — submit LIVE swing orders (market hours)",
     "day_trading": "Every 5 min — intraday entries/exits from 24h signals (market hours)"
+  },
+  "sleeve_policy": {
+    "enabled": true,
+    "shared_capital": true,
+    "long_max_deploy_pct": 75.0,
+    "short_max_deploy_pct": 35.0,
+    "long_capital_cap_mode": "pct",
+    "long_max_capital_usd": 5000.0,
+    "shared_cash_buffer_pct": 5.0,
+    "forbid_opposite_side": true,
+    "forbid_same_symbol_both_sleeves": true,
+    "coordinate_for_profit": true
   }
 }

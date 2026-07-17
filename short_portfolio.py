@@ -185,6 +185,25 @@ def generate_short_portfolio(
     except Exception:
         pass
 
+    # Joint sleeve coordination: prefer short-assigned names for this book
+    try:
+        from sleeve_coordinator import coordinate_sleeves, preferred_sleeve_for_symbol
+
+        coordinate_sleeves(total_account_value=float(notional_usd or 0) or None)
+        for t in tickers:
+            side = preferred_sleeve_for_symbol(t.symbol)
+            if side == "short":
+                t.score -= 0.25  # more negative = more short-friendly after invert
+                t.sources.add("sleeve-coord-short")
+                t.notes.append("Joint sleeve: assigned short for profit max")
+            elif side == "long":
+                t.score += 0.40  # push away from short book
+                t.sources.add("sleeve-coord-long")
+                t.notes.append("Joint sleeve: reserved for long book")
+        sources_used.append("sleeve_coordination.json")
+    except Exception:
+        pass
+
     regime = _detect_regime(agent_dir)
     mode = str(settings.get("selection_mode") or "relative").lower()
     relative_mode = mode in {"relative", "weakest", "auto"}

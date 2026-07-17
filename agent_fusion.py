@@ -111,7 +111,12 @@ DIRECTIONAL_SCORING_SKIP = frozenset({
 def agent_uses_directional_accuracy(agent_id: str) -> bool:
     """True when live directional hit-rate scoring applies to this agent."""
     aid = str(agent_id or "").replace("_", "-")
-    return aid not in DIRECTIONAL_SCORING_SKIP
+    try:
+        from agent_groups import uses_directional_scoring
+
+        return uses_directional_scoring(aid)
+    except Exception:
+        return aid not in DIRECTIONAL_SCORING_SKIP
 
 
 AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
@@ -182,7 +187,13 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
 
 
 def agent_cluster(agent_id: str) -> str:
-    return AGENT_CLUSTERS.get(str(agent_id or ""), "other")
+    aid = str(agent_id or "").replace("_", "-")
+    try:
+        from agent_groups import agent_cluster_for
+
+        return agent_cluster_for(aid)
+    except Exception:
+        return AGENT_CLUSTERS.get(aid, AGENT_CLUSTERS.get(str(agent_id or ""), "other"))
 
 
 def agent_in_domain(agent_id: str, symbol: str, *, sector_hint: str = "") -> bool:
@@ -236,7 +247,15 @@ def current_regime() -> dict[str, Any]:
 
 
 def agent_default_horizon(agent_id: str) -> str:
-    aid = str(agent_id or "")
+    aid = str(agent_id or "").replace("_", "-")
+    try:
+        from agent_groups import agent_horizon
+
+        horizon = agent_horizon(aid)
+        if horizon:
+            return horizon
+    except Exception:
+        pass
     if aid in AGENT_DEFAULT_HORIZON:
         return AGENT_DEFAULT_HORIZON[aid]
     try:
