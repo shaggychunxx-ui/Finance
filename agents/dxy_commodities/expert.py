@@ -89,6 +89,21 @@ PROXY_RETURNS_20D_PCT: dict[str, float] = {
 # considered structurally intact.
 INVERSE_CORRELATION_THRESHOLD = -0.30
 
+# Minimum paired observations required before a Pearson correlation is
+# considered statistically meaningful rather than noise.
+MIN_CORRELATION_SAMPLES = 10
+
+# Minimum daily closes needed for a valid 20-trading-day lookback plus a
+# small buffer, used to decide whether to fall back to a proxy symbol/value.
+MIN_PRICE_HISTORY = 25
+
+# Confidence calibration for DXY-commodity market signals: a base
+# confidence plus a scaled contribution from the strength of the observed
+# correlation, capped at a maximum.
+SIGNAL_BASE_CONFIDENCE = 0.45
+SIGNAL_CORRELATION_WEIGHT = 0.5
+SIGNAL_MAX_CONFIDENCE = 0.85
+
 
 @dataclass
 class CommodityCoupling:
@@ -148,7 +163,7 @@ class DollarCommoditiesExpert(BaseExpert):
     @staticmethod
     def _pearson(a: list[float], b: list[float]) -> float:
         n = min(len(a), len(b))
-        if n < 10:
+        if n < MIN_CORRELATION_SAMPLES:
             return 0.0
         a, b = a[-n:], b[-n:]
         ma, mb = statistics.mean(a), statistics.mean(b)
@@ -161,10 +176,10 @@ class DollarCommoditiesExpert(BaseExpert):
 
     def _fetch_dxy(self) -> tuple[list[float], str]:
         prices = self._closes(DXY_SYMBOL)
-        if len(prices) >= 25:
+        if len(prices) >= MIN_PRICE_HISTORY:
             return prices, DXY_SYMBOL
         prices = self._closes(DXY_ETF_PROXY)
-        if len(prices) >= 25:
+        if len(prices) >= MIN_PRICE_HISTORY:
             return prices, DXY_ETF_PROXY
         return [], ""
 
@@ -236,7 +251,10 @@ class DollarCommoditiesExpert(BaseExpert):
             bias = "NEUTRAL"
             reason = f"{name}/DXY coupling unclear ({regime}); no dominant directional driver"
 
-        confidence = min(0.85, 0.45 + abs(correlation) * 0.5)
+        confidence = min(
+            SIGNAL_MAX_CONFIDENCE,
+            SIGNAL_BASE_CONFIDENCE + abs(correlation) * SIGNAL_CORRELATION_WEIGHT,
+        )
         return build_market_signal(
             sector=f"DXY-Commodities ({sector.replace('_', ' ')})",
             tickers=[symbol],
@@ -373,6 +391,8 @@ class DollarCommoditiesExpert(BaseExpert):
         recs = [
             f"Composite DXY-commodities regime: {composite_regime} (avg corr {composite_score:+.2f})",
         ]
+        # Weakest-to-strongest correlation ordering surfaces the pairs most
+        # likely to be in (or approaching) a decoupling regime first.
         for c in sorted(couplings, key=lambda x: abs(x.correlation_20d)):
             recs.append(c.summary)
         recs.append(
