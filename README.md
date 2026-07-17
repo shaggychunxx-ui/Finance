@@ -26,6 +26,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
+| **Corporate Credit & CDS Derivatives Expert** | `run.bat corporate-credit` | [FRED HY OAS](https://fred.stlouisfed.org/series/BAMLH0A0HYM2), [Fitch Private Credit Default Rate](https://www.fitchratings.com/research/corporate-finance/fitch-ratings-us-private-credit-default-rate-remains-at-record-high-6-0-in-may-2026-15-06-2026) |
 
 ## Quick start
 
@@ -50,6 +51,7 @@ run.bat market-predictor -o output/market_predictions.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology
+run.bat corporate-credit
 ```
 
 Or with options:
@@ -399,6 +401,16 @@ Analyzes US weather hazards and hub forecasts:
 - Synoptic assessment (season context, ridge/trough, tropical, agriculture, aviation)
 - Stress scores for energy demand and market disruption
 - Sector signals (utilities, nat gas, agriculture, insurance, refining)
+
+## Corporate Credit & CDS Derivatives Expert
+
+Institutional-grade corporate credit and CDS market breakdown:
+
+- Public HY OAS (FRED `BAMLH0A0HYM2`) vs. Fitch private-credit/direct-lending default rate divergence
+- CDX.NA.HY / iTraxx Europe Crossover index mechanics: fixed 500bps coupon, upfront points, roll schedule
+- Credit-to-CDS basis trade (negative/positive basis arbitrage signal)
+- Index-tranche default-correlation pricing (equity/mezzanine/senior-super senior)
+- Macro, single-name, and capital-structure-arbitrage hedging playbooks
 
 ## Market Predictor
 

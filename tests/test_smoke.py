@@ -960,6 +960,36 @@ def test_market_predictor_cli_registered() -> None:
         app_paths.OUTPUT = original_output
 
 
+def test_corporate_credit_cli_registered() -> None:
+    """corporate-credit must appear in RUNNERS and PRINTERS and round-trip without error."""
+    import tempfile
+
+    import app_paths
+    from main import PRINTERS, RUNNERS
+
+    assert "corporate-credit" in RUNNERS, "corporate-credit missing from RUNNERS"
+    assert "corporate-credit" in PRINTERS, "corporate-credit missing from PRINTERS"
+
+    out_dir = Path(tempfile.mkdtemp()) / "output"
+    out_dir.mkdir()
+    original_output = app_paths.OUTPUT
+    app_paths.OUTPUT = out_dir
+    try:
+        out_file = out_dir / "corporate_credit.json"
+        result = RUNNERS["corporate-credit"](output=out_file)
+        assert isinstance(result, dict), "run_corporate_credit_analysis must return a dict"
+        assert "metrics" in result, "result must contain 'metrics'"
+        assert "cds_indices" in result, "result must contain 'cds_indices'"
+        assert "tranches" in result, "result must contain 'tranches'"
+        assert result["metrics"]["hy_oas_pct"] is not None
+        sidecar = out_dir / "credit_derivatives_playbook.json"
+        assert sidecar.exists(), "credit_derivatives_playbook.json sidecar must be written"
+        # Printer must not raise
+        PRINTERS["corporate-credit"](result)
+    finally:
+        app_paths.OUTPUT = original_output
+
+
 def test_market_predictor_loop_cycle_no_crash() -> None:
     """run_predictor_cycle must complete without raising even with no agent data."""
     import tempfile

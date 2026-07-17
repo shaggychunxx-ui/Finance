@@ -15,6 +15,7 @@ from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
 from agents.combined_conditional import run_combined_conditional_analysis
+from agents.corporate_credit import run_corporate_credit_analysis
 from agents.data_steward import run_data_steward_analysis
 from agents.events import run_events_analysis
 from agents.finance import run_finance_analysis
@@ -1164,6 +1165,45 @@ def _print_trading_economics(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_corporate_credit(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    basis = data.get("basis_trade", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')} — CDS & Credit Divergence")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  HY OAS: {metrics.get('hy_oas_pct')}% (implied PD {metrics.get('implied_public_default_pd_pct')}%) "
+        f"vs. private credit PCDR {metrics.get('private_credit_default_rate_pct')}%"
+    )
+    print(f"  Divergence: {metrics.get('divergence_label')} ({metrics.get('divergence_pts'):+.2f}pts)")
+    print(f"  Sources: {', '.join(meta.get('data_sources', []))}")
+    print()
+    print("  CDS indices:")
+    for i in data.get("cds_indices", []):
+        print(
+            f"    • {i.get('name')} ({i.get('region')}, {i.get('entity_count')} entities): "
+            f"{i.get('market_spread_bps')}bps vs. {i.get('coupon_bps')}bps coupon — {i.get('direction')}"
+        )
+    print()
+    print(f"  Basis trade: {basis.get('regime')} ({basis.get('basis_bps'):+.1f}bps)")
+    print()
+    print("  Tranches (low-corr / high-corr spread bps):")
+    for t in data.get("tranches", []):
+        print(
+            f"    • {t.get('name')} ({t.get('attachment_pct')}%-{t.get('detachment_pct')}%): "
+            f"{t.get('low_correlation_spread_bps')} / {t.get('high_correlation_spread_bps')}"
+        )
+    print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_sales_analytics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     kpis = data.get("kpis", {})
@@ -1264,6 +1304,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "agriculture": _print_agriculture,
     "census": _print_census,
     "combined-conditional": _print_combined_conditional,
+    "corporate-credit": _print_corporate_credit,
     "data-steward": _print_data_steward,
     "historical-sim": _print_historical_sim,
     "datascience": _print_datascience,
@@ -1295,6 +1336,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "agriculture": run_agriculture_analysis,
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
+    "corporate-credit": run_corporate_credit_analysis,
     "data-steward": run_data_steward_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
@@ -1447,6 +1489,10 @@ def main() -> int:
                 catalog = args.output.parent / "trading_economics_resources.json"
                 if catalog.exists():
                     print(f"  Trading Economics resource catalog: {catalog}")
+            if args.agent == "corporate-credit":
+                catalog = args.output.parent / "credit_derivatives_playbook.json"
+                if catalog.exists():
+                    print(f"  Credit derivatives resource catalog: {catalog}")
             if args.agent == "market-predictor":
                 print(f"  Open dashboard: open_market_predictions_dashboard.bat")
             if args.agent == "data-steward":

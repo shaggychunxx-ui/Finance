@@ -47,6 +47,7 @@ CATEGORY_BY_ID: dict[str, str] = {
     "sales-analytics": "Markets & Finance",
     "sec-filings": "Markets & Finance",
     "trading-economics": "Markets & Finance",
+    "corporate-credit": "Markets & Finance",
     "census": "Markets & Finance",
     "agriculture": "Energy & Infrastructure",
     "theoretical-probability": "Probability & Stats",

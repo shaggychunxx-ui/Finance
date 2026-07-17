@@ -203,6 +203,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "corporate-credit",
+        "agent": "Corporate Credit & CDS Derivatives Expert",
+        "primary_output": "corporate_credit.json",
+        "sidecars": ["credit_derivatives_playbook.json"],
+        "sources": ["FRED fredgraph.csv (BAMLH0A0HYM2)", "Fitch Ratings Private Credit Default Rate"],
+        "owner": "platform",
+    },
+    {
         "command": "order-execution",
         "agent": "Order Execution & Market Microstructure Expert",
         "primary_output": "order_execution.json",
