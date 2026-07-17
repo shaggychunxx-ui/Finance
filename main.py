@@ -22,6 +22,7 @@ from agents.financial_data import run_financial_data_analysis
 from agents.geopolitics import run_geopolitics_analysis
 from agents.grid import run_grid_analysis
 from agents.logistics import run_logistics_analysis
+from agents.margin_stress import run_margin_stress_analysis
 from agents.markets import run_markets_analysis
 from agents.meteorology import run_meteorology_analysis
 from agents.migration import run_migration_analysis
@@ -1012,6 +1013,46 @@ def _print_order_execution(data: dict[str, Any]) -> None:
     _print_recs(data.get("recommendations", []))
 
 
+def _print_margin_stress(data: dict[str, Any]) -> None:
+    meta = data.get("meta", {})
+    metrics = data.get("metrics", {})
+    assessment = data.get("margin_stress_assessment", {})
+    print()
+    print("=" * 60)
+    print(f"  {meta.get('agent', 'Agent')}")
+    print("=" * 60)
+    if meta.get("expert_summary"):
+        print("  Expert summary:")
+        print(f"  {meta['expert_summary']}")
+        print()
+    print(
+        f"  PDT threshold: ${meta.get('pdt_threshold_usd'):,}  |  "
+        f"Margin stress score: {metrics.get('margin_stress_score')}  |  "
+        f"Trapped-position score: {metrics.get('trapped_position_score')}"
+    )
+    print()
+    print("  Symbol margin profiles:")
+    for s in data.get("symbol_margin_profiles", [])[:8]:
+        print(
+            f"    • {s.get('symbol')} [{s.get('mmr_tier')}]: "
+            f"gap≈{s.get('max_overnight_gap_pct')}%, cushion≈${s.get('margin_cushion_usd'):,.0f}"
+        )
+    print()
+    if assessment:
+        print("  Margin stress assessment:")
+        for key in (
+            "trapped_position_signal",
+            "maintenance_squeeze_signal",
+            "phantom_dtmc_signal",
+            "blueprint_conclusion",
+        ):
+            if assessment.get(key):
+                print(f"    • {assessment[key]}")
+        print()
+    _print_signals(data.get("market_signals", []))
+    _print_recs(data.get("recommendations", []))
+
+
 def _print_research_statistics(data: dict[str, Any]) -> None:
     meta = data.get("meta", {})
     metrics = data.get("metrics", {})
@@ -1275,6 +1316,7 @@ PRINTERS: dict[str, Callable[[dict[str, Any]], None]] = {
     "geopolitics": _print_geopolitics,
     "grid": _print_grid,
     "logistics": _print_logistics,
+    "margin-stress": _print_margin_stress,
     "migration": _print_migration,
     "markets": _print_markets,
     "market-predictor": _print_market_predictor,
@@ -1306,6 +1348,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "geopolitics": run_geopolitics_analysis,
     "grid": run_grid_analysis,
     "logistics": run_logistics_analysis,
+    "margin-stress": run_margin_stress_analysis,
     "migration": run_migration_analysis,
     "markets": run_markets_analysis,
     "market-predictor": run_market_predictor_analysis,
@@ -1431,6 +1474,10 @@ def main() -> int:
                 catalog = args.output.parent / "order_type_playbook.json"
                 if catalog.exists():
                     print(f"  Order type playbook catalog: {catalog}")
+            if args.agent == "margin-stress":
+                catalog = args.output.parent / "pdt_strategy_blueprint.json"
+                if catalog.exists():
+                    print(f"  PDT strategy blueprint catalog: {catalog}")
             if args.agent == "sec-filings":
                 catalog = args.output.parent / "sec_edgar_resources.json"
                 if catalog.exists():

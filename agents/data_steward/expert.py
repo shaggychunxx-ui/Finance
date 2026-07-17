@@ -210,6 +210,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "margin-stress",
+        "agent": "PDT & Margin Stress Expert",
+        "primary_output": "margin_stress.json",
+        "sidecars": ["pdt_strategy_blueprint.json"],
+        "sources": ["Yahoo Finance Chart API"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [
