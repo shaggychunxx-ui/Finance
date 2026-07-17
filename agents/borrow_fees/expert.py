@@ -70,6 +70,15 @@ MAX_DAYS_TO_COVER_PROXY = 30.0  # cap on the days-to-cover proxy
 SQUEEZE_CTB_WEIGHT = 6.0  # weight of the CTB-rate component (out of 10) in the squeeze-risk score
 SQUEEZE_DTC_WEIGHT = 4.0  # weight of the days-to-cover component (out of 10) in the squeeze-risk score
 
+# Scarcity-score weighting: ATR (short-term realized volatility) is weighted
+# slightly higher than overnight-gap frequency since it's a steadier signal.
+ATR_WEIGHT = 0.6
+GAP_WEIGHT = 0.4
+TIER_MULTIPLIER_ABUNDANT = 0.2
+TIER_MULTIPLIER_LIMITED = 1.0
+TIER_MULTIPLIER_SCARCE = 2.6
+MIN_CTB_FLOOR_MULTIPLIER = 0.5  # floor for ctb_min_pct, as a fraction of ETB_MIN_RATE_PCT
+
 CTB_DATA_METRICS: list[dict[str, str]] = [
     {
         "metric": "Shares Available",
@@ -179,8 +188,12 @@ class BorrowFeeExpert(BaseExpert):
     @staticmethod
     def _ctb_avg_pct(atr_pct: float, gap_pct: float, tier: str) -> float:
         """Calibrated CTB-rate proxy: volatility + gap frequency + thinness -> scarcity."""
-        tier_multiplier = {"Abundant": 0.2, "Limited": 1.0, "Scarce": 2.6}[tier]
-        scarcity_score = (atr_pct * 0.6 + gap_pct * 0.4) * tier_multiplier
+        tier_multiplier = {
+            "Abundant": TIER_MULTIPLIER_ABUNDANT,
+            "Limited": TIER_MULTIPLIER_LIMITED,
+            "Scarce": TIER_MULTIPLIER_SCARCE,
+        }[tier]
+        scarcity_score = (atr_pct * ATR_WEIGHT + gap_pct * GAP_WEIGHT) * tier_multiplier
         # Map the scarcity score onto the ETB..HTB annualized-rate spectrum.
         rate = ETB_MIN_RATE_PCT + scarcity_score * SCARCITY_TO_CTB_MULTIPLIER
         return round(min(max(rate, ETB_MIN_RATE_PCT), HTB_MAX_RATE_PCT), 2)
@@ -218,7 +231,7 @@ class BorrowFeeExpert(BaseExpert):
         # Min/max spread widens with scarcity — thin, hard-to-borrow names see
         # much more dispersion across lenders than deep-pool mega-caps.
         spread_pct = ctb_avg_pct * (ABUNDANT_SPREAD_FACTOR if shares_available_tier == "Abundant" else SCARCE_SPREAD_FACTOR)
-        ctb_min_pct = round(max(ETB_MIN_RATE_PCT * 0.5, ctb_avg_pct - spread_pct), 2)
+        ctb_min_pct = round(max(ETB_MIN_RATE_PCT * MIN_CTB_FLOOR_MULTIPLIER, ctb_avg_pct - spread_pct), 2)
         ctb_max_pct = round(min(HTB_MAX_RATE_PCT, ctb_avg_pct + spread_pct), 2)
 
         # Days to Cover proxy: thinner dollar volume relative to position size
