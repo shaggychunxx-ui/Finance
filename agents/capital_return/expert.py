@@ -319,7 +319,7 @@ class CapitalReturnCandidate:
     payout_ratio_pct: float
     roic_pct: float
     wacc_pct: float
-    reinvestment_spread_pct: float
+    roic_wacc_spread_pct: float
     capital_efficiency_label: str
     price: float | None
     day_chg_pct: float | None
@@ -412,6 +412,29 @@ class CapitalReturnExpert(BaseExpert):
             return "well-covered — low cut risk"
         return "moderate payout coverage"
 
+    @staticmethod
+    def _engine_mix_counts(
+        candidates: list[CapitalReturnCandidate],
+    ) -> tuple[int, int, int]:
+        """Return (dividend_only, buyback_only, dual_engine) counts for a cohort."""
+        dividend_only = sum(
+            1
+            for c in candidates
+            if c.dividend_yield_pct > 0 and c.buyback_yield_pct <= MIN_YIELD_THRESHOLD_PCT
+        )
+        buyback_only = sum(
+            1
+            for c in candidates
+            if c.buyback_yield_pct > 0 and c.dividend_yield_pct <= MIN_YIELD_THRESHOLD_PCT
+        )
+        dual_engine = sum(
+            1
+            for c in candidates
+            if c.dividend_yield_pct > MIN_YIELD_THRESHOLD_PCT
+            and c.buyback_yield_pct > MIN_YIELD_THRESHOLD_PCT
+        )
+        return dividend_only, buyback_only, dual_engine
+
     def _fetch_candidate(self, symbol: str, profile: dict[str, Any]) -> CapitalReturnCandidate:
         meta = self.fetch_yahoo_chart_meta(symbol, range_="1mo", interval="1d")
         time.sleep(self.delay_seconds)
@@ -441,7 +464,7 @@ class CapitalReturnExpert(BaseExpert):
             payout_ratio_pct=payout_ratio,
             roic_pct=roic,
             wacc_pct=wacc,
-            reinvestment_spread_pct=round(roic - wacc, 2),
+            roic_wacc_spread_pct=round(roic - wacc, 2),
             capital_efficiency_label=self._capital_efficiency_label(roic, wacc),
             price=round(float(price), 2) if price is not None else None,
             day_chg_pct=day_chg,
@@ -593,15 +616,7 @@ class CapitalReturnExpert(BaseExpert):
             if candidates
             else 0.0
         )
-        dividend_only = sum(
-            1 for c in candidates if c.dividend_yield_pct > 0 and c.buyback_yield_pct <= MIN_YIELD_THRESHOLD_PCT
-        )
-        buyback_only = sum(
-            1 for c in candidates if c.buyback_yield_pct > 0 and c.dividend_yield_pct <= MIN_YIELD_THRESHOLD_PCT
-        )
-        dual_engine = sum(
-            1 for c in candidates if c.dividend_yield_pct > MIN_YIELD_THRESHOLD_PCT and c.buyback_yield_pct > MIN_YIELD_THRESHOLD_PCT
-        )
+        dividend_only, buyback_only, dual_engine = self._engine_mix_counts(candidates)
 
         ranked = sorted(candidates, key=lambda c: -c.total_shareholder_yield_pct)
         summary = (
@@ -662,7 +677,7 @@ class CapitalReturnExpert(BaseExpert):
                 "payout_ratio_pct": c.payout_ratio_pct,
                 "roic_pct": c.roic_pct,
                 "wacc_pct": c.wacc_pct,
-                "reinvestment_spread_pct": c.reinvestment_spread_pct,
+                "roic_wacc_spread_pct": c.roic_wacc_spread_pct,
                 "capital_efficiency_label": c.capital_efficiency_label,
                 "price": c.price,
                 "day_chg_pct": c.day_chg_pct,
