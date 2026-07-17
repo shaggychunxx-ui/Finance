@@ -481,7 +481,7 @@ class DarkPoolVolumeProfileExpert(BaseExpert):
             recommendations=self.append_memory_recommendations(
                 self._recommendations(symbols, assessment)
             ),
-            data_source="Yahoo Finance Chart API (6mo daily OHLCV) — dark-pool/TRF signals are proxies, not a live FINRA TRF/ADF feed",
+            data_source="Yahoo Finance Chart API (6mo daily OHLCV) - dark-pool/TRF signals are proxies, not a live FINRA TRF/ADF feed",
         )
 
     def to_dict(self, report: DarkPoolVolumeProfileReport) -> dict[str, Any]:
