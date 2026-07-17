@@ -387,7 +387,7 @@ class EquityStructuringAnalyst(BaseExpert):
         for offering_type, count in ranked[:3]:
             if count < 1:
                 continue
-            _, default_bias = type_lookup.get(offering_type, (["SPY"], "NEUTRAL"))
+            default_tickers, default_bias = type_lookup.get(offering_type, (["SPY"], "NEUTRAL"))
             type_tickers = sorted({o.ticker for o in offerings if o.offering_type == offering_type and o.ticker})
             type_biases = [o.bias for o in offerings if o.offering_type == offering_type and o.bias]
             bias = max(set(type_biases), key=type_biases.count) if type_biases else default_bias
@@ -395,7 +395,7 @@ class EquityStructuringAnalyst(BaseExpert):
             signals.append(
                 build_market_signal(
                     sector=label,
-                    tickers=type_tickers or type_lookup.get(offering_type, (["SPY"], "NEUTRAL"))[0],
+                    tickers=type_tickers or default_tickers,
                     bias=bias,
                     reason=f"{count} {label.lower()} filing(s) in {self.lookback_days}-day window",
                     confidence=min(0.85, 0.42 + count * 0.06 + pressure_score / 200.0),
@@ -438,12 +438,13 @@ class EquityStructuringAnalyst(BaseExpert):
 
         score, label = self._pressure_score(by_offering_type, online)
         top_category = max(by_category, key=by_category.get) if by_category else "none"
+        top_category_count = by_category.get(top_category, 0) if by_category else 0
 
         summary = (
             f"Tracking {len(resources)} EDGAR data sources. "
             f"Surfaced {len(offerings)} equity structuring signals from {', '.join(sources)}. "
             f"Leading category: {top_category.replace('-', ' ')} "
-            f"({by_category.get(top_category, 0)}). "
+            f"({top_category_count}). "
             f"Dilution pressure: {label} (score {score})."
         )
 
