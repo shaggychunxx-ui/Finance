@@ -61,6 +61,15 @@ MODERATE_LIQUIDITY_USD = 25_000_000
 
 SQUEEZE_SCORE_THRESHOLD = 6.5  # 0-10 squeeze-risk score that flags "ticking time bomb" names
 
+# Scarcity/CTB-rate proxy tuning constants (see _ctb_avg_pct/_analyze_symbol).
+SCARCITY_TO_CTB_MULTIPLIER = 8.0  # scales the volatility/gap/liquidity scarcity score into an annualized CTB %
+ABUNDANT_SPREAD_FACTOR = 0.15  # CTB min/max spread (as a fraction of the average) for Abundant lending pools
+SCARCE_SPREAD_FACTOR = 0.4  # wider CTB min/max spread for Limited/Scarce lending pools
+DAYS_TO_COVER_SCALING_FACTOR = 15.0  # scales sample-position-vs-dollar-volume ratio into a days-to-cover proxy
+MAX_DAYS_TO_COVER_PROXY = 30.0  # cap on the days-to-cover proxy
+SQUEEZE_CTB_WEIGHT = 6.0  # weight of the CTB-rate component (out of 10) in the squeeze-risk score
+SQUEEZE_DTC_WEIGHT = 4.0  # weight of the days-to-cover component (out of 10) in the squeeze-risk score
+
 CTB_DATA_METRICS: list[dict[str, str]] = [
     {
         "metric": "Shares Available",
@@ -173,7 +182,7 @@ class BorrowFeeExpert(BaseExpert):
         tier_multiplier = {"Abundant": 0.2, "Limited": 1.0, "Scarce": 2.6}[tier]
         scarcity_score = (atr_pct * 0.6 + gap_pct * 0.4) * tier_multiplier
         # Map the scarcity score onto the ETB..HTB annualized-rate spectrum.
-        rate = ETB_MIN_RATE_PCT + scarcity_score * 8.0
+        rate = ETB_MIN_RATE_PCT + scarcity_score * SCARCITY_TO_CTB_MULTIPLIER
         return round(min(max(rate, ETB_MIN_RATE_PCT), HTB_MAX_RATE_PCT), 2)
 
     def _analyze_symbol(self, symbol: str, name: str) -> SymbolBorrowFee | None:
@@ -208,14 +217,18 @@ class BorrowFeeExpert(BaseExpert):
         borrow_category = "Hard-to-Borrow (HTB)" if ctb_avg_pct >= HTB_MIN_RATE_PCT else "Easy-to-Borrow (ETB)"
         # Min/max spread widens with scarcity — thin, hard-to-borrow names see
         # much more dispersion across lenders than deep-pool mega-caps.
-        spread_pct = ctb_avg_pct * (0.15 if shares_available_tier == "Abundant" else 0.4)
+        spread_pct = ctb_avg_pct * (ABUNDANT_SPREAD_FACTOR if shares_available_tier == "Abundant" else SCARCE_SPREAD_FACTOR)
         ctb_min_pct = round(max(ETB_MIN_RATE_PCT * 0.5, ctb_avg_pct - spread_pct), 2)
         ctb_max_pct = round(min(HTB_MAX_RATE_PCT, ctb_avg_pct + spread_pct), 2)
 
         # Days to Cover proxy: thinner dollar volume relative to position size
         # implies more days needed to unwind a short without moving the tape.
         days_to_cover_proxy = round(
-            min(SAMPLE_POSITION_USD / max(avg_dollar_volume, 1.0) * 15.0, 30.0), 1
+            min(
+                SAMPLE_POSITION_USD / max(avg_dollar_volume, 1.0) * DAYS_TO_COVER_SCALING_FACTOR,
+                MAX_DAYS_TO_COVER_PROXY,
+            ),
+            1,
         )
 
         shares_shorted = SAMPLE_POSITION_USD / last_close if last_close else 0.0
@@ -225,8 +238,8 @@ class BorrowFeeExpert(BaseExpert):
 
         squeeze_risk_score = round(
             min(
-                (ctb_avg_pct / HTB_MAX_RATE_PCT) * 6.0
-                + (days_to_cover_proxy / 30.0) * 4.0,
+                (ctb_avg_pct / HTB_MAX_RATE_PCT) * SQUEEZE_CTB_WEIGHT
+                + (days_to_cover_proxy / MAX_DAYS_TO_COVER_PROXY) * SQUEEZE_DTC_WEIGHT,
                 10.0,
             ),
             1,
