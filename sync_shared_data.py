@@ -72,6 +72,11 @@ def _should_skip_pipeline_file(rel: Path) -> bool:
     # history/ holds trade journals owned by broker
     if "history" in rel.parts:
         return True
+    # Large snapshot trees and temp dirs should never cross the share
+    for part in rel.parts:
+        low = str(part).lower()
+        if low in {"archive", "snapshots", "_agent_tmp", "__pycache__", ".venv"}:
+            return True
     return False
 
 
