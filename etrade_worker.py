@@ -171,10 +171,11 @@ def set_automation_paused(
     *,
     both_sleeves: bool = True,
 ) -> dict[str, Any]:
-    """Pause or resume automation (desktop Stop all / Resume all).
+    """Pause or resume **trading** only (desktop Stop all / Resume all).
 
-    By default this stops **both** the buy (long) app and the short app,
-    including their headless background workers — one Stop all for the pair.
+    Stops swing auto-execute, day trading, and live order submission on both
+    sleeves. Agent **pipeline** on a dual-PC pipeline host keeps running
+    (BOXONE always-on); only the broker host honors this for order placement.
     """
     long_path = CONFIG_PATH
     short_path = SHORT_CONFIG_PATH
@@ -199,12 +200,12 @@ def set_automation_paused(
             )
 
     msg = (
-        "All automation stopped on buy + short apps (and workers)."
+        "Trading stopped on buy + short apps (pipeline keeps running if remote)."
         if paused
-        else "Automation resumed on buy + short apps."
+        else "Trading resumed on buy + short apps."
     )
     if not both_sleeves:
-        msg = "All automation stopped." if paused else "Automation resumed."
+        msg = "Trading stopped." if paused else "Trading resumed."
     _log(msg)
 
     # Prefer long-sleeve flags; include both sleeve results.
@@ -1369,25 +1370,195 @@ def _run_plan_and_orders(client: ETradeClient, *, force: bool = False, config_pa
     return _run_live_execute(client, force=force, config_path=config_path)
 
 
+def _deployment_role(config_path: Path = CONFIG_PATH) -> str:
+    try:
+        from deployment import role as deploy_role
+
+        return str(deploy_role(config_path))
+    except Exception:
+        return "all"
+
+
+def _sync_shared(config_path: Path = CONFIG_PATH, *, phase: str = "") -> None:
+    """Best-effort dual-PC SMB sync; never raises into the service loop."""
+    try:
+        from deployment import load_deployment
+        from sync_shared_data import sync_for_role
+
+        dep = load_deployment(config_path)
+        r = str(dep.get("role") or "all")
+        if r == "all" and not str(dep.get("shared_root") or "").strip():
+            return
+        result = sync_for_role(r, config_path=config_path)
+        copied = 0
+        for key, val in result.items():
+            if isinstance(val, dict):
+                copied += int(val.get("copied") or 0)
+        if phase:
+            _log(f"Shared sync ({phase}): role={r} files_touched≈{copied}")
+    except Exception as exc:
+        _log(f"Shared sync note: {exc}")
+
+
+def _publish_broker_market_data(
+    client: ETradeClient,
+    *,
+    config_path: Path = CONFIG_PATH,
+) -> None:
+    """Fetch live quotes + account snapshot; push to SMB for the pipeline host."""
+    try:
+        from deployment import load_deployment
+
+        dep = load_deployment(config_path)
+        if not dep.get("publish_quotes", True):
+            return
+        if _deployment_role(config_path) == "pipeline":
+            return
+    except Exception:
+        dep = {}
+
+    try:
+        from etrade_market_enhancer import (
+            enhancement_settings,
+            fetch_etrade_quotes,
+            _load_quotes_payload,
+            _merge_quote_maps,
+            _write_quotes_payload,
+        )
+        from agents.enhancement import (
+            ENHANCED_QUOTES_FILE,
+            collect_enhancement_candidates,
+            collect_proactive_enhancement_candidates,
+            select_symbols,
+        )
+    except Exception as exc:
+        _log(f"Quote publish import note: {exc}")
+        return
+
+    settings = enhancement_settings(config_path)
+    if not settings.get("enabled", True):
+        return
+
+    out = OUTPUT
+    out.mkdir(parents=True, exist_ok=True)
+    candidates = collect_enhancement_candidates(out, include_proactive=True)
+    if not candidates:
+        candidates = collect_proactive_enhancement_candidates(out)
+    symbols = select_symbols(
+        candidates,
+        max_symbols=int(settings.get("max_symbols", 50)),
+        min_priority=float(settings.get("min_priority", 0.4)),
+    )
+    quotes: dict[str, Any] = {}
+    if symbols and not (settings.get("require_production", True) and client.config.sandbox):
+        try:
+            quotes = fetch_etrade_quotes(
+                client,
+                symbols,
+                detail_flag=str(settings.get("detail_flag", "ALL")),
+            )
+        except Exception as exc:
+            _log(f"Quote fetch note: {exc}")
+        if quotes:
+            quotes_path = out / ENHANCED_QUOTES_FILE
+            prior = (
+                _load_quotes_payload(quotes_path)
+                if settings.get("merge_existing_quotes", True)
+                else {}
+            )
+            merged = _merge_quote_maps(
+                prior.get("quotes") if isinstance(prior.get("quotes"), dict) else {},
+                quotes,
+            )
+            _write_quotes_payload(
+                out,
+                quotes=merged,
+                requested=symbols,
+                candidates=candidates if isinstance(candidates, list) else [],
+                phase="broker_publish",
+                prior=prior,
+            )
+            _log(f"Published {len(quotes)} live quote(s) for pipeline share.")
+
+    # Account snapshot so pipeline / UI peers can size without broker secrets
+    try:
+        acct = _resolve_account(client, config_path)
+        if acct:
+            key = acct["account_id_key"]
+            balance = client.get_balance(key) or {}
+            positions = client.get_portfolio(key) or []
+            snap = {
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "account_id_key": key,
+                "display_label": acct.get("display_label") or acct.get("account_name"),
+                "balance": {
+                    "total_account_value": balance.get("total_account_value"),
+                    "cash_buying_power": balance.get("cash_buying_power")
+                    or balance.get("buying_power"),
+                    "cash": balance.get("cash"),
+                },
+                "positions": positions if isinstance(positions, list) else [],
+                "sandbox": bool(client.config.sandbox),
+            }
+            (out / "account_snapshot.json").write_text(
+                json.dumps(snap, indent=2, default=str), encoding="utf-8"
+            )
+    except Exception as exc:
+        _log(f"Account snapshot note: {exc}")
+
+    try:
+        from sync_shared_data import push_broker_feed
+
+        push_broker_feed(config_path=config_path)
+    except Exception as exc:
+        _log(f"Broker feed push note: {exc}")
+
+
 def run_full_cycle(*, force: bool = False, config_path: Path = CONFIG_PATH) -> int:
-    if automation_paused(config_path):
-        _log("Automation paused — worker cycle skipped.")
-        return 0
+    role = _deployment_role(config_path)
+    trading_paused = automation_paused(config_path)
+    # Dual-PC: pause stops trading only. Pipeline host keeps researching.
+    if trading_paused and role == "broker":
+        _log("Trading paused — broker cycle will sync + quotes only (no orders).")
     if not acquire_worker_lock():
         return 0
 
     exit_code = 0
     try:
-        _log("=== E*TRADE background worker started ===")
-        pipeline_ran = _run_pipeline(force=force, config_path=config_path)
-        client = _connect_client(config_path)
-        plan_ran = False
-        if client:
-            plan_ran = _run_plan_and_orders(client, force=force, config_path=config_path)
-            _run_day_trading(client, force=force, config_path=config_path)
-        else:
-            _log("Skipping plan/orders - not connected to E*TRADE.")
+        _log(f"=== E*TRADE background worker started (role={role}) ===")
+        _sync_shared(config_path, phase="pre")
 
+        pipeline_ran = False
+        if role in {"pipeline", "all"}:
+            pipeline_ran = _run_pipeline(force=force, config_path=config_path)
+            if role == "pipeline":
+                try:
+                    from sync_shared_data import push_pipeline_artifacts
+
+                    push_pipeline_artifacts(config_path=config_path)
+                except Exception as exc:
+                    _log(f"Pipeline push note: {exc}")
+
+        plan_ran = False
+        client = None
+        if role in {"broker", "all"}:
+            client = _connect_client(config_path)
+            if client:
+                try:
+                    _publish_broker_market_data(client, config_path=config_path)
+                except Exception as exc:
+                    _log(f"Broker market data note: {exc}")
+                if not trading_paused:
+                    plan_ran = _run_plan_and_orders(client, force=force, config_path=config_path)
+                    _run_day_trading(client, force=force, config_path=config_path)
+                else:
+                    _log("Skipping plan/orders — trading paused.")
+            else:
+                _log("Skipping plan/orders - not connected to E*TRADE.")
+        else:
+            _log("Pipeline role — skipping E*TRADE plan/orders on this host.")
+
+        _sync_shared(config_path, phase="post")
         if not pipeline_ran and not plan_ran and client:
             _log("Nothing due this cycle.")
         _log("=== Worker cycle finished ===")
@@ -1412,8 +1583,11 @@ def run_day_trading_for_client(
 
 
 def run_day_trading_cycle(*, force: bool = False, config_path: Path = CONFIG_PATH) -> int:
+    if _deployment_role(config_path) == "pipeline":
+        _log("Pipeline role — day trading not run on this host.")
+        return 0
     if automation_paused(config_path):
-        _log("Automation paused — day trading skipped.")
+        _log("Trading paused — day trading skipped.")
         return 0
     if not acquire_worker_lock(max_age_seconds=900):
         return 0
@@ -1421,6 +1595,7 @@ def run_day_trading_cycle(*, force: bool = False, config_path: Path = CONFIG_PAT
     exit_code = 0
     try:
         _log("=== Day trading task started ===")
+        _sync_shared(config_path, phase="pre-day")
         client = _connect_client(config_path)
         if not client:
             return 1
@@ -1437,8 +1612,11 @@ def run_day_trading_cycle(*, force: bool = False, config_path: Path = CONFIG_PAT
 
 def run_live_trading_cycle(*, force: bool = False, config_path: Path = CONFIG_PATH) -> int:
     """Scheduled task entry: submit live orders from the saved strategy plan."""
+    if _deployment_role(config_path) == "pipeline":
+        _log("Pipeline role — live trading not run on this host.")
+        return 0
     if automation_paused(config_path):
-        _log("Automation paused — live trading skipped.")
+        _log("Trading paused — live trading skipped.")
         return 0
     if not acquire_worker_lock(max_age_seconds=900):
         return 0
@@ -1451,6 +1629,7 @@ def run_live_trading_cycle(*, force: bool = False, config_path: Path = CONFIG_PA
             _log("Live trading disabled in background_worker config.")
             return 0
 
+        _sync_shared(config_path, phase="pre-live")
         client = _connect_client(config_path)
         if not client:
             return 1
@@ -1652,6 +1831,7 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
 
     _clear_stale_pipeline_state()
     settings = worker_settings(config_path)
+    role = _deployment_role(config_path)
     pipeline_min = int(settings.get("pipeline_interval_minutes", 5))
     off_hours_min = int(settings.get("pipeline_off_hours_interval_minutes", 45))
     plan_min = int(settings.get("plan_interval_minutes", 30))
@@ -1660,75 +1840,132 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
     live = "ON" if settings.get("live_trading", True) and not settings.get("dry_run") else "OFF"
     day_on = "ON" if settings.get("day_trading", True) else "OFF"
     off_hours = "ON" if _pipeline_runs_off_hours(settings) else "OFF"
+    try:
+        from deployment import deployment_summary
+
+        _log(f"Deployment: {deployment_summary(config_path)}")
+    except Exception:
+        _log(f"Deployment role={role}")
     _log(
-        f"Background service started - agents every {pipeline_min} min (market) / "
+        f"Background service started (role={role}) - agents every {pipeline_min} min (market) / "
         f"{off_hours_min} min off-hours ({off_hours}), "
         f"plan every {plan_min} min, live trading every {execute_min} min ({live}), "
-        f"day trading every {day_min} min ({day_on})."
+        f"day trading every {day_min} min ({day_on}). "
+        f"Stop-all pauses trading only; pipeline host stays always-on."
     )
     _log(f"Log file: {LOG_FILE}")
     _log(f"Immortal service loop active (pid {os.getpid()}).")
 
     import threading
 
-    threading.Thread(
-        target=_watchdog_kill_stale_pipeline,
-        kwargs={"stall_sec": float(PIPELINE_STALL_SEC)},
-        daemon=True,
-        name="pipeline-watchdog",
-    ).start()
+    if role in {"pipeline", "all"}:
+        threading.Thread(
+            target=_watchdog_kill_stale_pipeline,
+            kwargs={"stall_sec": float(PIPELINE_STALL_SEC)},
+            daemon=True,
+            name="pipeline-watchdog",
+        ).start()
+        _log(f"Pipeline watchdog armed (stall {PIPELINE_STALL_SEC}s).")
     threading.Thread(
         target=_worker_heartbeat_loop,
         daemon=True,
         name="worker-heartbeat",
     ).start()
-    _log(f"Pipeline watchdog armed (stall {PIPELINE_STALL_SEC}s) + heartbeat thread.")
+    _log("Heartbeat thread armed.")
 
     client: ETradeClient | None = None
     client_refreshed_at = 0.0
+    last_quote_publish = 0.0
+    try:
+        from deployment import load_deployment
+
+        quote_every = float(load_deployment(config_path).get("quote_publish_interval_seconds") or 60)
+    except Exception:
+        quote_every = 60.0
 
     try:
         while True:
             try:
-                if automation_paused(config_path):
-                    time.sleep(120)
-                    continue
+                trading_paused = automation_paused(config_path)
 
                 # Recover hung cycles (no progress for 2 minutes)
-                _clear_stale_pipeline_state(max_progress_age_sec=120)
+                if role in {"pipeline", "all"}:
+                    _clear_stale_pipeline_state(max_progress_age_sec=120)
 
-                if not client or (time.time() - client_refreshed_at) > 1800:
+                # Shared data: pull peer artifacts every cycle
+                _sync_shared(config_path, phase="loop")
+
+                # --- PIPELINE HOST (BOXONE) or all ---
+                if role in {"pipeline", "all"}:
                     try:
-                        client = _connect_client(config_path)
-                        client_refreshed_at = time.time()
-                    except Exception as exc:
-                        _log(f"E*TRADE connect failed (will retry): {exc}")
-                        client = None
-
-                try:
-                    _run_pipeline(config_path=config_path)
-                except Exception as exc:
-                    _log(f"Pipeline cycle error (continuing): {exc}")
-                    _log(traceback.format_exc()[-800:])
-                    _clear_stale_pipeline_state(max_progress_age_sec=0)
-
-                try:
-                    _run_live_scoring(config_path=config_path)
-                except Exception as exc:
-                    _log(f"Live scoring error (continuing): {exc}")
-
-                if client:
-                    for label, fn in (
-                        ("plan", lambda: _run_plan_build(client, config_path=config_path)),
-                        ("live execute", lambda: _run_live_execute(client, config_path=config_path)),
-                        ("day trading", lambda: _run_day_trading(client, config_path=config_path)),
-                    ):
+                        # Prefer shared live quotes before agents (market hours)
                         try:
-                            fn()
+                            from sync_shared_data import pull_broker_feed
+
+                            if role == "pipeline":
+                                pull_broker_feed(config_path=config_path)
+                        except Exception:
+                            pass
+                        _run_pipeline(config_path=config_path)
+                        if role == "pipeline":
+                            try:
+                                from sync_shared_data import push_pipeline_artifacts
+
+                                push_pipeline_artifacts(config_path=config_path)
+                            except Exception as exc:
+                                _log(f"Pipeline push note: {exc}")
+                    except Exception as exc:
+                        _log(f"Pipeline cycle error (continuing): {exc}")
+                        _log(traceback.format_exc()[-800:])
+                        _clear_stale_pipeline_state(max_progress_age_sec=0)
+
+                    try:
+                        _run_live_scoring(config_path=config_path)
+                    except Exception as exc:
+                        _log(f"Live scoring error (continuing): {exc}")
+
+                # --- BROKER HOST (AI-CODING) or all ---
+                if role in {"broker", "all"}:
+                    if not client or (time.time() - client_refreshed_at) > 1800:
+                        try:
+                            client = _connect_client(config_path)
+                            client_refreshed_at = time.time()
                         except Exception as exc:
-                            _log(f"{label} error (continuing): {exc}")
-                else:
-                    _log("Plan/live/day trading waiting for E*TRADE connection.")
+                            _log(f"E*TRADE connect failed (will retry): {exc}")
+                            client = None
+
+                    if client:
+                        if (time.time() - last_quote_publish) >= max(15.0, quote_every):
+                            try:
+                                _publish_broker_market_data(client, config_path=config_path)
+                                last_quote_publish = time.time()
+                            except Exception as exc:
+                                _log(f"Quote publish error (continuing): {exc}")
+
+                        if trading_paused:
+                            _log("Trading paused — orders skipped (pipeline/UI data still sync).")
+                        else:
+                            for label, fn in (
+                                ("plan", lambda: _run_plan_build(client, config_path=config_path)),
+                                (
+                                    "live execute",
+                                    lambda: _run_live_execute(client, config_path=config_path),
+                                ),
+                                (
+                                    "day trading",
+                                    lambda: _run_day_trading(client, config_path=config_path),
+                                ),
+                            ):
+                                try:
+                                    fn()
+                                except Exception as exc:
+                                    _log(f"{label} error (continuing): {exc}")
+                    else:
+                        _log("Broker waiting for E*TRADE connection (GUI OAuth once).")
+                elif trading_paused:
+                    # pipeline-only host: pause is a no-op for research
+                    pass
+
             except KeyboardInterrupt:
                 raise
             except BaseException as exc:
@@ -1750,7 +1987,10 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
                 sleep_sec = _next_service_sleep_seconds(config_path)
             except Exception:
                 sleep_sec = 60.0
-            _log(f"Service heartbeat — sleeping {sleep_sec:.0f}s (pid {os.getpid()}).")
+            # Broker-only can sleep a bit longer when trading paused
+            if role == "broker" and automation_paused(config_path):
+                sleep_sec = max(float(sleep_sec), 30.0)
+            _log(f"Service heartbeat — sleeping {sleep_sec:.0f}s (pid {os.getpid()}, role={role}).")
             time.sleep(max(15.0, float(sleep_sec)))
     except KeyboardInterrupt:
         _log(f"Background service KeyboardInterrupt (pid {os.getpid()}).")

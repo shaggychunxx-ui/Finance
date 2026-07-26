@@ -3,6 +3,12 @@
 Location: C:\Users\Box One\Finance
 Remote:   https://github.com/shaggychunxx-ui/Finance
 
+Dual-PC (see DUAL_PC_DEPLOYMENT.md):
+  AI-CODING  role=broker   → UI + E*TRADE + orders
+  BOXONE     role=pipeline → agents always-on; no orders
+  Share: C:\Users\Public\HelperDrop\FinanceShare
+         (UNC from BOXONE: \\10.10.10.1\HelperDrop\FinanceShare)
+
 How to update:
   1. Open this folder in GitHub Desktop (or: git pull)
   2. Restart background worker if needed:

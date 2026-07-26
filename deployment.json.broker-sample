@@ -1,0 +1,9 @@
+{
+  "role": "broker",
+  "shared_root": "C:\\Users\\Public\\HelperDrop\\FinanceShare",
+  "quote_publish_interval_seconds": 60,
+  "sync_interval_seconds": 30,
+  "publish_quotes": true,
+  "consume_shared_quotes": true,
+  "prefer_dry_run": true
+}

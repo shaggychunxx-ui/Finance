@@ -651,10 +651,10 @@ class UnifiedTraderApp:
 
     def _stop_all(self) -> None:
         if not messagebox.askyesno(
-            "Stop all",
-            "Stop all automation on BOTH buy and short apps?\n\n"
-            "Halts agents, strategy, swing trades, and day trading "
-            "for long + short (and both headless workers) until you resume.",
+            "Stop trading",
+            "Stop TRADING on BOTH buy and short apps?\n\n"
+            "Halts swing orders and day trading until you resume.\n"
+            "Agent pipeline on BOXONE (if dual-PC) keeps running.",
         ):
             return
         try:
@@ -674,7 +674,10 @@ class UnifiedTraderApp:
                 app._apply_automation_ui_state()
             except Exception:
                 pass
-        self._status.configure(text="All automation stopped on buy + short apps.", fg=WARN)
+        self._status.configure(
+            text="Trading stopped on buy + short (pipeline keeps running if remote).",
+            fg=WARN,
+        )
         self._refresh_dashboard()
 
     def _resume_all(self) -> None:

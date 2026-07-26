@@ -10,6 +10,13 @@ Desktop app that connects Finance agent research to your E*TRADE brokerage accou
 4. **Settings** → Connect → confirm account (each sleeve can use its own account and dry-run flag).
 5. Start in **Sandbox** / practice mode before going live.
 
+### Dual-PC (recommended team setup)
+
+- **AI-CODING:** UI + E\*TRADE + orders (`deployment.role = broker`)
+- **BOXONE:** agent pipeline only (`deployment.role = pipeline`), always on
+- Shared research/quotes over SMB — see **[DUAL_PC_DEPLOYMENT.md](DUAL_PC_DEPLOYMENT.md)**
+- **Stop all** pauses trading only; pipeline keeps running on BOXONE
+
 Optional: **Install ETrade Background.bat** keeps agents and trading running when the GUI is closed.
 
 ## Tabs
