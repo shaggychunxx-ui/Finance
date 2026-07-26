@@ -3,26 +3,19 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "ROOT=%~dp0"
-set "PYW=%ROOT%.venv\Scripts\pythonw.exe"
-set "PY=%ROOT%.venv\Scripts\python.exe"
-set "GUI=%ROOT%unified_trader_gui.py"
+set "PYW=C:\Users\Box One\AppData\Local\Programs\Python\Python312\pythonw.exe"
+if not exist "%PYW%" set "PYW=%ROOT%.venv\Scripts\pythonw.exe"
+if not exist "%PYW%" set "PYW=%ROOT%.venv\Scripts\python.exe"
 
-if not exist "%PY%" (
-    echo Setting up environment...
-    python -m venv "%ROOT%.venv"
-    if errorlevel 1 goto :fail
-    "%PY%" -m pip install -r "%ROOT%requirements.txt"
-    if errorlevel 1 goto :fail
+set "VIRTUAL_ENV=%ROOT%.venv"
+set "PYTHONPATH=%ROOT%;%ROOT%.venv\Lib\site-packages"
+set "PATH=%ROOT%.venv\Scripts;%PATH%"
+
+if not exist "%PYW%" (
+  echo Python not found. Install Python 3.10+ or create .venv
+  pause
+  exit /b 1
 )
 
-if exist "%PYW%" (
-    start "ETradeUnified" /D "%ROOT%" "%PYW%" "%GUI%"
-) else (
-    start "ETradeUnified" /D "%ROOT%" "%PY%" "%GUI%"
-)
+start "ETradeUnified" /D "%ROOT%" "%PYW%" "%ROOT%unified_trader_gui.py"
 exit /b 0
-
-:fail
-echo Setup failed. Ensure Python 3.10+ is installed.
-pause
-exit /b 1

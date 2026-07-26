@@ -1,0 +1,18 @@
+﻿E*TRADE runs from this Finance git clone (Option A).
+
+Location: C:\Users\Box One\Finance
+Remote:   https://github.com/shaggychunxx-ui/Finance
+
+How to update:
+  1. Open this folder in GitHub Desktop (or: git pull)
+  2. Restart background worker if needed:
+     double-click "Start ETrade Background Service.vbs"
+     or reboot (Startup + Run key auto-start)
+
+Secrets stay local (gitignored):
+  etrade_config.json, etrade_tokens.json, short_etrade_config.json,
+  config.json, ui_prefs.json, output/
+
+Desktop shortcut and Startup now point here.
+Old install (optional delete after testing):
+  %LOCALAPPDATA%\Programs\ETrade Unified Trader

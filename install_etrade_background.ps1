@@ -34,7 +34,8 @@ function Install-StartupShortcut {
         [string]$LinkPath,
         [string]$TargetPath,
         [string]$Arguments = "",
-        [string]$Description
+        [string]$Description,
+        [int]$WindowStyle = 7
     )
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($LinkPath)
@@ -42,6 +43,8 @@ function Install-StartupShortcut {
     $shortcut.Arguments = $Arguments
     $shortcut.WorkingDirectory = $root
     $shortcut.Description = $Description
+    # 7 = minimized (reduces flash for background launchers)
+    $shortcut.WindowStyle = $WindowStyle
     if (Test-Path $iconStable) { $shortcut.IconLocation = "$iconStable,0" }
     elseif (Test-Path (Join-Path $root "app_icon.ico")) {
         $shortcut.IconLocation = "$(Join-Path $root 'app_icon.ico'),0"
@@ -51,7 +54,8 @@ function Install-StartupShortcut {
 }
 
 $runKeyPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$serviceRunCommand = "wscript.exe `"$serviceLauncher`""
+# //B = batch mode (no UI), //Nologo = no banner
+$serviceRunCommand = "wscript.exe //B //Nologo `"$serviceLauncher`""
 
 function Install-RunKeyStartup {
     param(
@@ -90,35 +94,49 @@ try {
     Write-Host "Run key install skipped ($($_.Exception.Message))."
 }
 
-Install-StartupShortcut -LinkPath $serviceStartupLink -TargetPath $serviceLauncher `
-    -Description "Finance E*TRADE background trading worker"
+# Point at wscript.exe so Windows never associates the .vbs with a visible host flash.
+Install-StartupShortcut -LinkPath $serviceStartupLink -TargetPath "wscript.exe" `
+    -Arguments "//B //Nologo `"$serviceLauncher`"" `
+    -Description "Finance E*TRADE background trading worker" `
+    -WindowStyle 7
 
 if (Test-Path $guiExe) {
     Install-StartupShortcut -LinkPath $guiStartupLink -TargetPath $guiExe `
-        -Description "Finance E*TRADE Trader desktop app"
+        -Description "Finance E*TRADE Trader desktop app" -WindowStyle 1
     $programsLink = Join-Path ([Environment]::GetFolderPath("Programs")) "ETrade Trader.lnk"
     Install-StartupShortcut -LinkPath $programsLink -TargetPath $guiExe `
-        -Description "Finance agent strategies applied to E*TRADE account"
+        -Description "Finance agent strategies applied to E*TRADE account" -WindowStyle 1
 } elseif (Test-Path $guiLauncher) {
     Install-StartupShortcut -LinkPath $guiStartupLink -TargetPath $guiLauncher `
-        -Arguments "`"$guiArgs`"" -Description "Finance E*TRADE Trader desktop app"
+        -Arguments "`"$guiArgs`"" -Description "Finance E*TRADE Trader desktop app" -WindowStyle 1
     $programsLink = Join-Path ([Environment]::GetFolderPath("Programs")) "ETrade Trader.lnk"
     Install-StartupShortcut -LinkPath $programsLink -TargetPath $guiLauncher `
-        -Arguments "`"$guiArgs`"" -Description "Finance agent strategies applied to E*TRADE account"
+        -Arguments "`"$guiArgs`"" -Description "Finance agent strategies applied to E*TRADE account" -WindowStyle 1
 }
 
 $watchdogOk = $false
-if (Test-Path $watchdogScript) {
-    $watchCmd = "`"$watchdogBat`""
+# Pure wscript ensure — never use a .bat here (Task Scheduler + .bat = cmd.exe flash).
+# Use Register-ScheduledTask so paths with spaces (e.g. "Box One") are not split.
+$ensureVbs = Join-Path $root "Ensure ETrade Stack.vbs"
+try {
+    Unregister-ScheduledTask -TaskName $watchdogTask -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+} catch {}
+if (Test-Path $ensureVbs) {
     try {
-        Unregister-ScheduledTask -TaskName $watchdogTask -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-    } catch {}
-    schtasks /Create /F /TN $watchdogTask /TR $watchCmd /SC MINUTE /MO 5 /RL LIMITED 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
+        $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$ensureVbs`""
+        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(1) `
+            -RepetitionInterval (New-TimeSpan -Minutes 5) `
+            -RepetitionDuration (New-TimeSpan -Days 9999)
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            -StartWhenAvailable -MultipleInstances IgnoreNew `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -Hidden
+        $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask -TaskName $watchdogTask -Action $action -Trigger $trigger `
+            -Settings $settings -Principal $principal -Force | Out-Null
         $watchdogOk = $true
-        Write-Host "Scheduled task (every 5 min): $watchdogTask"
-    } else {
-        Write-Host "Watchdog task skipped (schtasks exit $LASTEXITCODE)."
+        Write-Host "Scheduled task (every 5 min, silent wscript): $watchdogTask"
+    } catch {
+        Write-Host "Watchdog task skipped ($($_.Exception.Message))."
     }
 }
 
@@ -142,14 +160,7 @@ Write-Host ""
 Write-Host "Confirm your account once in the GUI - it is saved across restarts."
 Write-Host ""
 Write-Host "Starting background service now..."
-Start-Process -FilePath "wscript.exe" -ArgumentList "`"$serviceLauncher`"" -WindowStyle Hidden
-
-$mobileRemoteInstaller = Join-Path $root "install_mobile_remote_background.ps1"
-if (Test-Path $mobileRemoteInstaller) {
-    Write-Host ""
-    Write-Host "Installing mobile remote access (phone monitor tunnel)..."
-    & $mobileRemoteInstaller | Out-Host
-}
+Start-Process -FilePath "wscript.exe" -ArgumentList @("//B", "//Nologo", "`"$serviceLauncher`"") -WindowStyle Hidden
 
 if ($taskOk) {
     Get-ScheduledTask -TaskName $serviceTask -ErrorAction SilentlyContinue | Select-Object TaskName, State

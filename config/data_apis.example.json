@@ -1,0 +1,10 @@
+{
+  "_comment": "Optional live API keys for macro agents. Copy keys into etrade_config.json under data_apis or matching agent sections.",
+  "data_apis": {
+    "fred_api_key": "",
+    "nass_api_key": "",
+    "bls_api_key": "",
+    "census_api_key": "",
+    "notes": "FRED: https://fred.stlouisfed.org/docs/api/api_key.html · NASS: https://quickstats.nass.usda.gov/api · BLS registration optional for higher limits"
+  }
+}
