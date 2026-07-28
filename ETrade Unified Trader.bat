@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "ROOT=%~dp0"
-set "PYW=C:\Users\Box One\AppData\Local\Programs\Python\Python312\pythonw.exe"
+set "PYW=%USERPROFILE%\AppData\Local\Programs\Python\Python312\pythonw.exe"
 if not exist "%PYW%" set "PYW=%ROOT%.venv\Scripts\pythonw.exe"
 if not exist "%PYW%" set "PYW=%ROOT%.venv\Scripts\python.exe"
 

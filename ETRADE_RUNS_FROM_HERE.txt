@@ -1,6 +1,6 @@
 ﻿E*TRADE runs from this Finance git clone (Option A).
 
-Location: C:\Users\Box One\Finance
+Location: %USERPROFILE%\Finance  (on AI-CODING after rename: C:\Users\AI Coding\Finance)
 Remote:   https://github.com/shaggychunxx-ui/Finance
 
 Dual-PC (see DUAL_PC_DEPLOYMENT.md):

@@ -52,14 +52,14 @@ UNC: `\\10.10.10.1\HelperDrop\FinanceShare`
 **Optional dedicated share** (elevated):
 
 ```powershell
-cd $env:USERPROFILE\Documents\GitHub\Finance   # or C:\Users\Box One\Finance
+cd $env:USERPROFILE\Documents\GitHub\Finance   # or $env:USERPROFILE\Finance
 powershell -ExecutionPolicy Bypass -File .\Install-FinanceShare.ps1
 # then set shared_root to \\10.10.10.1\FinanceShare
 ```
 
 ### 2. AI-CODING — broker config
 
-In the **runtime** Finance folder (e.g. `C:\Users\Box One\Finance`):
+In the **runtime** Finance folder (e.g. `%USERPROFILE%\Finance` — on AI-CODING after rename: `C:\Users\AI Coding\Finance`):
 
 1. Copy `deployment.example.json` → `deployment.json`
 2. Set:
@@ -78,7 +78,7 @@ In the **runtime** Finance folder (e.g. `C:\Users\Box One\Finance`):
 
 ### 3. BOXONE — clean cutover (stop → uninstall → pipeline-only)
 
-Run from the Finance install folder (often `C:\Users\Box One\Finance` or Documents\GitHub\Finance):
+Run from the Finance install folder (often `%USERPROFILE%\Finance` or Documents\GitHub\Finance):
 
 ```powershell
 cd <FinanceRoot>

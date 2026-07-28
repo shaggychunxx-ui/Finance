@@ -149,11 +149,11 @@ def _start_worker() -> None:
     py = Path(os.environ.get("FINANCE_PYTHON", ""))
     if not py.is_file() or py.name.lower() == "python.exe":
         # Force windowless host when possible
-        cand = Path(r"C:\Users\Box One\AppData\Local\Programs\Python\Python312\pythonw.exe")
+        cand = Path.home() / "AppData" / "Local" / "Programs" / "Python" / "Python312" / "pythonw.exe"
         if cand.is_file():
             py = cand
     if not py.is_file():
-        py = Path(r"C:\Users\Box One\AppData\Local\Programs\Python\Python312\python.exe")
+        py = Path.home() / "AppData" / "Local" / "Programs" / "Python" / "Python312" / "python.exe"
     if not py.is_file():
         py = ROOT / ".venv" / "Scripts" / "pythonw.exe"
     if not py.is_file():
