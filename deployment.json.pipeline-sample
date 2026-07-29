@@ -1,0 +1,9 @@
+{
+  "role": "pipeline",
+  "shared_root": "\\\\10.10.10.1\\HelperDrop\\FinanceShare",
+  "quote_publish_interval_seconds": 60,
+  "sync_interval_seconds": 30,
+  "publish_quotes": false,
+  "consume_shared_quotes": true,
+  "prefer_dry_run": true
+}
