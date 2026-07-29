@@ -6,6 +6,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -43,27 +45,18 @@ def test_dca_deploy_rejects_non_positive_price_or_capital() -> None:
     from dca_strategy import DCAPlan
 
     plan = DCAPlan(symbol="BAD")
-    try:
+    with pytest.raises(ValueError):
         plan.deploy(0.0)
-        raise AssertionError("expected ValueError for non-positive price")
-    except ValueError:
-        pass
-    try:
+    with pytest.raises(ValueError):
         plan.deploy(10.0, capital_usd=0.0)
-        raise AssertionError("expected ValueError for non-positive capital")
-    except ValueError:
-        pass
 
 
 def test_dca_fractional_shares_disabled_raises_when_price_exceeds_amount() -> None:
     from dca_strategy import DCAPlan
 
     plan = DCAPlan(symbol="WHOLE", fixed_amount_usd=50.0, allow_fractional_shares=False)
-    try:
+    with pytest.raises(ValueError):
         plan.deploy(100.0)
-        raise AssertionError("expected ValueError when fixed amount can't buy a whole share")
-    except ValueError:
-        pass
 
     # A price under the fixed amount still buys whole shares only.
     plan.deploy(20.0)
@@ -108,3 +101,10 @@ def test_dca_due_symbols_filters_only_scheduled_ones(tmp_path, monkeypatch) -> N
 
     assert "NEVER_DEPLOYED" in due
     assert "FRESH" not in due
+
+
+def test_dca_plan_path_rejects_empty_symbol() -> None:
+    from dca_strategy import load_dca_plan
+
+    with pytest.raises(ValueError):
+        load_dca_plan("")

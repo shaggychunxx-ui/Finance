@@ -65,7 +65,9 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 def _plan_path(symbol: str) -> Path:
-    safe = str(symbol or "").strip().upper() or "UNKNOWN"
+    safe = str(symbol or "").strip().upper()
+    if not safe:
+        raise ValueError("symbol must be a non-empty string")
     return DCA_DIR / f"{safe}.json"
 
 
@@ -116,8 +118,8 @@ class DCAPlan:
     """Fixed-interval accumulation plan for a single symbol."""
 
     symbol: str
-    fixed_amount_usd: float = DEFAULT_DCA_POLICY["fixed_amount_usd"]
-    interval_days: float = DEFAULT_DCA_POLICY["interval_days"]
+    fixed_amount_usd: float = field(default_factory=lambda: DEFAULT_DCA_POLICY["fixed_amount_usd"])
+    interval_days: float = field(default_factory=lambda: DEFAULT_DCA_POLICY["interval_days"])
     allow_fractional_shares: bool = True
     reinvest_dividends: bool = True
     deployments: list[DCADeployment] = field(default_factory=list)
