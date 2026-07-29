@@ -38,6 +38,10 @@ def test_dca_cost_basis_lower_than_simple_average_under_volatility() -> None:
     for price in (10.0, 5.0, 20.0, 8.0, 12.0):
         plan.deploy(price)
 
+    assert plan.total_capital_usd == 2500.0
+    assert plan.total_shares == pytest.approx(279.16666667, rel=1e-6)
+    assert plan.simple_average_price == 11.0
+    assert plan.volume_weighted_cost_basis == pytest.approx(8.955224, rel=1e-6)
     assert plan.volume_weighted_cost_basis <= plan.simple_average_price
 
 
