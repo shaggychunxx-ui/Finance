@@ -29,14 +29,12 @@ from app_paths import OUTPUT
 
 DCA_DIR = OUTPUT / "dca"
 
-DEFAULT_INTERVAL_DAYS = 30.0
-
 DEFAULT_DCA_POLICY = {
     "enabled": True,
     # Fixed fiat amount deployed each interval — never timed to "market conditions".
     "fixed_amount_usd": 1000.0,
     # Rigid chronological cadence in days (e.g. 7 = weekly, 30 ~= monthly).
-    "interval_days": DEFAULT_INTERVAL_DAYS,
+    "interval_days": 30.0,
     # Require fractional share support so residual cash never sits uninvested.
     "allow_fractional_shares": True,
     # Reinvest dividends into additional shares of the same symbol (DRIP).
@@ -64,8 +62,12 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
+def _normalize_symbol(symbol: str) -> str:
+    return str(symbol or "").strip().upper()
+
+
 def _plan_path(symbol: str) -> Path:
-    safe = str(symbol or "").strip().upper()
+    safe = _normalize_symbol(symbol)
     if not safe:
         raise ValueError("symbol must be a non-empty string")
     return DCA_DIR / f"{safe}.json"
@@ -139,7 +141,7 @@ class DCAPlan:
     @classmethod
     def from_dict(cls, row: dict[str, Any]) -> "DCAPlan":
         return cls(
-            symbol=str(row.get("symbol") or "").strip().upper(),
+            symbol=_normalize_symbol(row.get("symbol")),
             fixed_amount_usd=float(row.get("fixed_amount_usd") or DEFAULT_DCA_POLICY["fixed_amount_usd"]),
             interval_days=float(row.get("interval_days") or DEFAULT_DCA_POLICY["interval_days"]),
             allow_fractional_shares=bool(row.get("allow_fractional_shares", True)),
@@ -265,7 +267,7 @@ def load_dca_policy(config_path: Path | None = None) -> dict[str, Any]:
 
 
 def load_dca_plan(symbol: str) -> DCAPlan:
-    symbol = str(symbol or "").strip().upper()
+    symbol = _normalize_symbol(symbol)
     row = _load_json(_plan_path(symbol))
     if row:
         return DCAPlan.from_dict(row)
@@ -303,5 +305,5 @@ def due_symbols(symbols: list[str], *, as_of: datetime | None = None) -> list[st
     for symbol in symbols:
         plan = load_dca_plan(symbol)
         if plan.is_due(as_of=as_of):
-            due.append(str(symbol or "").strip().upper())
+            due.append(_normalize_symbol(symbol))
     return due

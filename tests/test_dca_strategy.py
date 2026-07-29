@@ -24,7 +24,7 @@ def test_dca_worked_example_matches_volatile_asset_scenario() -> None:
     assert plan.total_capital_usd == 4000.0
     assert plan.total_shares == 67.5
     assert plan.simple_average_price == 67.5
-    assert plan.volume_weighted_cost_basis == 59.259259
+    assert plan.volume_weighted_cost_basis == pytest.approx(59.259259, rel=1e-6)
     assert plan.portfolio_value(80.0) == 5400.0
     assert plan.net_return_pct(80.0) == 35.0
     # Volume-weighted cost basis is structurally lower than the simple average.
