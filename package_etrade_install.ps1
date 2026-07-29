@@ -96,13 +96,6 @@ INSTALL (new PC or fresh setup)
 5. Click Connect, then pick your account in Settings
 6. Optional: Install ETrade Background.bat for login startup automation
 
-PHONE MONITOR (any network)
----------------------------
-1. Start Mobile Server.bat — monitor on your home Wi-Fi
-2. Start Mobile Remote Access.bat — Cloudflare tunnel URL for cellular/away
-3. Open the URL on your phone (add ?token= from the console to the bookmark)
-4. UI matches desktop tabs: Home, Agents, Trades, Activity
-
 REQUIREMENTS
 ------------
   - Windows 10/11

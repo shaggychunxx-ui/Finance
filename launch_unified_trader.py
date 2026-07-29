@@ -16,26 +16,26 @@ LOG = ROOT / "output" / "unified_trader.log"
 
 
 def _ensure_venv() -> None:
+    """Point this process at Finance .venv packages without re-exec (avoids double process flash)."""
     if os.environ.get("ETRADE_UNIFIED_VENV"):
         return
-    venv = (ROOT / ".venv" / "Scripts").resolve()
-    current = Path(sys.executable).resolve()
-    try:
-        current.relative_to(venv)
-        return
-    except ValueError:
-        pass
-    launcher = venv / "pythonw.exe"
-    if not launcher.exists():
-        launcher = venv / "python.exe"
-    if not launcher.exists():
-        return
     os.environ["ETRADE_UNIFIED_VENV"] = "1"
-    import subprocess
-
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0)
-    subprocess.Popen([str(launcher), *sys.argv], cwd=str(ROOT), close_fds=True, creationflags=flags)
-    raise SystemExit(0)
+    venv = ROOT / ".venv"
+    site = venv / "Lib" / "site-packages"
+    scripts = venv / "Scripts"
+    if venv.is_dir():
+        os.environ["VIRTUAL_ENV"] = str(venv)
+        os.environ["PATH"] = str(scripts) + os.pathsep + os.environ.get("PATH", "")
+    path_parts = [str(ROOT)]
+    if site.is_dir():
+        path_parts.append(str(site))
+    prev = os.environ.get("PYTHONPATH", "")
+    if prev:
+        path_parts.append(prev)
+    os.environ["PYTHONPATH"] = os.pathsep.join(path_parts)
+    for p in path_parts:
+        if p and p not in sys.path:
+            sys.path.insert(0, p)
 
 
 if __name__ == "__main__":

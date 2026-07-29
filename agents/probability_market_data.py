@@ -17,19 +17,25 @@ class ProbabilityMarketData:
         self.snapshots: dict[str, dict[str, Any]] = {}
         self._watchlist: dict[str, str] = {}
 
-    def prepare_watchlist(self, base: dict[str, str], *, extra_limit: int = 8) -> dict[str, str]:
+    def prepare_watchlist(self, base: dict[str, str], *, extra_limit: int = 0) -> dict[str, str]:
+        """Build watchlist. Default extra_limit=0 keeps pipeline agents under timeout.
+
+        Expanding by pipeline symbols (old default 8) multiplied Yahoo 1y fetches and
+        regularly hung combined/empirical/research agents for 30–50+ minutes.
+        """
         merged = dict(base)
-        extras = self.expert.pipeline_watchlist_symbols(
-            base=list(base.keys()),
-            limit=len(base) + extra_limit,
-        )
-        for sym in extras:
-            key = str(sym).upper()
-            if key in merged:
-                continue
-            if not self.expert.domain_allows_symbol(key):
-                continue
-            merged[key] = key
+        if extra_limit > 0:
+            extras = self.expert.pipeline_watchlist_symbols(
+                base=list(base.keys()),
+                limit=len(base) + extra_limit,
+            )
+            for sym in extras:
+                key = str(sym).upper()
+                if key in merged:
+                    continue
+                if not self.expert.domain_allows_symbol(key):
+                    continue
+                merged[key] = key
         self._watchlist = merged
         return merged
 

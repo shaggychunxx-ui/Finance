@@ -46,17 +46,12 @@ MIN_PRICE_VARIATION = 0.01  # $0.01 tick — the floor for a "quoted" spread
 # is more nuanced (many names trade across dozens of venues), but this
 # approximates which structural regime (EMM-dominated vs. NYSE DMM) governs
 # each name's designated/lead market maker obligations.
+# Short list — custom multi-symbol Yahoo + sleeps was freezing agent 59.
 WATCHLIST: dict[str, str] = {
     "SPY": "NYSE Arca ETP — electronic lead market maker",
-    "AAPL": "Nasdaq mega-cap — electronic market maker (EMM) regime",
-    "MSFT": "Nasdaq mega-cap — electronic market maker (EMM) regime",
     "QQQ": "Nasdaq/Cboe ETP — electronic market maker (EMM) regime",
-    "IWM": "NYSE Arca ETP — electronic lead market maker",
+    "AAPL": "Nasdaq mega-cap — electronic market maker (EMM) regime",
     "KO": "NYSE listing — Designated Market Maker (DMM) regime",
-    "DIS": "NYSE listing — Designated Market Maker (DMM) regime",
-    "GME": "NYSE listing — Designated Market Maker (DMM), retail-driven flow",
-    "COIN": "Nasdaq listing — electronic market maker (EMM) regime",
-    "PLTR": "NYSE listing — Designated Market Maker (DMM) regime",
 }
 
 DEEP_LIQUIDITY_USD = 200_000_000     # avg daily dollar volume threshold
@@ -185,45 +180,27 @@ class MarketMakerReport:
 class MarketMakerExpert(BaseExpert):
     """Expert analyst — market maker/specialist inventory, toxicity, and structure."""
 
-    def __init__(self, delay_seconds: float = 0.35) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        delay_seconds: float = 0.0,
+        *,
+        pipeline_context: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="market-makers")
         self.delay_seconds = delay_seconds
 
     def _fetch_ohlcv(self, symbol: str) -> dict[str, list[float]]:
         try:
-            resp = requests.get(
-                CHART_API.format(symbol=symbol),
-                params={"interval": "1d", "range": "3mo"},
-                headers=HEADERS,
-                timeout=25,
-            )
-            if resp.status_code == 429:
-                time.sleep(3)
-                resp = requests.get(
-                    CHART_API.format(symbol=symbol),
-                    params={"interval": "1d", "range": "3mo"},
-                    headers=HEADERS,
-                    timeout=25,
-                )
-            resp.raise_for_status()
-            quote = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]
-            rows = zip(
-                quote.get("open", []),
-                quote.get("high", []),
-                quote.get("low", []),
-                quote.get("close", []),
-                quote.get("volume", []),
-            )
-            opens, highs, lows, closes, volumes = [], [], [], [], []
-            for o, h, l, c, v in rows:
-                if o is None or h is None or l is None or c is None:
-                    continue
-                opens.append(float(o))
-                highs.append(float(h))
-                lows.append(float(l))
-                closes.append(float(c))
-                volumes.append(float(v) if v is not None else 0.0)
-            return {"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}
+            data = self.fetch_yahoo_ohlcv(symbol, range_="1mo", interval="1d")
+            if not data:
+                return {"open": [], "high": [], "low": [], "close": [], "volume": []}
+            return {
+                "open": list(data.get("open") or []),
+                "high": list(data.get("high") or []),
+                "low": list(data.get("low") or []),
+                "close": list(data.get("close") or []),
+                "volume": list(data.get("volume") or []),
+            }
         except Exception:
             return {"open": [], "high": [], "low": [], "close": [], "volume": []}
 
@@ -503,13 +480,36 @@ class MarketMakerExpert(BaseExpert):
     def analyze(self) -> MarketMakerReport:
         symbols: list[SymbolMicrostructure] = []
         for symbol, regime in WATCHLIST.items():
-            row = self._analyze_symbol(symbol, regime)
+            try:
+                row = self._analyze_symbol(symbol, regime)
+            except Exception:
+                row = None
             if row:
                 symbols.append(row)
-            time.sleep(self.delay_seconds)
 
-        if not any(s.symbol == BENCHMARK for s in symbols):
-            raise RuntimeError("Unable to fetch SPY data for market maker analysis")
+        if not symbols:
+            assessment = MarketMakerAssessment(
+                volatility_regime="Unavailable",
+                toxicity_signal="Flow toxicity unavailable this cycle.",
+                phantom_liquidity_signal="Phantom liquidity unavailable.",
+                inventory_signal="No symbols loaded (data unavailable).",
+                fragility_signal="Fragility not scored — empty scan.",
+                structural_conclusion=(
+                    "Degraded empty market-maker report so the schedule can continue."
+                ),
+            )
+            return MarketMakerReport(
+                vix_level=None,
+                symbols=[],
+                assessment=assessment,
+                toxicity_score=0.0,
+                phantom_liquidity_score=0.0,
+                fragility_score=0.0,
+                expert_summary=assessment.structural_conclusion,
+                market_signals=[],
+                recommendations=[assessment.structural_conclusion],
+                data_source="Yahoo Finance Chart API (unavailable)",
+            )
 
         vix = self._fetch_last_close(VOLATILITY_SYMBOL)
 
@@ -534,7 +534,7 @@ class MarketMakerExpert(BaseExpert):
             expert_summary=expert_summary,
             market_signals=self._market_signals(symbols),
             recommendations=self._recommendations(symbols, assessment),
-            data_source="Yahoo Finance Chart API (3mo daily OHLCV)",
+            data_source="Yahoo Finance Chart API (1mo daily OHLCV)",
         )
 
     def to_dict(self, report: MarketMakerReport) -> dict[str, Any]:
@@ -600,4 +600,4 @@ class MarketMakerExpert(BaseExpert):
 
 
 def run_market_maker_analysis(output: Path | None = None) -> dict[str, Any]:
-    return MarketMakerExpert().run(output=output)
+    return MarketMakerExpert(pipeline_context=None).run(output=output)

@@ -365,6 +365,8 @@ class ETradeTraderApp(tk.Frame):
         self._suppress_account_change = False
         self._persisted_account_key: str | None = None
         self._finance_agents: Any = None
+        self._cached_agent_reports_mtime: float = 0.0
+        self._agent_status_poll_counter: int = 0
 
         self._apply_window_icons()
         self._palette_buttons: dict[str, tk.Frame] = {}
@@ -508,6 +510,33 @@ class ETradeTraderApp(tk.Frame):
         if pipeline_at > self._cached_pipeline_at:
             self._cached_pipeline_at = pipeline_at
             self._refresh_reports_ui(select_latest=True)
+
+        # Always re-read agent ages/reports when output files change on disk.
+        # Broker role never bumps last_pipeline_at unless fallback runs, so the
+        # Agents tab used to freeze on multi-day-old labels until a manual tab click.
+        self._agent_status_poll_counter += 1
+        if self._finance_agents is not None and self._agent_status_poll_counter >= 2:
+            self._agent_status_poll_counter = 0
+            try:
+                from agent_report_status import agent_mtime
+                from finance_agents_gui import AGENT_CATALOG
+
+                newest = 0.0
+                for agent in AGENT_CATALOG:
+                    try:
+                        newest = max(newest, float(agent_mtime(agent) or 0.0))
+                    except Exception:
+                        continue
+                if newest > float(self._cached_agent_reports_mtime or 0.0):
+                    self._cached_agent_reports_mtime = newest
+                    self._finance_agents.refresh_agent_statuses()
+                    self._update_reports_card()
+                else:
+                    # Still refresh age labels (Xm ago → Ym ago) every few polls
+                    self._finance_agents.refresh_agent_statuses()
+                    self._update_reports_card()
+            except Exception:
+                pass
 
         if self.PLAN_FILE.exists():
             try:
@@ -2463,8 +2492,8 @@ class ETradeTraderApp(tk.Frame):
             [
                 ("Account balance", ACCENT2),
                 ("Buying power", None),
-                ("Gain / loss ($)", UP),
-                ("Gain / loss (%)", UP),
+                ("Profit / loss ($)", UP),
+                ("Profit / loss (%)", UP),
             ],
         )
         self._balance_baseline_label, self._balance_updated_label = self._meta_chip_bar(self._tab_overview)
@@ -2618,8 +2647,8 @@ class ETradeTraderApp(tk.Frame):
                 "at": ("Recorded", 150),
                 "total": ("Balance", 108),
                 "buying_power": ("Buying power", 108),
-                "gain_amt": ("Gain $", 96),
-                "gain_pct": ("Gain %", 72),
+                "gain_amt": ("Profit $", 96),
+                "gain_pct": ("Profit %", 72),
                 "source": ("Source", 120),
             },
         )
@@ -3015,7 +3044,7 @@ class ETradeTraderApp(tk.Frame):
         transfer_note = ""
         if net_flows:
             sign = "+" if float(net_flows) >= 0 else ""
-            transfer_note = f" · {sign}${float(net_flows):,.0f} transfers (excluded from gain)"
+            transfer_note = f" · {sign}${float(net_flows):,.0f} deposits/withdrawals (excluded from profit)"
         if open_ts is not None and baseline is not None:
             self._balance_baseline_label.configure(
                 text=(
@@ -3725,15 +3754,26 @@ class ETradeTraderApp(tk.Frame):
                 growth = get_account_growth()
                 if growth.get("profit_pct") is not None or growth.get("growth_pct") is not None:
                     pct = growth.get("profit_pct") if growth.get("profit_pct") is not None else growth["growth_pct"]
+                    profit_amt = growth.get("profit_amount")
+                    invested = growth.get("invested_capital")
                     transfer_note = ""
                     if growth.get("net_external_flows"):
-                        transfer_note = f" (excludes ${float(growth['net_external_flows']):,.0f} transfers)"
-                    self._schedule(
-                        self._log_line,
-                        f"Account profit since open: {float(pct):+.2f}% "
-                        f"(${growth.get('baseline_value', 0):,.0f} → ${growth.get('latest_value', 0):,.0f})"
-                        f"{transfer_note}",
-                    )
+                        transfer_note = (
+                            f"; deposits/withdrawals ${float(growth['net_external_flows']):+,.0f} "
+                            f"excluded from profit"
+                        )
+                    if profit_amt is not None and invested is not None:
+                        profit_line = (
+                            f"Account profit since open: {float(profit_amt):+,.2f} "
+                            f"({float(pct):+.2f}% of ${float(invested):,.0f} invested capital)"
+                            f"{transfer_note}"
+                        )
+                    else:
+                        profit_line = (
+                            f"Account profit since open: {float(pct):+.2f}%"
+                            f"{transfer_note}"
+                        )
+                    self._schedule(self._log_line, profit_line)
             except Exception:
                 pass
             self._schedule(self._update_balance_tab, total_value, buying_power)

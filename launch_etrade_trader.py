@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch E*TRADE Trader with crash logging (used by desktop shortcut)."""
+"""Legacy entry point — opens Unified Trader only (standalone long app removed)."""
 
 from __future__ import annotations
 
@@ -16,13 +16,12 @@ from win_app_identity import apply_windows_app_identity
 
 apply_windows_app_identity()
 
+LOG = ROOT / "output" / "unified_trader.log"
+
 
 def _ensure_venv_python() -> None:
-    """Re-launch with the project venv if started from system Python."""
-
     if os.environ.get("ETRADE_TRADER_VENV"):
         return
-
     venv_scripts = (ROOT / ".venv" / "Scripts").resolve()
     current = Path(sys.executable).resolve()
     try:
@@ -30,13 +29,11 @@ def _ensure_venv_python() -> None:
         return
     except ValueError:
         pass
-
     launcher = venv_scripts / "pythonw.exe"
     if not launcher.exists():
         launcher = venv_scripts / "python.exe"
     if not launcher.exists():
         return
-
     os.environ["ETRADE_TRADER_VENV"] = "1"
     import subprocess
 
@@ -48,8 +45,6 @@ def _ensure_venv_python() -> None:
         creationflags=flags,
     )
     raise SystemExit(0)
-
-LOG = ROOT / "output" / "etrade_trader.log"
 
 
 def _log_crash(text: str) -> None:
@@ -63,7 +58,7 @@ def _log_crash(text: str) -> None:
 if __name__ == "__main__":
     _ensure_venv_python()
     try:
-        from etrade_trader_gui import main
+        from unified_trader_gui import main
 
         raise SystemExit(main())
     except Exception:

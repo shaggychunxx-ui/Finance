@@ -204,7 +204,7 @@ class QualityFactorExpert(BaseExpert):
                 QUOTE_SUMMARY_API.format(symbol=symbol),
                 params={"modules": QUOTE_SUMMARY_MODULES},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             result = resp.json()["quoteSummary"]["result"][0]

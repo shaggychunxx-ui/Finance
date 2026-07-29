@@ -397,7 +397,11 @@ def finalize_pipeline_cycle(
 
 
 def refresh_growth_metrics(data: dict[str, Any]) -> dict[str, Any]:
-    """Recompute per-account profit and top-level growth fields excluding external transfers."""
+    """Recompute per-account profit and top-level growth fields excluding external transfers.
+
+    Re-runs deposit detection on every call so *future* deposits are picked up as
+    soon as a new balance/cash snapshot lands — they never inflate growth_pct.
+    """
     from account_profit import profit_metrics_for_account
 
     points = data.get("points") or []
@@ -423,6 +427,8 @@ def refresh_growth_metrics(data: dict[str, Any]) -> dict[str, Any]:
             "profit_amount": metrics.get("profit_amount"),
             "profit_pct": metrics.get("profit_pct"),
             "external_flow_events": metrics.get("external_flow_events") or [],
+            # Guard flag for UI / agents
+            "profit_excludes_deposits": True,
         }
 
     primary = ""
@@ -438,10 +444,29 @@ def refresh_growth_metrics(data: dict[str, Any]) -> dict[str, Any]:
         data["profit_pct"] = metrics.get("profit_pct")
         data["net_external_flows"] = metrics.get("net_external_flows")
         data["invested_capital"] = metrics.get("invested_capital")
+        data["profit_excludes_deposits"] = True
+        data["external_flow_events"] = metrics.get("external_flow_events") or []
         if metrics.get("opening_balance") is not None:
             data["baseline_value"] = metrics["opening_balance"]
         if metrics.get("latest_value") is not None:
             data["latest_value"] = metrics["latest_value"]
+        # Integrity check: profit must equal latest − opening − net_flows
+        try:
+            opening = float(metrics.get("opening_balance") or 0)
+            latest = float(metrics.get("latest_value") or 0)
+            flows = float(metrics.get("net_external_flows") or 0)
+            expected = round(latest - opening - flows, 2)
+            reported = metrics.get("profit_amount")
+            if reported is not None and abs(float(reported) - expected) > 0.05:
+                # Prefer the deposit-excluded formula if anything drifts
+                data["profit_amount"] = expected
+                invested = opening + flows
+                data["profit_pct"] = (
+                    round(expected / invested * 100, 2) if invested > 0 else None
+                )
+                data["growth_pct"] = data["profit_pct"]
+        except (TypeError, ValueError):
+            pass
     return data
 
 
@@ -478,13 +503,43 @@ def record_account_value(
         except ValueError:
             age_sec = 999999.0
         same_account = not account_id_key or str(last.get("account_id_key") or "") == str(account_id_key)
-        value_unchanged = abs(last_total - rounded_total) < 0.01
+        total_delta = rounded_total - last_total
+        cash_delta = None
+        try:
+            if rounded_cash is not None and last_cash is not None:
+                cash_delta = float(rounded_cash) - float(last_cash)
+        except (TypeError, ValueError):
+            cash_delta = None
+        value_unchanged = abs(total_delta) < 0.01
         cash_unchanged = (
             rounded_cash is None
             or last_cash is None
             or abs(float(last_cash) - float(rounded_cash)) < 0.01
         )
-        if same_account and value_unchanged and cash_unchanged and age_sec < 900:
+        # Never collapse a deposit-sized jump into the prior point — future deposits
+        # must create their own transition so account_profit can exclude them.
+        likely_external = False
+        try:
+            from account_profit import EXTERNAL_FLOW_MIN_ABS, _is_external_deposit, _is_external_withdrawal
+
+            if abs(total_delta) >= float(EXTERNAL_FLOW_MIN_ABS):
+                likely_external = _is_external_deposit(
+                    total_delta, cash_delta, last_total
+                ) or _is_external_withdrawal(total_delta, cash_delta, last_total)
+                if not likely_external and abs(total_delta) >= float(EXTERNAL_FLOW_MIN_ABS):
+                    # Still force a distinct point when equity jumps materialy so
+                    # re-detection can classify later with full cash series.
+                    likely_external = abs(total_delta) >= max(50.0, abs(last_total) * 0.05)
+        except Exception:
+            likely_external = abs(total_delta) >= 50.0
+
+        if (
+            same_account
+            and value_unchanged
+            and cash_unchanged
+            and age_sec < 900
+            and not likely_external
+        ):
             if rounded_cash is not None:
                 last["cash_buying_power"] = rounded_cash
             last["source"] = source
@@ -492,6 +547,12 @@ def record_account_value(
             refresh_growth_metrics(data)
             data["updated_at"] = stamp
             _write_json(ACCOUNT_VALUES_FILE, data)
+            try:
+                from account_goals import write_goals_status
+
+                write_goals_status()
+            except Exception:
+                pass
             return
 
     points.append(
@@ -516,16 +577,40 @@ def record_account_value(
         rebuild_balance_penalties()
     except Exception:
         pass
+    try:
+        from account_goals import write_goals_status
+
+        write_goals_status()
+    except Exception:
+        pass
     build_agent_context()
 
 
 def _growth_pct(account_data: dict[str, Any]) -> float | None:
-    baseline = account_data.get("baseline_value")
+    """Trading profit % only — never raw balance change that includes deposits."""
+    if account_data.get("profit_pct") is not None:
+        try:
+            return float(account_data["profit_pct"])
+        except (TypeError, ValueError):
+            pass
+    invested = account_data.get("invested_capital")
     latest = account_data.get("latest_value")
+    if invested and latest:
+        try:
+            inv = float(invested)
+            if inv > 0:
+                return round((float(latest) - inv) / inv * 100, 2)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+    baseline = account_data.get("baseline_value")
+    net_flows = account_data.get("net_external_flows") or 0.0
     if not baseline or not latest:
         return None
     try:
-        return round((float(latest) - float(baseline)) / float(baseline) * 100, 2)
+        base = float(baseline) + float(net_flows)
+        if base <= 0:
+            return None
+        return round((float(latest) - base) / base * 100, 2)
     except (TypeError, ValueError, ZeroDivisionError):
         return None
 
@@ -683,10 +768,32 @@ def build_agent_context(*, lookback_cycles: int = DEFAULT_LOOKBACK_CYCLES) -> di
     except Exception:
         pass
 
+    account_goals_progress: dict[str, Any] = {}
+    try:
+        from account_goals import goal_progress, write_goals_status
+
+        account_goals_progress = write_goals_status()
+    except Exception:
+        try:
+            from account_goals import goal_progress
+
+            account_goals_progress = goal_progress()
+        except Exception:
+            account_goals_progress = {}
+
+    objective = "maximize_multi_horizon_profit"
+    if account_goals_progress.get("enabled"):
+        d = (account_goals_progress.get("daily") or {}).get("target_pct")
+        w = (account_goals_progress.get("weekly") or {}).get("target_pct")
+        m = (account_goals_progress.get("monthly") or {}).get("target_pct")
+        if d or w or m:
+            objective = f"hit_account_goals_d{d}%_w{w}%_m{m}%"
+
     context = {
         "generated_at": _now_iso(),
-        "objective": "maximize_multi_horizon_profit",
+        "objective": objective,
         "accuracy_objective": "maximize_prediction_accuracy",
+        "account_goals": account_goals_progress,
         "accuracy_leaderboard": accuracy_board,
         "lookback_cycles": lookback_cycles,
         "account_growth": {

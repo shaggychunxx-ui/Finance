@@ -1,3 +1,5 @@
 @echo off
+REM Fully silent ensure — wscript //B never shows a console.
 cd /d "%~dp0"
-powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0ensure_etrade_worker.ps1"
+wscript.exe //B //Nologo "%~dp0Ensure ETrade Stack.vbs"
+exit /b 0

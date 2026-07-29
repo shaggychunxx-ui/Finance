@@ -100,19 +100,22 @@ class MarketAnalystExpert(BaseExpert):
 
     def __init__(
         self,
-        delay_seconds: float = 0.35,
+        delay_seconds: float = 0.05,
         *,
         pipeline_context: dict | None = None,
     ) -> None:
         super().__init__(pipeline_context=pipeline_context, agent_id="markets")
         self.delay_seconds = delay_seconds
+        # Prefer liquid ETFs / major indices; skip futures symbols that often hang Yahoo.
         self.symbols = (
             US_INDICES + RISK_SYMBOLS + list(SECTOR_ETFS)
-            + [GROWTH_PROXY, VALUE_PROXY] + list(COMMODITIES)
+            + [GROWTH_PROXY, VALUE_PROXY]
         )
 
     def _fetch_chart(self, symbol: str) -> Quote | None:
-        meta = self.fetch_yahoo_chart_meta(symbol, range_="1mo", interval="1d")
+        # Short Yahoo range only — futures (CL=F/GC=F) dropped from symbol list
+        # because they frequently stall Yahoo and froze agent 37 in the schedule.
+        meta = self.fetch_yahoo_chart_meta(symbol, range_="5d", interval="1d")
         if not meta:
             return None
         price = meta.get("price")
@@ -129,7 +132,7 @@ class MarketAnalystExpert(BaseExpert):
 
     def _fetch_trending(self) -> list[str]:
         try:
-            resp = requests.get(TRENDING_API, headers=HEADERS, timeout=20)
+            resp = requests.get(TRENDING_API, headers=HEADERS, timeout=(3, 8))
             resp.raise_for_status()
             return [
                 q["symbol"]
@@ -145,7 +148,7 @@ class MarketAnalystExpert(BaseExpert):
                 SCREENER_API,
                 params={"scrIds": scr_id, "count": count},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(3, 8),
             )
             resp.raise_for_status()
             rows: list[Quote] = []
@@ -224,10 +227,15 @@ class MarketAnalystExpert(BaseExpert):
         if sectors:
             leader = sectors[0]
             laggard = sectors[-1]
-            sector_rotation = (
-                f"leading {leader.sector} ({leader.day_chg_pct:+.2f}%), "
-                f"lagging {laggard.sector} ({laggard.day_chg_pct:+.2f}%)"
-            )
+            lead_pct = leader.day_chg_pct
+            lag_pct = laggard.day_chg_pct
+            if lead_pct is not None and lag_pct is not None:
+                sector_rotation = (
+                    f"leading {leader.sector} ({lead_pct:+.2f}%), "
+                    f"lagging {laggard.sector} ({lag_pct:+.2f}%)"
+                )
+            else:
+                sector_rotation = f"leading {leader.sector}, lagging {laggard.sector}"
         else:
             sector_rotation = "sector data limited"
 
@@ -297,17 +305,15 @@ class MarketAnalystExpert(BaseExpert):
             row = self._fetch_chart(symbol)
             if row:
                 quotes.append(row)
-            time.sleep(self.delay_seconds)
 
         by_sym = {q.symbol: q for q in quotes}
         indices = [by_sym[s] for s in US_INDICES + RISK_SYMBOLS if s in by_sym]
         sectors = self._sector_snapshots(by_sym)
 
+        # Fail-fast optional endpoints — do not block the schedule on screener hangs
         trending = self._fetch_trending()
-        time.sleep(self.delay_seconds)
-        gainers = self._fetch_screener("day_gainers", 10)
-        time.sleep(self.delay_seconds)
-        losers = self._fetch_screener("day_losers", 10)
+        gainers = self._fetch_screener("day_gainers", 6)
+        losers = self._fetch_screener("day_losers", 6)
 
         index_rows = [by_sym[s] for s in US_INDICES if s in by_sym]
         breadth_pct = self._avg(index_rows)

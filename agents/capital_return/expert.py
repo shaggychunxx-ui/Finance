@@ -368,16 +368,23 @@ class CapitalReturnExpert(BaseExpert):
 
     def __init__(
         self,
-        delay_seconds: float = 0.3,
+        delay_seconds: float = 0.0,
         *,
         pipeline_context: dict | None = None,
+        live_quotes: bool = False,
+        year_range_live: bool = False,
     ) -> None:
         super().__init__(pipeline_context=pipeline_context, agent_id="capital-return")
         self.delay_seconds = delay_seconds
+        # Default off: multi-ticker Yahoo meta calls hung agent 61 past kill budgets
+        # when E*TRADE quotes were cold and workers died mid-cycle.
+        self.live_quotes = live_quotes
+        # Extra 1y weekly fetch per ticker previously hung the pipeline at agent 61.
+        self.year_range_live = year_range_live
         self._live_ok = False
 
     def _year_range_position(self, symbol: str, price: float | None) -> float | None:
-        if price is None:
+        if price is None or not self.year_range_live:
             return None
         closes = self.fetch_yahoo_closes(symbol, range_="1y", interval="1wk")
         if len(closes) < 4:
@@ -448,16 +455,22 @@ class CapitalReturnExpert(BaseExpert):
         return dividend_only, buyback_only, dual_engine
 
     def _fetch_candidate(self, symbol: str, profile: dict[str, Any]) -> CapitalReturnCandidate:
-        meta = self.fetch_yahoo_chart_meta(symbol, range_="1mo", interval="1d")
-        time.sleep(self.delay_seconds)
-        price = meta.get("price") if meta else None
-        day_chg = meta.get("day_chg_pct") if meta else None
-        week_chg = meta.get("week_chg_pct") if meta else None
-        if meta:
-            self._live_ok = True
+        price = day_chg = week_chg = None
+        if self.live_quotes:
+            # Prefer cached E*TRADE quote first (no network), then one Yahoo meta call.
+            live_px = self.live_price(symbol)
+            if live_px is not None:
+                price = live_px
+                self._live_ok = True
+            else:
+                meta = self.fetch_yahoo_chart_meta(symbol, range_="5d", interval="1d")
+                if meta:
+                    self._live_ok = True
+                    price = meta.get("price")
+                    day_chg = meta.get("day_chg_pct")
+                    week_chg = meta.get("week_chg_pct")
 
         range_position = self._year_range_position(symbol, price)
-        time.sleep(self.delay_seconds)
 
         div_yield = float(profile["dividend_yield_pct"])
         buyback_yield = float(profile["buyback_yield_pct"])
@@ -623,8 +636,12 @@ class CapitalReturnExpert(BaseExpert):
     def analyze(self) -> CapitalReturnReport:
         self._live_ok = False
         candidates: list[CapitalReturnCandidate] = []
+        # Profile-first cohort — skip Yahoo unless live_quotes is enabled.
         for symbol, profile in CAPITAL_RETURN_PROFILES.items():
-            candidates.append(self._fetch_candidate(symbol, profile))
+            try:
+                candidates.append(self._fetch_candidate(symbol, profile))
+            except Exception:
+                continue
 
         assessment = self._assessment(candidates)
 

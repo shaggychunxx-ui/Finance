@@ -53,9 +53,23 @@ def _yahoo_session() -> requests.Session:
         return _http_session
     session = requests.Session()
     session.headers.update(DEFAULT_HEADERS)
+    # Fail fast on hung sockets (Windows often ignores long connect waits otherwise).
     try:
-        session.get(COOKIE_BOOTSTRAP_URL, timeout=12, allow_redirects=True)
-        crumb_resp = session.get(CRUMB_URL, timeout=12)
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
+        adapter = HTTPAdapter(
+            max_retries=Retry(total=0, connect=0, read=0, redirect=0, status=0),
+            pool_connections=4,
+            pool_maxsize=4,
+        )
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+    except Exception:
+        pass
+    try:
+        session.get(COOKIE_BOOTSTRAP_URL, timeout=(2, 6), allow_redirects=True)
+        crumb_resp = session.get(CRUMB_URL, timeout=(2, 6))
         crumb_resp.raise_for_status()
         crumb = crumb_resp.text.strip()
         if crumb and "html" not in crumb.lower() and len(crumb) < 80:
@@ -76,7 +90,7 @@ def _request_get(
     params: dict[str, Any] | None = None,
     delay_seconds: float = 0.0,
     client_tag: str = "agent",
-    timeout: int = 25,
+    timeout: float | tuple[float, float] = (3.0, 12.0),
     use_crumb: bool = False,
 ) -> requests.Response | None:
     global _http_session, _yahoo_crumb
@@ -85,7 +99,8 @@ def _request_get(
     req_params = dict(params or {})
     if use_crumb and _yahoo_crumb:
         req_params.setdefault("crumb", _yahoo_crumb)
-    _throttle(delay_seconds)
+    # Cap throttle so agents don't spend their budget sleeping
+    _throttle(min(float(delay_seconds or 0), 0.25))
     try:
         resp = session.get(url, params=req_params or None, headers=headers, timeout=timeout)
         if resp.status_code in {401, 403} and use_crumb:
@@ -95,11 +110,12 @@ def _request_get(
             session = _yahoo_session()
             if _yahoo_crumb:
                 req_params["crumb"] = _yahoo_crumb
-            _throttle(delay_seconds)
+            _throttle(min(float(delay_seconds or 0), 0.25))
             resp = session.get(url, params=req_params or None, headers=headers, timeout=timeout)
         if resp.status_code == 429:
-            time.sleep(3)
-            _throttle(delay_seconds)
+            # Brief backoff only — long sleeps stack across agents and freeze the schedule.
+            time.sleep(0.4)
+            _throttle(0.1)
             resp = session.get(url, params=req_params or None, headers=headers, timeout=timeout)
         return resp
     except requests.RequestException:
@@ -113,7 +129,7 @@ def _chart_payload(
     interval: str = "1d",
     delay_seconds: float = 0.0,
     client_tag: str = "agent",
-    timeout: int = 25,
+    timeout: float | tuple[float, float] = (3.0, 12.0),
 ) -> dict[str, Any] | None:
     key = (symbol.upper(), range_, interval)
     if key in _session_cache:
@@ -280,7 +296,7 @@ def fetch_option_chain(
     *,
     delay_seconds: float = 0.0,
     client_tag: str = "agent",
-    timeout: int = 30,
+    timeout: float | tuple[float, float] = (2.0, 6.0),
 ) -> dict[str, Any] | None:
     """Nearest-expiration option chain (calls + puts) for smart-money flow agents.
 
@@ -334,10 +350,9 @@ def fetch_option_chain(
             spot_f = float(spot) if spot is not None else 0.0
         except (TypeError, ValueError):
             spot_f = 0.0
+        # Skip chart-meta fallback — a second Yahoo hop was stacking hangs under rate limits.
         if spot_f <= 0:
-            meta = fetch_chart_meta(sym, range_="5d", interval="1d", delay_seconds=0, client_tag=client_tag)
-            if meta and meta.get("price"):
-                spot_f = float(meta["price"])
+            return None
         calls = [
             leg
             for raw in (nearest.get("calls") or [])

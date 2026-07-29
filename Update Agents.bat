@@ -77,7 +77,7 @@ echo Done. Agents installed from:
 echo   https://github.com/shaggychunxx-ui/Finance
 echo   (main + copilot agent branches)
 echo.
-echo Restart E*TRADE Trader / Short Trader / background worker to load new agents.
+echo Restart E*TRADE Unified Trader / background worker to load new agents.
 pause
 exit /b 0
 

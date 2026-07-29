@@ -279,16 +279,23 @@ def build_day_trade_plan(
             sym: int(float(p.get("quantity") or 0)) for sym, p in long_map.items()
         }
         blocked_new = blocked_symbols_for_new_entry("long", positions)
-        budget = shared_capital_budget(float(total_value), sleeve="long", balance=balance)
+        budget = shared_capital_budget(
+            float(total_value),
+            sleeve="long",
+            balance=balance,
+            positions=positions,
+        )
+        # deployable already nets long+short MV against the shared account pool
         shared_deploy = float(budget.get("deployable_usd") or 0)
         sleeve_ceiling = float(budget.get("sleeve_ceiling_usd") or shared_deploy or 0)
         long_mv = sum(float(p.get("market_value") or 0) for p in long_map.values())
-        # Remaining room under the buy-app capital cap (USD or %)
-        capital_headroom = max(0.0, sleeve_ceiling - long_mv) if sleeve_ceiling > 0 else 0.0
+        capital_headroom = float(budget.get("sleeve_remaining_usd") or 0)
+        if capital_headroom <= 0 and sleeve_ceiling > 0:
+            capital_headroom = max(0.0, sleeve_ceiling - long_mv)
         if shared_deploy > 0:
             buying_power = min(float(buying_power or shared_deploy), shared_deploy)
         if capital_headroom > 0 or sleeve_ceiling > 0:
-            buying_power = min(float(buying_power or 0), capital_headroom)
+            buying_power = min(float(buying_power or 0), max(capital_headroom, shared_deploy))
     except Exception:
         pos_qty = {
             str(p.get("symbol", "")).upper(): int(float(p.get("quantity") or 0))

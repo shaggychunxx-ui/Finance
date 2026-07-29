@@ -284,7 +284,7 @@ class YahooFinanceStatisticalAnalyst(BaseExpert):
                 SCREENER_API,
                 params={"scrIds": scr_id, "count": count},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             rows: list[dict[str, Any]] = []
@@ -304,7 +304,7 @@ class YahooFinanceStatisticalAnalyst(BaseExpert):
 
     def _fetch_trending(self) -> list[str]:
         try:
-            resp = requests.get(TRENDING_API, headers=HEADERS, timeout=20)
+            resp = requests.get(TRENDING_API, headers=HEADERS, timeout=(2, 5))
             resp.raise_for_status()
             return [
                 q["symbol"]

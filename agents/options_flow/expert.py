@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import statistics
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,15 +30,12 @@ from agents.base import BaseExpert
 
 BENCHMARK = "SPY"
 
+# Keep short — each option chain is a heavy Yahoo call; long lists hang agent 60.
 WATCHLIST: dict[str, str] = {
     "SPY": "S&P 500 (deep options liquidity)",
+    "QQQ": "Nasdaq 100 (deep options liquidity)",
     "AAPL": "Mega-cap tech (deep options liquidity)",
     "MSFT": "Mega-cap tech (deep options liquidity)",
-    "QQQ": "Nasdaq 100 (deep options liquidity)",
-    "IWM": "Russell 2000 (moderate options liquidity)",
-    "GME": "Retail-driven small/mid cap (volatile)",
-    "COIN": "Crypto-adjacent equity (volatile)",
-    "PLTR": "High-beta growth name (moderate options liquidity)",
 }
 
 # Forensic thresholds for the "golden sweep" style anomaly screen.
@@ -213,7 +209,7 @@ class OptionsFlowExpert(BaseExpert):
 
     def __init__(
         self,
-        delay_seconds: float = 0.35,
+        delay_seconds: float = 0.0,
         *,
         pipeline_context: dict[str, Any] | None = None,
     ) -> None:
@@ -276,7 +272,15 @@ class OptionsFlowExpert(BaseExpert):
         return total_volume, total_oi, unusual
 
     def _analyze_symbol(self, symbol: str, name: str) -> OptionsFlowSignal | None:
-        chain = self.fetch_yahoo_option_chain(symbol)
+        # Short timeouts — never block the schedule on Yahoo option chains.
+        from agents.market_data.yahoo import fetch_option_chain
+
+        chain = fetch_option_chain(
+            symbol,
+            delay_seconds=0.0,
+            client_tag=self.agent_id or "options-flow",
+            timeout=(2.0, 6.0),
+        )
         if not chain or not (chain.get("calls") or chain.get("puts")):
             return None
 
@@ -451,17 +455,18 @@ class OptionsFlowExpert(BaseExpert):
 
     def analyze(self) -> OptionsFlowReport:
         symbols: list[OptionsFlowSignal] = []
-        # Merge static options watchlist with pipeline live/trust/bullish names (liquid first).
+        # Fixed liquid watchlist only — expanding via pipeline symbols + option-chain
+        # fetches was hanging agent 60 for 10+ minutes under Yahoo rate limits.
         watch: dict[str, str] = dict(WATCHLIST)
-        for sym in self.pipeline_watchlist_symbols(list(WATCHLIST.keys()), limit=14):
-            watch.setdefault(sym, sym)
-        # Always include SPY as benchmark / liquidity anchor.
         watch.setdefault(BENCHMARK, WATCHLIST.get(BENCHMARK, "S&P 500"))
 
         for symbol, name in watch.items():
             if self.pipeline_should_skip_symbol(symbol):
                 continue
-            row = self._analyze_symbol(symbol, name)
+            try:
+                row = self._analyze_symbol(symbol, name)
+            except Exception:
+                row = None
             if row:
                 symbols.append(row)
                 self.request_enhanced_data(
@@ -469,13 +474,23 @@ class OptionsFlowExpert(BaseExpert):
                     reason="Options flow watchlist",
                     priority=0.78 if row.golden_sweep_candidate else 0.7,
                 )
-            # Throttle is also applied inside fetch_yahoo_option_chain; light pause between names.
-            time.sleep(max(0.05, self.delay_seconds * 0.25))
 
-        if not any(s.symbol == BENCHMARK for s in symbols):
-            # Soft fallback: still emit report if other names worked
-            if not symbols:
-                raise RuntimeError("Unable to fetch option chain data for options flow analysis")
+        if not symbols:
+            # Degraded empty report beats hanging the whole pipeline
+            assessment = self._assessment([])
+            return OptionsFlowReport(
+                symbols=[],
+                assessment=assessment,
+                flow_conviction_score=0.0,
+                hedging_ambiguity_score=10.0,
+                expert_summary=(
+                    "Options flow unavailable (Yahoo option chain empty/rate-limited). "
+                    "Using degraded empty report so the schedule can continue."
+                ),
+                market_signals=[],
+                recommendations=["Options chain data unavailable this cycle — retry later."],
+                data_source="Yahoo Finance option chain (unavailable)",
+            )
 
         assessment = self._assessment(symbols)
         expert_summary = self._expert_summary(assessment)

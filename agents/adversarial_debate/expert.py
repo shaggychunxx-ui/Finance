@@ -38,10 +38,6 @@ from pathlib import Path
 from typing import Any
 
 from agents.base import BaseExpert
-from agents.fundamental_analyst import run_fundamental_analyst_analysis
-from agents.market_regime import run_market_regime_analysis
-from agents.sentiment_alt_data import run_sentiment_alt_data_analysis
-from agents.technical_pattern import run_technical_pattern_analysis
 
 BULL_WEIGHT_TECHNICAL_ENTRY = 3.0
 BULL_WEIGHT_TECHNICAL_TREND = 1.0
@@ -86,8 +82,12 @@ class ConsensusReport:
 class AdversarialDebateExpert(BaseExpert):
     """The 'Judge' — Supervisor-as-Tools consensus router over sibling agents."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        pipeline_context: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="adversarial-debate")
 
     @staticmethod
     def _index_by_symbol(snapshots: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -178,18 +178,50 @@ class AdversarialDebateExpert(BaseExpert):
             rationale=rationale,
         )
 
+    @staticmethod
+    def _load_upstream_json(filename: str) -> dict[str, Any]:
+        """Prefer same-cycle / prior pipeline outputs — never re-run nested agents.
+
+        Nested full agent runs (fundamental + sentiment + technical + regime)
+        multiplies wall-clock by 4x and can hang the scheduled pipeline.
+        """
+        roots = [
+            Path("output"),
+            Path(__file__).resolve().parents[2] / "output",
+        ]
+        for root in roots:
+            path = root / filename
+            if not path.exists():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return data
+            except (json.JSONDecodeError, OSError):
+                continue
+        return {}
+
     def analyze(self) -> ConsensusReport:
-        fundamental_data = run_fundamental_analyst_analysis()
-        sentiment_data = run_sentiment_alt_data_analysis()
-        technical_data = run_technical_pattern_analysis()
-        regime_data = run_market_regime_analysis()
+        fundamental_data = self._load_upstream_json("fundamental_analyst.json")
+        sentiment_data = self._load_upstream_json("sentiment_alt_data.json")
+        technical_data = self._load_upstream_json("technical_pattern.json")
+        regime_data = self._load_upstream_json("market_regime.json")
 
         fundamental_by_symbol = self._index_by_symbol(fundamental_data.get("snapshots", []))
         sentiment_by_symbol = self._index_by_symbol(sentiment_data.get("snapshots", []))
         technical_by_symbol = self._index_by_symbol(technical_data.get("snapshots", []))
 
-        regime_label = regime_data.get("metrics", {}).get("regime_label", "Unclassified")
-        regime_config = regime_data.get("regime_config", {})
+        metrics = regime_data.get("metrics") if isinstance(regime_data.get("metrics"), dict) else {}
+        regime_label = (
+            metrics.get("regime_label")
+            or regime_data.get("regime_label")
+            or "Unclassified"
+        )
+        regime_config = (
+            regime_data.get("regime_config")
+            if isinstance(regime_data.get("regime_config"), dict)
+            else {}
+        )
 
         symbols = sorted(set(technical_by_symbol) | set(sentiment_by_symbol) | set(fundamental_by_symbol))
 
@@ -302,5 +334,8 @@ class AdversarialDebateExpert(BaseExpert):
         return result
 
 
-def run_adversarial_debate_analysis(output: Path | None = None) -> dict[str, Any]:
-    return AdversarialDebateExpert().run(output=output)
+def run_adversarial_debate_analysis(
+    output: Path | None = None,
+    pipeline_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return AdversarialDebateExpert(pipeline_context=pipeline_context).run(output=output)

@@ -128,14 +128,14 @@ class FundamentalAnalystExpert(BaseExpert):
             resp = requests.get(
                 SEC_COMPANYFACTS_API.format(cik=cik),
                 headers=HEADERS,
-                timeout=25,
+                timeout=(2, 6),
             )
             if resp.status_code == 429:
                 time.sleep(2)
                 resp = requests.get(
                     SEC_COMPANYFACTS_API.format(cik=cik),
                     headers=HEADERS,
-                    timeout=25,
+                    timeout=(2, 6),
                 )
             resp.raise_for_status()
             return resp.json()
@@ -148,7 +148,7 @@ class FundamentalAnalystExpert(BaseExpert):
                 CHART_API.format(symbol=symbol),
                 params={"interval": "1d", "range": "5d"},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             meta = resp.json()["chart"]["result"][0]["meta"]

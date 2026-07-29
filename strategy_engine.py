@@ -12,6 +12,19 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+# Default OFF: per-agent OS processes flashed a console every few seconds on Windows.
+# Hang protection is lane-level isolation (split pipelines) + per-agent ThreadPool timeout.
+# Set FINANCE_AGENT_SUBPROCESS=1 to re-enable hard process kill per agent.
+# Default ON: hung Yahoo/HTTP inside an agent can freeze the whole worker when
+# using threads only (timeout cannot kill the thread). Subprocess + CREATE_NO_WINDOW
+# stays quiet on Windows while remaining hard-killable.
+USE_AGENT_SUBPROCESS = str(os.environ.get("FINANCE_AGENT_SUBPROCESS", "1")).strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+
 from etrade_api.client import ETradeClient
 from etrade_api.config import ETradeConfig, load_config
 from app_paths import OUTPUT, ROOT
@@ -30,9 +43,13 @@ DEFAULT_SMALL_ACCOUNT_THRESHOLD_USD = 500.0
 DEFAULT_SMALL_ACCOUNT_MAX_HOLDINGS = 6
 DEFAULT_SMALL_ACCOUNT_MIN_HOLDINGS = 3
 DEFAULT_PREFER_AFFORDABLE_TICKERS = True
-AGENT_RUN_TIMEOUT_SEC = max(60, int(os.environ.get("FINANCE_AGENT_TIMEOUT_SEC", "180")))
-ETRADE_ENHANCE_TIMEOUT_SEC = max(60, int(os.environ.get("FINANCE_ETRADE_ENHANCE_TIMEOUT_SEC", "120")))
-BENCHMARK_TIMEOUT_SEC = max(120, int(os.environ.get("FINANCE_BENCHMARK_TIMEOUT_SEC", "900")))
+# Hard wall-clock per agent (subprocess kill). Keep tight so schedule never freezes.
+AGENT_RUN_TIMEOUT_SEC = max(25, int(os.environ.get("FINANCE_AGENT_TIMEOUT_SEC", "55")))
+ETRADE_ENHANCE_TIMEOUT_SEC = max(45, int(os.environ.get("FINANCE_ETRADE_ENHANCE_TIMEOUT_SEC", "90")))
+BENCHMARK_TIMEOUT_SEC = max(60, int(os.environ.get("FINANCE_BENCHMARK_TIMEOUT_SEC", "180")))
+# Market predictor was hanging the whole post-fusion step (Yahoo enrich) with no timeout.
+PREDICTOR_TIMEOUT_SEC = max(45, int(os.environ.get("FINANCE_PREDICTOR_TIMEOUT_SEC", "90")))
+ACCURACY_CYCLE_TIMEOUT_SEC = max(30, int(os.environ.get("FINANCE_ACCURACY_TIMEOUT_SEC", "60")))
 
 
 @dataclass
@@ -154,6 +171,8 @@ def load_strategy_settings(config_path: Path | None = None) -> dict[str, Any]:
         "min_buy_return_pct": 0.05,
         "min_sell_return_pct": -0.10,
         "max_deploy_pct": 0.94,
+        "account_goals": {},
+        "profit_horizons": {},
         "trading_gate": {},
         "domain_constraints": {},
         "temperature_control": {},
@@ -182,6 +201,14 @@ def load_strategy_settings(config_path: Path | None = None) -> dict[str, Any]:
         raw = json.loads(path.read_text(encoding="utf-8"))
         user = raw.get("strategy", {})
         settings.update({k: user[k] for k in settings if k in user})
+        # Nested / optional strategy blocks
+        if isinstance(user.get("account_goals"), dict):
+            settings["account_goals"] = dict(user["account_goals"])
+        if isinstance(user.get("profit_horizons"), dict):
+            settings["profit_horizons"] = dict(user["profit_horizons"])
+        # Top-level account_goals also accepted
+        if isinstance(raw.get("account_goals"), dict):
+            settings["account_goals"] = dict(raw["account_goals"])
         try:
             from trading_gate import load_trading_gate_settings
 
@@ -200,8 +227,26 @@ def load_strategy_settings(config_path: Path | None = None) -> dict[str, Any]:
             settings["temperature_control"] = load_temperature_settings(path)
         except Exception:
             pass
+        # Agent-controlled used to disable profit optimize; account goals re-enable it.
         if user.get("agent_controlled"):
             settings["optimize_profit_horizons"] = False
+        goals = settings.get("account_goals") if isinstance(settings.get("account_goals"), dict) else {}
+        if goals.get("enabled", False) or user.get("optimize_profit_horizons") is True:
+            settings["optimize_profit_horizons"] = True
+        if goals.get("enabled", False):
+            try:
+                from account_goals import goal_min_buy_return_pct, load_account_goals
+
+                g = load_account_goals(path)
+                settings["account_goals"] = g
+                # Raise min buy bar toward daily goal when not already higher
+                goal_min = goal_min_buy_return_pct(g)
+                settings["min_buy_return_pct"] = max(
+                    float(settings.get("min_buy_return_pct") or 0.0),
+                    float(goal_min),
+                )
+            except Exception:
+                pass
     except (json.JSONDecodeError, OSError):
         pass
     return settings
@@ -344,10 +389,15 @@ def build_strategy_plan(
         )
 
         coordinate_sleeves(total_account_value=float(total_value))
-        budget = shared_capital_budget(float(total_value), sleeve="long", balance=balance)
-        # Use full sleeve ceiling for target sizing (not BP-clipped deployable),
-        # so a $5k capital cap allocates against $5k even when cash is low
-        # because existing long holdings already use part of the budget.
+        budget = shared_capital_budget(
+            float(total_value),
+            sleeve="long",
+            balance=balance,
+            positions=positions,
+        )
+        # Shared-account ceiling: long book sized to sleeve_ceiling (already
+        # reduced by short MV when shared_capital is on). Prefer ceiling for
+        # target weights so existing longs still allocate under the joint cap.
         investable_cap = float(
             budget.get("sleeve_ceiling_usd") or budget.get("deployable_usd") or 0
         )
@@ -526,7 +576,26 @@ def build_strategy_plan(
             orders = _prioritize_growth_orders(orders, portfolio=portfolio, total_value=total_value)
 
     plan_meta = dict(portfolio.get("meta", {}))
-    plan_meta["objective"] = "agent_controlled_selection" if agent_controlled else "maximize_multi_horizon_profit"
+    goals = settings.get("account_goals") if isinstance(settings.get("account_goals"), dict) else {}
+    if goals.get("enabled") and (
+        goals.get("daily_gain_pct") or goals.get("weekly_gain_pct") or goals.get("monthly_gain_pct")
+    ):
+        plan_meta["objective"] = (
+            f"account_goals_d{float(goals.get('daily_gain_pct') or 0):g}%"
+            f"_w{float(goals.get('weekly_gain_pct') or 0):g}%"
+            f"_m{float(goals.get('monthly_gain_pct') or 0):g}%"
+        )
+        plan_meta["account_goals"] = {
+            "daily_gain_pct": goals.get("daily_gain_pct"),
+            "weekly_gain_pct": goals.get("weekly_gain_pct"),
+            "monthly_gain_pct": goals.get("monthly_gain_pct"),
+            "agent_goal_bonus": goals.get("agent_goal_bonus", True),
+            "enabled": True,
+        }
+    else:
+        plan_meta["objective"] = (
+            "agent_controlled_selection" if agent_controlled else "maximize_multi_horizon_profit"
+        )
     plan_meta["agent_controlled"] = agent_controlled
     plan_meta["growth_mode"] = settings.get("growth_mode", True)
     plan_meta["optimize_profit_horizons"] = settings.get("optimize_profit_horizons", True)
@@ -1010,7 +1079,81 @@ def _run_platform_agent(
     cycle_id: str | None,
     on_progress: Callable[[str], None] | None,
 ) -> dict[str, Any]:
-    """Execute one platform agent with validation and non-silent error reporting."""
+    """Execute one platform agent with hard timeout and non-silent error reporting.
+
+    Default path: isolated subprocess so hung HTTP cannot freeze the worker.
+    Fallback: ThreadPoolExecutor timeout (does not kill hung threads).
+    """
+    result: dict[str, Any] = {
+        "agent_id": agent_id,
+        "label": label,
+        "ok": False,
+        "degraded": False,
+        "error": "",
+        "traceback": "",
+    }
+
+    if USE_AGENT_SUBPROCESS:
+        try:
+            from agents.agent_process_runner import run_agent_subprocess
+
+            proc = run_agent_subprocess(
+                agent_id,
+                out_path,
+                root=ROOT,
+                timeout_sec=AGENT_RUN_TIMEOUT_SEC,
+            )
+            if not proc.get("ok"):
+                msg = str(proc.get("error") or "agent process failed")
+                if on_progress:
+                    kind = "timed out" if "timed out" in msg.lower() else "failed"
+                    on_progress(f"Agent {kind}: {label} — {msg}")
+                result["error"] = msg
+                result["traceback"] = str(proc.get("stderr") or "")[-2000:]
+                return result
+            # Fast post-steps in parent (same as body after runner returns)
+            try:
+                from agents.optimize_output import optimize_agent_output
+
+                optimize_agent_output(out_path, agent_id)
+            except Exception:
+                pass
+            try:
+                from agents.enhancement import patch_agent_output_enhance_symbols
+
+                patch_agent_output_enhance_symbols(out_path)
+            except Exception:
+                pass
+            try:
+                from agent_personality import patch_agent_output_personality
+
+                patch_agent_output_personality(out_path, agent_id)
+            except Exception:
+                pass
+            validation_error = validate_agent_output(out_path, started_at=started_at)
+            if validation_error:
+                result["error"] = validation_error
+                if on_progress:
+                    on_progress(f"Agent failed: {label} — {validation_error}")
+                return result
+            result["ok"] = True
+            try:
+                from analysis_history import archive_agent_output
+
+                archive_agent_output(agent_id, out_path, cycle_id=cycle_id)
+            except Exception:
+                pass
+            try:
+                loaded = json.loads(out_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    result["agent_data"] = loaded
+            except (OSError, json.JSONDecodeError):
+                pass
+            return result
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Agent subprocess path failed for {label}, falling back to thread: {exc}")
+
     pool = ThreadPoolExecutor(max_workers=1)
     future = pool.submit(
         _run_platform_agent_body,
@@ -1139,8 +1282,28 @@ def run_agent_pipeline(
     check_remote: bool = True,
     reload_runners: bool = True,
     benchmark_profile: str = "routine",
+    pipeline_id: str | None = None,
+    only_agents: list[str] | set[str] | frozenset[str] | None = None,
+    agents_only: bool = False,
+    agent_timeout_sec: int | None = None,
 ) -> int:
+    """Run platform agents.
+
+    pipeline_id / only_agents:
+        Restrict to one named lane (see agent_pipelines.py).
+    agents_only:
+        Skip E*TRADE enhance, backtest, market predictor, and history finalize
+        (used by split-lane workers; the orchestrator runs post-steps once).
+    agent_timeout_sec:
+        Override per-agent hard kill budget for this lane.
+    """
     from agents.platform_catalog import active_agent_sources, log_catalog_changes, resolve_runner
+
+    # Lane-specific timeout for this process
+    global AGENT_RUN_TIMEOUT_SEC
+    _saved_timeout = AGENT_RUN_TIMEOUT_SEC
+    if agent_timeout_sec is not None:
+        AGENT_RUN_TIMEOUT_SEC = max(20, int(agent_timeout_sec))
 
     if runners is None:
         from finance_runners import load_finance_runners
@@ -1148,40 +1311,61 @@ def run_agent_pipeline(
         runners = load_finance_runners(reload=reload_runners)
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    lane_prefix = f"[{pipeline_id}] " if pipeline_id else ""
+
+    def _prog(msg: str) -> None:
+        if on_progress:
+            on_progress(f"{lane_prefix}{msg}" if lane_prefix and not msg.startswith("[") else msg)
+
     try:
         from agents.pipeline_memory import begin_pipeline_memory_session, end_pipeline_memory_session
 
-        begin_pipeline_memory_session()
+        if not agents_only:
+            begin_pipeline_memory_session()
     except Exception:
         pass
     try:
         from analysis_history import new_pipeline_cycle_id
 
-        cycle_id = new_pipeline_cycle_id()
+        cycle_id = new_pipeline_cycle_id() if not agents_only else None
     except Exception:
         cycle_id = None
-    log_catalog_changes(on_progress, check_remote=check_remote)
-    try:
-        from agent_groups import register_groups_into_fusion, all_groups_summary
+    if not agents_only:
+        log_catalog_changes(on_progress, check_remote=check_remote)
+        try:
+            from agent_groups import register_groups_into_fusion, all_groups_summary
 
-        register_groups_into_fusion()
-        if on_progress:
-            groups = all_groups_summary()
-            on_progress(
-                f"Agent groups: {len(groups)} teams organizing "
-                f"{sum(g['member_count'] for g in groups)} specialists by role."
+            register_groups_into_fusion()
+            if on_progress:
+                groups = all_groups_summary()
+                on_progress(
+                    f"Agent groups: {len(groups)} teams organizing "
+                    f"{sum(g['member_count'] for g in groups)} specialists by role."
+                )
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Agent group registration note: {exc}")
+        try:
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+            from etrade_market_enhancer import run_proactive_etrade_enhancement
+
+            enhance_timeout = max(
+                20, int(os.environ.get("FINANCE_ETRADE_ENHANCE_TIMEOUT_SEC", "60"))
             )
-    except Exception as exc:
-        if on_progress:
-            on_progress(f"Agent group registration note: {exc}")
-    try:
-        from etrade_market_enhancer import run_proactive_etrade_enhancement
-
-        run_proactive_etrade_enhancement(on_progress=on_progress)
-    except Exception as exc:
-        if on_progress:
-            on_progress(f"Proactive E*TRADE enhancement skipped: {exc}")
-    sources = active_agent_sources(check_remote=check_remote)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(run_proactive_etrade_enhancement, on_progress=on_progress)
+                try:
+                    fut.result(timeout=enhance_timeout)
+                except FuturesTimeoutError:
+                    if on_progress:
+                        on_progress(
+                            f"Proactive E*TRADE enhancement timed out after {enhance_timeout}s — continuing."
+                        )
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Proactive E*TRADE enhancement skipped: {exc}")
+    sources = active_agent_sources(check_remote=check_remote and not agents_only)
     # Prefer group order: risk first, then short mechanics, then core alpha, platform last
     try:
         from agent_groups import agent_trading_role
@@ -1209,11 +1393,68 @@ def run_agent_pipeline(
         )
     except Exception:
         pass
+
+    # Filter to named pipeline / explicit allow-list
+    if pipeline_id or only_agents is not None:
+        try:
+            from agent_pipelines import agents_for_pipeline, normalize_agent_id, pipeline_spec
+
+            if only_agents is not None:
+                allow = {normalize_agent_id(a) for a in only_agents}
+            else:
+                all_ids = [str(s.get("id") or "") for s in sources]
+                allow = set(agents_for_pipeline(str(pipeline_id), all_ids))
+            sources = [s for s in sources if normalize_agent_id(str(s.get("id") or "")) in allow]
+            if pipeline_id and on_progress:
+                spec = pipeline_spec(str(pipeline_id))
+                on_progress(
+                    f"Pipeline lane '{spec.get('label') or pipeline_id}': "
+                    f"{len(sources)} agent(s), agent_timeout={AGENT_RUN_TIMEOUT_SEC}s"
+                )
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Pipeline filter note: {exc}")
+
     pipeline_started_at = datetime.now(timezone.utc)
     ok = 0
     skipped = 0
     agent_failures: list[dict[str, Any]] = []
     agent_degraded: list[dict[str, Any]] = []
+    try:
+        ok = _run_agent_pipeline_body(
+            runners=runners,
+            sources=sources,
+            on_progress=_prog if lane_prefix else on_progress,
+            cycle_id=cycle_id,
+            pipeline_started_at=pipeline_started_at,
+            agents_only=agents_only,
+            benchmark_profile=benchmark_profile,
+            agent_failures=agent_failures,
+            agent_degraded=agent_degraded,
+            skipped_start=skipped,
+        )
+    finally:
+        AGENT_RUN_TIMEOUT_SEC = _saved_timeout
+    return ok
+
+
+def _run_agent_pipeline_body(
+    *,
+    runners: dict[str, Callable[..., Any]],
+    sources: list[dict[str, Any]],
+    on_progress: Callable[[str], None] | None,
+    cycle_id: str | None,
+    pipeline_started_at: datetime,
+    agents_only: bool,
+    benchmark_profile: str,
+    agent_failures: list[dict[str, Any]],
+    agent_degraded: list[dict[str, Any]],
+    skipped_start: int,
+) -> int:
+    from agents.platform_catalog import resolve_runner
+
+    ok = 0
+    skipped = skipped_start
     for index, src in enumerate(sources, start=1):
         aid = src["id"]
         label = str(src.get("label") or aid)
@@ -1277,6 +1518,10 @@ def run_agent_pipeline(
         if extra > 0:
             preview += f"; and {extra} more"
         on_progress(f"Pipeline agent failures ({len(agent_failures)}): {preview}")
+    if agents_only:
+        if on_progress:
+            on_progress(f"Lane agents complete — {ok}/{len(sources)} ok (post-steps deferred).")
+        return ok
     try:
         from agents.pipeline_memory import restore_same_cycle_agent_outputs
 
@@ -1352,11 +1597,34 @@ def run_agent_pipeline(
         pass
     if on_progress:
         on_progress("Fusing Market Predictor…")
-    predictor_outcome = _run_market_predictor(
-        started_at=pipeline_started_at,
-        cycle_id=cycle_id,
+        on_progress(
+            f"Market Predictor running (timeout {PREDICTOR_TIMEOUT_SEC}s, cache-only prices)…"
+        )
+    predictor_outcome = _run_timed_pipeline_step(
+        lambda: _run_market_predictor(
+            started_at=pipeline_started_at,
+            cycle_id=cycle_id,
+            on_progress=on_progress,
+        ),
+        timeout_sec=PREDICTOR_TIMEOUT_SEC,
+        label="Market Predictor",
         on_progress=on_progress,
     )
+    if on_progress:
+        on_progress(
+            "Market Predictor done"
+            if isinstance(predictor_outcome, dict) and predictor_outcome.get("ok")
+            else "Market Predictor finished (failed or timed out)"
+        )
+    if not isinstance(predictor_outcome, dict):
+        predictor_outcome = {
+            "agent_id": "market-predictor",
+            "label": "Market Predictor",
+            "ok": False,
+            "degraded": False,
+            "error": f"timed out after {PREDICTOR_TIMEOUT_SEC}s",
+            "traceback": "",
+        }
     predictor_ok = bool(predictor_outcome.get("ok"))
     predictor_failure: dict[str, Any] | None = None
     if not predictor_ok:
@@ -1400,11 +1668,18 @@ def run_agent_pipeline(
     try:
         from prediction_accuracy import run_accuracy_cycle
 
-        stats = run_accuracy_cycle(
-            cycle_id=cycle_id,
-            skip_simulation=True,
-            rebuild_learning=False,
+        timed_stats = _run_timed_pipeline_step(
+            lambda: run_accuracy_cycle(
+                cycle_id=cycle_id,
+                skip_simulation=True,
+                rebuild_learning=False,
+            ),
+            timeout_sec=ACCURACY_CYCLE_TIMEOUT_SEC,
+            label="Accuracy cycle",
+            on_progress=on_progress,
         )
+        if isinstance(timed_stats, dict):
+            stats = timed_stats
         if on_progress and stats.get("recorded"):
             on_progress(f"Recorded {stats['recorded']} prediction(s) from this pipeline run.")
         if on_progress and stats.get("scored"):
@@ -1467,3 +1742,166 @@ def run_agent_pipeline(
     except Exception:
         pass
     return ok
+
+
+def run_split_pipelines(
+    on_progress: Callable[[str], None] | None = None,
+    *,
+    check_remote: bool = False,
+    reload_runners: bool = False,
+    benchmark_profile: str = "skip",
+    parallel_lanes: bool = True,
+    in_process: bool = True,
+    only_lanes: list[str] | None = None,
+    run_post: bool | None = None,
+) -> int:
+    """Run selected lanes: critical first (if due), then quant/flow/research.
+
+    only_lanes: subset of {"critical","quant","flow","research"}. None = all.
+    run_post: if None, run post-fusion when critical/quant/flow is included.
+    in_process=True: no child Python processes (quiet on Windows).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from agent_pipelines import ordered_pipeline_ids, pipeline_spec
+
+    del in_process  # always in-process for quiet operation
+    wanted = {str(x).strip().lower() for x in (only_lanes or ordered_pipeline_ids())}
+    wanted &= {"critical", "quant", "flow", "research"}
+    if not wanted:
+        if on_progress:
+            on_progress("No pipeline lanes selected — skipping.")
+        return 0
+
+    def _say(msg: str) -> None:
+        if on_progress:
+            try:
+                on_progress(str(msg).encode("ascii", "replace").decode("ascii"))
+            except Exception:
+                on_progress(str(msg))
+
+    try:
+        from agents.pipeline_memory import begin_pipeline_memory_session
+
+        begin_pipeline_memory_session()
+    except Exception:
+        pass
+
+    try:
+        from agent_groups import register_groups_into_fusion, all_groups_summary
+
+        register_groups_into_fusion()
+        groups = all_groups_summary()
+        _say(
+            f"Split pipelines: lanes={sorted(wanted)}, "
+            f"{len(groups)} groups, {sum(g['member_count'] for g in groups)} specialists"
+        )
+    except Exception as exc:
+        _say(f"Group registration note: {exc}")
+
+    # Live quotes only when trading-relevant lanes run (saves E*TRADE/API budget).
+    # Hard wall-clock cap so a hung quote/OAuth call cannot freeze the worker.
+    if wanted & {"critical", "quant", "flow"}:
+        try:
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+            from etrade_market_enhancer import run_proactive_etrade_enhancement
+
+            enhance_timeout = max(
+                20, int(os.environ.get("FINANCE_ETRADE_ENHANCE_TIMEOUT_SEC", "60"))
+            )
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(run_proactive_etrade_enhancement, on_progress=on_progress)
+                try:
+                    fut.result(timeout=enhance_timeout)
+                except FuturesTimeoutError:
+                    _say(
+                        f"Proactive E*TRADE enhancement timed out after {enhance_timeout}s — continuing lanes."
+                    )
+        except Exception as exc:
+            _say(f"Proactive E*TRADE enhancement skipped: {exc}")
+    else:
+        _say("Skipping proactive E*TRADE quotes (research-only cycle).")
+
+    total_ok = 0
+    os.environ["FINANCE_AGENT_SUBPROCESS"] = "0"
+
+    def _run_lane_inprocess(pid: str) -> tuple[str, int]:
+        spec = pipeline_spec(pid)
+        _say(f"> Lane {pid} - {spec['label']}")
+
+        def _lane_prog(msg: str) -> None:
+            text = str(msg or "")
+            if text.startswith("["):
+                _say(text)
+            else:
+                _say(f"[{pid}] {text}")
+
+        n = run_agent_pipeline(
+            on_progress=_lane_prog,
+            check_remote=False,
+            reload_runners=False,
+            benchmark_profile="skip",
+            pipeline_id=pid,
+            agents_only=True,
+            agent_timeout_sec=int(spec["agent_timeout_sec"]),
+        )
+        return pid, int(n or 0)
+
+    # --- Phase 1: critical (serial, if selected) ---
+    if "critical" in wanted:
+        _, n_crit = _run_lane_inprocess("critical")
+        total_ok += n_crit
+        _say(f"Lane critical complete - {n_crit} agent(s) ok")
+
+    # --- Phase 2: quant / flow / research (parallel among selected) ---
+    parallel_ids = [p for p in ordered_pipeline_ids(parallel_phase=True) if p in wanted]
+    if parallel_ids:
+        if parallel_lanes and len(parallel_ids) > 1:
+            with ThreadPoolExecutor(max_workers=min(3, len(parallel_ids))) as pool:
+                futures = {pool.submit(_run_lane_inprocess, pid): pid for pid in parallel_ids}
+                for fut in as_completed(futures):
+                    pid = futures[fut]
+                    try:
+                        lane_id, n = fut.result()
+                    except Exception as exc:
+                        _say(f"Lane {pid} crashed: {exc}")
+                        continue
+                    total_ok += n
+                    _say(f"Lane {lane_id} complete - {n} agent(s) ok")
+        else:
+            for pid in parallel_ids:
+                lane_id, n = _run_lane_inprocess(pid)
+                total_ok += n
+                _say(f"Lane {lane_id} complete - {n} agent(s) ok")
+
+    # --- Phase 3: post-fusion when trading data was refreshed ---
+    do_post = run_post if run_post is not None else bool(wanted & {"critical", "quant", "flow"})
+    post_ok = 0
+    if do_post:
+        _say("> Post-fusion - E*TRADE enhance, predictor, accuracy")
+        post_ok = run_agent_pipeline(
+            on_progress=on_progress,
+            check_remote=False,
+            reload_runners=False,
+            benchmark_profile=benchmark_profile,
+            only_agents=[],
+            agents_only=False,
+        )
+    else:
+        _say("Skipping post-fusion (research-only cycle — predictor keeps prior outputs).")
+
+    _say(f"Split pipelines finished - lane agents ok~{total_ok}, post={'yes' if do_post else 'no'}")
+    return total_ok + int(post_ok or 0)
+
+
+def _parse_pipeline_ok(result: dict[str, Any]) -> int:
+    for line in reversed((result.get("stdout") or "").splitlines()):
+        if line.startswith("PIPELINE_OK"):
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    return int(parts[1])
+                except ValueError:
+                    return 0
+    return 0 if not result.get("ok") else 1

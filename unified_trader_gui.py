@@ -42,9 +42,14 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 UNIFIED_APP_ID = "Finance.ETrade.UnifiedTrader.1"
+UNIFIED_MUTEX_NAME = "Local\\Finance.ETrade.UnifiedTrader.SingleInstance"
+UNIFIED_WINDOW_TITLE = "E*TRADE Trader"
 UNIFIED_LOG = ROOT / "output" / "unified_trader.log"
 LONG_CONFIG = ROOT / "etrade_config.json"
 SHORT_CONFIG = ROOT / "short_etrade_config.json"
+
+# Held for process lifetime so a second launch exits instead of opening another window.
+_single_instance_mutex: int | None = None
 
 
 def _log(msg: str) -> None:
@@ -64,6 +69,67 @@ def _apply_identity() -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(UNIFIED_APP_ID)
     except Exception:
         pass
+
+
+def _focus_existing_trader() -> None:
+    """Bring an already-running trader window forward (no new instance)."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        found = wintypes.HWND(0)
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        def _enum(hwnd: int, _lparam: int) -> bool:
+            nonlocal found
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, buf, 512)
+            title = buf.value or ""
+            if title == UNIFIED_WINDOW_TITLE or title.startswith(UNIFIED_WINDOW_TITLE + " "):
+                found = wintypes.HWND(hwnd)
+                return False
+            return True
+
+        user32.EnumWindows(_enum, 0)
+        if not found:
+            return
+        if user32.IsIconic(found):
+            user32.ShowWindow(found, SW_RESTORE)
+        user32.SetForegroundWindow(found)
+        user32.BringWindowToTop(found)
+    except Exception as exc:
+        _log(f"focus existing trader failed: {exc}")
+
+
+def _acquire_single_instance() -> bool:
+    """Return False if another Unified Trader GUI already holds the mutex."""
+    global _single_instance_mutex
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+
+        ERROR_ALREADY_EXISTS = 183
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.CreateMutexW(None, False, UNIFIED_MUTEX_NAME)
+        if not handle:
+            return True
+        if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            kernel32.CloseHandle(handle)
+            _focus_existing_trader()
+            _log("Another E*TRADE Trader instance is already running - exiting duplicate")
+            return False
+        _single_instance_mutex = int(handle)
+        return True
+    except Exception as exc:
+        _log(f"single-instance mutex note: {exc}")
+        return True
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -107,7 +173,7 @@ class UnifiedTraderApp:
         sync_module_globals(sys.modules[__name__])
 
         self._window = tk.Tk()
-        self._window.title("E*TRADE Trader")
+        self._window.title(UNIFIED_WINDOW_TITLE)
         self._window.configure(bg=BG)
         self._m = ScreenMetrics(self._window, window_profile="trader")
         layout = load_ui_layout("etrade_unified")
@@ -651,10 +717,10 @@ class UnifiedTraderApp:
 
     def _stop_all(self) -> None:
         if not messagebox.askyesno(
-            "Stop all",
-            "Stop all automation on BOTH buy and short apps?\n\n"
-            "Halts agents, strategy, swing trades, and day trading "
-            "for long + short (and both headless workers) until you resume.",
+            "Stop trading",
+            "Stop TRADING on BOTH buy and short apps?\n\n"
+            "Halts swing orders and day trading until you resume.\n"
+            "Agent pipeline on BOXONE (if dual-PC) keeps running.",
         ):
             return
         try:
@@ -674,7 +740,10 @@ class UnifiedTraderApp:
                 app._apply_automation_ui_state()
             except Exception:
                 pass
-        self._status.configure(text="All automation stopped on buy + short apps.", fg=WARN)
+        self._status.configure(
+            text="Trading stopped on buy + short (pipeline keeps running if remote).",
+            fg=WARN,
+        )
         self._refresh_dashboard()
 
     def _resume_all(self) -> None:
@@ -804,6 +873,8 @@ class UnifiedTraderApp:
 def main() -> int:
     try:
         _apply_identity()
+        if not _acquire_single_instance():
+            return 0
         try:
             from short_trader_gui import _ensure_short_config_seeded
             from sleeve_policy import ensure_config_sleeve_block

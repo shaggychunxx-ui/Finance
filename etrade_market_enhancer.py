@@ -230,7 +230,26 @@ def run_proactive_etrade_enhancement(
     say(f"E*TRADE proactive enhancement: refreshing {len(symbols)} prior-cycle symbol(s)…")
 
     client = _connect_etrade_client(config_path, say=say)
+    quotes_path = out / ENHANCED_QUOTES_FILE
+
+    # Dual-PC pipeline host: no local OAuth — use quotes published by broker via SMB.
     if client is None:
+        prior = _load_quotes_payload(quotes_path)
+        cached = prior.get("quotes") if isinstance(prior.get("quotes"), dict) else {}
+        if cached:
+            say(
+                f"E*TRADE proactive enhancement: using {len(cached)} shared broker quote(s) "
+                f"(no local E*TRADE session)."
+            )
+            return {
+                "skipped": False,
+                "phase": "shared_cache",
+                "symbols_requested": len(symbols),
+                "quotes": len(cached),
+                "quotes_cached": len(cached),
+                "agent_files_updated": 0,
+                "source": "shared_broker_feed",
+            }
         return {"skipped": True, "reason": "not_connected", "symbols_requested": symbols}
 
     if settings.get("require_production", True) and client.config.sandbox:
@@ -246,7 +265,6 @@ def run_proactive_etrade_enhancement(
         say("E*TRADE proactive enhancement: quote fetch returned no data.")
         return {"skipped": True, "reason": "no_quotes", "symbols_requested": symbols}
 
-    quotes_path = out / ENHANCED_QUOTES_FILE
     prior = _load_quotes_payload(quotes_path) if settings.get("merge_existing_quotes", True) else {}
     merged_quotes = _merge_quote_maps(
         prior.get("quotes") if isinstance(prior.get("quotes"), dict) else {},
@@ -302,7 +320,26 @@ def run_etrade_enhancement(
     say(f"E*TRADE enhancement: {len(symbols)} symbol(s) requested by agents…")
 
     client = _connect_etrade_client(config_path, say=say)
+    quotes_path = out / ENHANCED_QUOTES_FILE
+
     if client is None:
+        prior = _load_quotes_payload(quotes_path)
+        cached = prior.get("quotes") if isinstance(prior.get("quotes"), dict) else {}
+        if cached:
+            updated = apply_enhancements_to_agent_files(cached, out) if apply_to_agents else 0
+            say(
+                f"E*TRADE enhancement: applied {len(cached)} shared broker quote(s) "
+                f"to {updated} agent file(s) (no local session)."
+            )
+            return {
+                "skipped": False,
+                "phase": "shared_cache",
+                "symbols_requested": len(symbols),
+                "quotes": len(cached),
+                "quotes_cached": len(cached),
+                "agent_files_updated": updated,
+                "source": "shared_broker_feed",
+            }
         return {"skipped": True, "reason": "not_connected", "symbols_requested": symbols}
 
     if settings.get("require_production", True) and client.config.sandbox:
@@ -318,7 +355,6 @@ def run_etrade_enhancement(
         say("E*TRADE enhancement: quote fetch returned no data.")
         return {"skipped": True, "reason": "no_quotes", "symbols_requested": symbols}
 
-    quotes_path = out / ENHANCED_QUOTES_FILE
     prior = _load_quotes_payload(quotes_path) if settings.get("merge_existing_quotes", True) else {}
     merged_quotes = _merge_quote_maps(
         prior.get("quotes") if isinstance(prior.get("quotes"), dict) else {},

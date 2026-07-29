@@ -82,8 +82,16 @@ def build_short_strategy_plan(
         )
 
         coordinate_sleeves(total_account_value=total_value)
-        budget = shared_capital_budget(total_value, sleeve="short", balance=balance)
-        investable = float(budget.get("deployable_usd") or 0)
+        budget = shared_capital_budget(
+            total_value,
+            sleeve="short",
+            balance=balance,
+            positions=positions,
+        )
+        # Size short book to shared-account sleeve ceiling (net of long exposure)
+        investable = float(
+            budget.get("sleeve_ceiling_usd") or budget.get("deployable_usd") or 0
+        )
         blocked_new = blocked_symbols_for_new_entry("short", positions)
         save_sleeve_snapshot(positions=positions, total_account_value=total_value)
     except Exception:

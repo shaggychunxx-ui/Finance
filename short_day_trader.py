@@ -196,7 +196,12 @@ def build_short_day_trade_plan(
     try:
         from sleeve_policy import blocked_symbols_for_new_entry, shared_capital_budget
 
-        budget = shared_capital_budget(total_value, sleeve="short", balance=balance)
+        budget = shared_capital_budget(
+            total_value,
+            sleeve="short",
+            balance=balance,
+            positions=positions,
+        )
         deployable = float(budget.get("deployable_usd") or 0)
         if deployable > 0:
             sleeve = min(sleeve, deployable)

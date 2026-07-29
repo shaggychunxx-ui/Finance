@@ -124,12 +124,21 @@
     "portfolio_holdings_limit": 12,
     "merge_existing_quotes": true
   },
+  "deployment": {
+    "role": "all",
+    "shared_root": "\\\\10.10.10.1\\FinanceShare",
+    "quote_publish_interval_seconds": 60,
+    "sync_interval_seconds": 30,
+    "publish_quotes": true,
+    "consume_shared_quotes": true,
+    "prefer_dry_run": true
+  },
   "background_worker": {
     "auto_execute": true,
     "live_trading": true,
     "day_trading": true,
     "paused": false,
-    "dry_run": false,
+    "dry_run": true,
     "pipeline_interval_minutes": 5,
     "pipeline_off_hours_interval_minutes": 45,
     "accuracy_interval_minutes": 5,

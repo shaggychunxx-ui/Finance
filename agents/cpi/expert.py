@@ -171,7 +171,7 @@ class CPIInflationAnalyst(BaseExpert):
                     "startyear": str(end_year - 2),
                     "endyear": str(end_year),
                 },
-                timeout=30,
+                timeout=(2, 6),
             )
             resp.raise_for_status()
             parsed = self._parse_bls_response(resp.json())

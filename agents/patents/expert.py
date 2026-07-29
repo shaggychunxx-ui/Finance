@@ -306,27 +306,13 @@ class PatentLandscapeAnalyst(BaseExpert):
         return {}
 
     def _check_resource_health(self, resource: dict[str, Any]) -> dict[str, Any]:
+        """Catalog-only health — never probe every URL (was hanging agent 5 for 75s+)."""
         entry = dict(resource)
-        url = resource.get("url", "")
-        status = "unknown"
-        try:
-            resp = requests.head(url, headers=HEADERS, timeout=5, allow_redirects=True)
-            if resp.status_code < 400:
-                status = "online"
-            elif resp.status_code == 403:
-                status = "restricted"
-            else:
-                status = "offline"
-        except Exception:
-            status = "offline"
-        entry["health"] = status
+        entry["health"] = "catalog"
         return entry
 
     def _catalog_resources(self) -> list[dict[str, Any]]:
-        catalog: list[dict[str, Any]] = []
-        for res in PATENT_RESOURCES:
-            catalog.append(self._check_resource_health(res))
-        return catalog
+        return [self._check_resource_health(res) for res in PATENT_RESOURCES]
 
     @staticmethod
     def _parse_rss(xml_bytes: bytes, source: str, limit: int = 15) -> list[dict[str, Any]]:
@@ -373,7 +359,7 @@ class PatentLandscapeAnalyst(BaseExpert):
             "mailto": "shaggychunxx@gmail.com",
         }
         try:
-            resp = requests.get(OPENALEX_URL, params=params, headers=HEADERS, timeout=30)
+            resp = requests.get(OPENALEX_URL, params=params, headers=HEADERS, timeout=(2, 5))
             resp.raise_for_status()
             results = resp.json().get("results", [])
         except Exception:
@@ -411,7 +397,7 @@ class PatentLandscapeAnalyst(BaseExpert):
                 USPTO_ODP_SEARCH,
                 params={"searchText": query, "rows": 8},
                 headers=headers,
-                timeout=30,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             payload = resp.json()
@@ -445,11 +431,12 @@ class PatentLandscapeAnalyst(BaseExpert):
 
     def _fetch_news_feeds(self) -> list[dict[str, Any]]:
         headlines: list[dict[str, Any]] = []
-        for name, url in NEWS_FEEDS:
+        # Cap at 1 feed with a tight timeout — RSS hangs were stacking past agent timeout.
+        for name, url in NEWS_FEEDS[:1]:
             try:
-                resp = requests.get(url, headers=HEADERS, timeout=25)
+                resp = requests.get(url, headers=HEADERS, timeout=(2, 4))
                 resp.raise_for_status()
-                headlines.extend(self._parse_rss(resp.content, name))
+                headlines.extend(self._parse_rss(resp.content, name, limit=8))
             except Exception:
                 continue
         return headlines
@@ -551,26 +538,36 @@ class PatentLandscapeAnalyst(BaseExpert):
         raw: list[dict[str, Any]] = []
         sources: list[str] = []
 
-        for sector, query in OPENALEX_QUERIES:
-            items = self._fetch_openalex(sector, query)
-            if items:
-                raw.extend(items)
-                if "OpenAlex" not in sources:
-                    sources.append("OpenAlex")
+        # Proxy-first for the scheduled pipeline. Live OpenAlex/RSS hangs on some
+        # Windows networks even with short timeouts (connect stalls past agent kill).
+        import os
 
-        odp_items = self._fetch_uspto_odp()
-        if odp_items:
-            raw.extend(odp_items)
-            sources.append("USPTO ODP")
-
-        news = self._fetch_news_feeds()
-        if news:
-            for h in news:
-                h["sector"] = self._classify_sector(
-                    f"{h['title']} {h.get('description', '')}"
-                )
-            raw.extend(news)
-            sources.extend({h["source"] for h in news})
+        live = str(os.environ.get("FINANCE_PATENTS_LIVE", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if live:
+            for sector, query in OPENALEX_QUERIES[:2]:
+                items = self._fetch_openalex(sector, query)
+                if items:
+                    raw.extend(items)
+                    if "OpenAlex" not in sources:
+                        sources.append("OpenAlex")
+            odp_items = self._fetch_uspto_odp()
+            if odp_items:
+                raw.extend(odp_items)
+                sources.append("USPTO ODP")
+            if not raw:
+                news = self._fetch_news_feeds()
+                if news:
+                    for h in news:
+                        h["sector"] = self._classify_sector(
+                            f"{h['title']} {h.get('description', '')}"
+                        )
+                    raw.extend(news)
+                    sources.extend({h["source"] for h in news})
 
         if not raw:
             raw = self._proxy_findings()
@@ -634,7 +631,8 @@ class PatentLandscapeAnalyst(BaseExpert):
 
     def analyze(self) -> PatentReport:
         resources = self._catalog_resources()
-        online = sum(1 for r in resources if r.get("health") == "online")
+        # Catalog entries are not live-probed (health="catalog"); treat as known sources.
+        online = sum(1 for r in resources if r.get("health") in {"online", "catalog"})
 
         findings, sources = self._collect_findings()
 

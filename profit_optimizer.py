@@ -69,11 +69,24 @@ def load_horizon_weights(settings: dict[str, Any] | None = None) -> dict[str, fl
             elif isinstance(entry, (int, float)):
                 weights[key] = float(entry)
     total = sum(weights.values()) or 1.0
-    return {k: weights[k] / total for k in HORIZON_KEYS}
+    weights = {k: weights[k] / total for k in HORIZON_KEYS}
+    # Account goals (e.g. +2% day / +15% week) tilt weight to short horizons
+    try:
+        from account_goals import apply_goals_to_horizon_weights, load_account_goals
+
+        goals = settings.get("account_goals") if isinstance(settings.get("account_goals"), dict) else None
+        goals = goals or load_account_goals()
+        weights = apply_goals_to_horizon_weights(weights, goals)
+    except Exception:
+        pass
+    return weights
 
 
 def _account_horizon_tilt() -> dict[str, float]:
-    """Boost horizon weights that are currently delivering account growth."""
+    """Boost horizon weights that are currently delivering *trading* growth.
+
+    Deposits/withdrawals are excluded (same rules as account_profit / goals).
+    """
     data = _load_json(OUTPUT / "history" / "account_values.json")
     if not isinstance(data, dict):
         return {k: 0.0 for k in HORIZON_KEYS}
@@ -81,14 +94,49 @@ def _account_horizon_tilt() -> dict[str, float]:
     if len(points) < 2:
         return {k: 0.0 for k in HORIZON_KEYS}
 
-    latest = float(points[-1].get("total_account_value", 0))
+    try:
+        latest = float(points[-1].get("total_account_value", 0))
+    except (TypeError, ValueError):
+        latest = 0.0
     if latest <= 0:
         return {k: 0.0 for k in HORIZON_KEYS}
+
+    # Prefer deposit-aware horizon gains from account_goals
+    try:
+        from account_goals import measure_horizon_gain_pct
+        from account_profit import profit_metrics_for_account
+
+        key = str(points[-1].get("account_id_key") or "")
+        metrics = profit_metrics_for_account(data, key)
+        events = list(metrics.get("external_flow_events") or [])
+        opening = metrics.get("opening_balance")
+        hours = {
+            "daily": 24.0,
+            "weekly": 24.0 * 7,
+            "monthly": 24.0 * 30,
+            "yearly": 24.0 * 365,
+        }
+        out: dict[str, float] = {}
+        for key_h, hrs in hours.items():
+            pct = measure_horizon_gain_pct(
+                points,
+                hours=hrs,
+                external_events=events,
+                account_id_key=key,
+                opening_balance=float(opening) if opening is not None else None,
+            )
+            out[key_h] = float(pct or 0.0)
+        return out
+    except Exception:
+        pass
 
     def pct_change(steps_back: int) -> float:
         if len(points) <= steps_back:
             return 0.0
-        old = float(points[-1 - steps_back].get("total_account_value", 0))
+        try:
+            old = float(points[-1 - steps_back].get("total_account_value", 0))
+        except (TypeError, ValueError):
+            return 0.0
         if old <= 0:
             return 0.0
         return (latest - old) / old * 100.0
@@ -210,6 +258,20 @@ def filter_orders_for_profit(
     min_buy = float(settings.get("min_buy_return_pct", DEFAULT_MIN_BUY_RETURN_PCT))
     min_sell = float(settings.get("min_sell_return_pct", DEFAULT_MIN_SELL_RETURN_PCT))
     optimize = settings.get("optimize_profit_horizons", True)
+    # Aggressive account goals raise the bar for new risk
+    try:
+        from account_goals import goal_min_buy_return_pct, load_account_goals
+
+        goals = settings.get("account_goals") if isinstance(settings.get("account_goals"), dict) else None
+        goals = goals or load_account_goals()
+        if goals.get("enabled", True):
+            min_buy = max(min_buy, float(goal_min_buy_return_pct(goals)))
+            daily_target = float(goals.get("daily_gain_pct") or 0.0)
+            weekly_target = float(goals.get("weekly_gain_pct") or 0.0)
+        else:
+            daily_target = weekly_target = 0.0
+    except Exception:
+        daily_target = weekly_target = 0.0
     if not optimize:
         return orders
 
@@ -222,6 +284,14 @@ def filter_orders_for_profit(
             continue
         if order.action == "BUY" and profile.composite_return_pct < min_buy:
             continue
+        # Prefer names that can contribute to daily/weekly account goals
+        if order.action == "BUY" and (daily_target > 0 or weekly_target > 0):
+            hret = profile.horizon_returns or {}
+            daily_r = float(hret.get("daily") or 0.0)
+            weekly_r = float(hret.get("weekly") or 0.0)
+            # Reject buys that are clearly against short-horizon goals
+            if daily_target > 0 and daily_r < 0 and weekly_r < max(1.0, weekly_target * 0.05):
+                continue
         if order.action == "SELL":
             trim = order.rationale.startswith("Trim position not in agent portfolio")
             if trim and profile.composite_return_pct > abs(min_sell) * 2:

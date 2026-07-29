@@ -259,7 +259,7 @@ class GoogleFinanceAnalyst(BaseExpert):
                 SCREENER_API,
                 params={"scrIds": scr_id, "count": count},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             rows: list[QuoteRow] = []

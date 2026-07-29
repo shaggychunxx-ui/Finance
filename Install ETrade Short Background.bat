@@ -1,13 +1,11 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-
-echo Installing Short Trader background worker (optional)...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_short_background.ps1"
-if errorlevel 1 (
-    echo Install failed.
-    pause
-    exit /b 1
-)
-echo Done.
+echo.
+echo Standalone Short Trader background service is no longer used.
+echo Use the main Finance worker instead:
+echo   Start Silent Worker Only.vbs
+echo   or Install ETrade Background.bat
+echo.
 pause
+exit /b 0

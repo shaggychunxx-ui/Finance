@@ -185,7 +185,7 @@ class EarthDataAnalyst(BaseExpert):
                 CMR_COLLECTIONS_URL,
                 params={"keyword": keyword, "page_size": 10},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             entries = resp.json().get("feed", {}).get("entry", [])

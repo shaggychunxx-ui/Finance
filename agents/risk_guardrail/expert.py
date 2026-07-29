@@ -36,7 +36,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agents.adversarial_debate import run_adversarial_debate_analysis
 from agents.base import BaseExpert
 
 # Deterministic internal portfolio ledger (stand-in for a private brokerage DB).
@@ -96,8 +95,46 @@ class RiskGuardrailReport:
 class RiskGuardrailExpert(BaseExpert):
     """The 'Ultimate Auditor' — deterministic, code-bound structural veto."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        pipeline_context: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(pipeline_context=pipeline_context, agent_id="risk-guardrail")
+
+    @staticmethod
+    def _load_consensus_verdicts() -> tuple[dict[str, Any], str]:
+        """Prefer fresh adversarial_debate output; avoid nested full re-runs in pipeline.
+
+        Nested run_adversarial_debate_analysis() blocks the whole agent book for minutes
+        and can stall the scheduled worker. Use on-disk consensus when available.
+        """
+        candidates = [
+            Path("output") / "adversarial_debate.json",
+            Path(__file__).resolve().parents[2] / "output" / "adversarial_debate.json",
+        ]
+        for path in candidates:
+            if not path.exists():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    continue
+                age_ok = True
+                meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+                analyzed = str(meta.get("analyzed_at") or "")
+                if analyzed:
+                    try:
+                        ts = datetime.fromisoformat(analyzed.replace("Z", "+00:00"))
+                        age_ok = (datetime.now(timezone.utc) - ts).total_seconds() < 6 * 3600
+                    except ValueError:
+                        age_ok = True
+                if age_ok and (data.get("verdicts") or data.get("market_signals")):
+                    return data, f"adversarial_debate.json ({path.name})"
+            except (json.JSONDecodeError, OSError):
+                continue
+        # Lightweight fallback — empty book still produces guardrail metrics
+        return {"verdicts": [], "meta": {"agent": "Risk Guardrail (no consensus yet)"}}, "internal ledger only"
 
     @staticmethod
     def _win_rate_from_verdict(verdict: dict[str, Any]) -> float:
@@ -130,8 +167,34 @@ class RiskGuardrailExpert(BaseExpert):
         return round(position_pct * (daily_vol_pct / 100) * VAR_Z_99, 3)
 
     def analyze(self) -> RiskGuardrailReport:
-        consensus = run_adversarial_debate_analysis()
-        verdicts = consensus.get("verdicts", [])
+        consensus, consensus_source = self._load_consensus_verdicts()
+        verdicts = consensus.get("verdicts") or []
+        # Build synthetic verdicts from debate market_signals when verdicts missing
+        if not verdicts:
+            for sig in consensus.get("market_signals") or []:
+                if not isinstance(sig, dict):
+                    continue
+                bias = str(sig.get("bias") or "").upper()
+                for sym in sig.get("tickers") or []:
+                    symbol = str(sym or "").upper()
+                    if not symbol:
+                        continue
+                    if bias == "BULLISH":
+                        decision, mult = "Approved", 1.0
+                    elif bias == "BEARISH":
+                        decision, mult = "Rejected", 0.0
+                    else:
+                        decision, mult = "Rejected", 0.0
+                    verdicts.append(
+                        {
+                            "symbol": symbol,
+                            "decision": decision,
+                            "size_multiplier": mult,
+                            "bull_score": 1.0 if bias == "BULLISH" else 0.3,
+                            "bear_score": 1.0 if bias == "BEARISH" else 0.3,
+                        }
+                    )
+        self._consensus_source = consensus_source
 
         margin_utilization_pct = round((CURRENT_MARGIN_USED / ACCOUNT_EQUITY) * 100, 2)
 
@@ -269,7 +332,9 @@ class RiskGuardrailExpert(BaseExpert):
             expert_summary=expert_summary,
             market_signals=signals,
             recommendations=recommendations,
-            data_source="Internal portfolio ledger + Adversarial Debate & Consensus Router state",
+            data_source=(
+                f"Internal portfolio ledger + {getattr(self, '_consensus_source', 'consensus')}"
+            ),
         )
 
     def to_dict(self, report: RiskGuardrailReport) -> dict[str, Any]:
@@ -333,5 +398,8 @@ class RiskGuardrailExpert(BaseExpert):
         return result
 
 
-def run_risk_guardrail_analysis(output: Path | None = None) -> dict[str, Any]:
-    return RiskGuardrailExpert().run(output=output)
+def run_risk_guardrail_analysis(
+    output: Path | None = None,
+    pipeline_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return RiskGuardrailExpert(pipeline_context=pipeline_context).run(output=output)

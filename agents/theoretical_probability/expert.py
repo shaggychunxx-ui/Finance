@@ -598,7 +598,7 @@ class TheoreticalProbabilityExpert(BaseExpert):
 
         pmd = ProbabilityMarketData(self)
         self._pmd = pmd
-        watchlist = pmd.prepare_watchlist(WATCHLIST)
+        watchlist = dict(WATCHLIST)
         pmd.request_enhancement(watchlist)
 
         price_data: dict[str, list[float]] = {}
@@ -610,7 +610,6 @@ class TheoreticalProbabilityExpert(BaseExpert):
                 price_data[symbol] = closes
             if returns:
                 return_map[symbol] = returns
-            time.sleep(self.delay_seconds)
 
         spy_returns = return_map.get(BENCHMARK, [])
         if not spy_returns:

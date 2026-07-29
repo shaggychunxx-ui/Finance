@@ -21,14 +21,9 @@ AGENT_OUTPUTS = [
     "finance.json",
     "financial_data.json",
     "datascience.json",
-    "sales_analytics.json",
     "geopolitics.json",
     "market_predictions.json",
     # Short / microstructure specialists (GitHub copilot branches)
-    "bear_thesis.json",
-    "htb_dynamics.json",
-    "squeeze_mechanics.json",
-    "ftd_regsho.json",
     "risk_mitigation.json",
     "day_trading_microstructure.json",
     "long_squeeze_synergy.json",
@@ -44,8 +39,6 @@ AGENT_OUTPUTS = [
     # Macro / index / alt-data
     "fred.json",
     "cpi.json",
-    "economy.json",
-    "consumer_sentiment.json",
     "ftse100.json",
     "nikkei.json",
     "earthdata.json",
@@ -56,14 +49,8 @@ AGENT_SOURCE_IDS = {
     "finance",
     "financial_data",
     "datascience",
-    "sales-analytics",
-    "sales_analytics",
     "geopolitics",
     "market-predictor",
-    "bear-thesis",
-    "htb-dynamics",
-    "squeeze-mechanics",
-    "ftd-regsho",
     "risk-mitigation",
     "day-trading-microstructure",
     "long-squeeze-synergy",
@@ -77,8 +64,6 @@ AGENT_SOURCE_IDS = {
     "sentiment-alt-data",
     "fred",
     "cpi",
-    "economy",
-    "consumer-sentiment",
     "ftse100",
     "nikkei",
     "earthdata",
@@ -223,6 +208,16 @@ def _ingest_predictions(data: dict[str, Any], scores: dict[str, TickerScore]) ->
 
 
 def _ingest_signals(data: dict[str, Any], scores: dict[str, TickerScore], source: str) -> None:
+    try:
+        from agent_groups import is_market_context_agent
+    except Exception:
+        def is_market_context_agent(_aid: str) -> bool:  # type: ignore[misc]
+            return False
+
+    # Context agents assist market outlook only — never nominate single-name holdings.
+    if is_market_context_agent(source):
+        return
+
     for sig in data.get("market_signals", []):
         bias = str(sig.get("bias", "NEUTRAL")).upper()
         delta = BIAS_SCORES.get(bias, 0.0) * 0.35
@@ -331,21 +326,6 @@ def _backfill_etrade_prices(output_dir: Path, tickers: list[TickerScore]) -> Non
         if last is not None:
             ticker.price = float(last)
 
-
-def _ingest_sales_retailers(data: dict[str, Any], scores: dict[str, TickerScore]) -> None:
-    for row in data.get("retailers", []):
-        if row.get("category") == "sector_etf":
-            continue
-        mom = float(row.get("momentum_score", 0))
-        if mom <= 0:
-            continue
-        _add_score(
-            scores,
-            row.get("symbol", ""),
-            min(0.8, mom / 120),
-            "sales-analytics",
-            f"{row.get('name', '')} momentum {mom:.0f}",
-        )
 
 
 def _detect_regime(output_dir: Path) -> dict[str, Any]:
@@ -635,9 +615,6 @@ def generate_portfolio(
             _ingest_finance_opportunities(data, scores)
         elif filename == "datascience.json":
             _ingest_datascience(data, scores)
-        elif filename == "sales_analytics.json":
-            _ingest_sales_retailers(data, scores)
-
     strategy_settings: dict[str, Any] = {}
     try:
         from strategy_engine import load_strategy_settings

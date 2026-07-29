@@ -380,12 +380,29 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
     max_attr = max(raw_attr.values()) if raw_attr else 0.0
     tier_count = int(state.get("benchmark_tier_count") or 0)
     tiers_hit = list(state.get("benchmark_tiers_hit") or [])
+
+    # Account goals (+2% day / +12% week / +48% month) → agent bonus points
+    goals_progress: dict[str, Any] = {}
+    goals_cfg: dict[str, Any] = {}
+    try:
+        from account_goals import goal_progress, load_account_goals
+
+        goals_cfg = load_account_goals()
+        if goals_cfg.get("enabled", True):
+            goals_progress = goal_progress()
+    except Exception:
+        goals_progress = {}
+        goals_cfg = {}
+
     agents: dict[str, Any] = {}
     for aid, attr in raw_attr.items():
         multiplier = 1.0
         blame = 0.0
         credit = 0.0
         benchmark_credit = 0.0
+        goal_bonus = 0.0
+        goal_points = 0.0
+        goal_detail: dict[str, Any] = {}
         normalized = _normalized_attribution(attr, max_attr)
 
         if is_declining and penalty_strength > 0 and attr > 0:
@@ -399,6 +416,27 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
             benchmark_credit = round(normalized * tier_count * BENCHMARK_TIER_REWARD, 3)
             multiplier += benchmark_credit
 
+        # Bonus when this agent's picks help progress toward account goals
+        if attr > 0 and goals_cfg.get("agent_goal_bonus", True) and goals_progress:
+            try:
+                from account_goals import agent_goal_bonus_score
+
+                gb = agent_goal_bonus_score(
+                    normalized,
+                    goals_progress,
+                    goals=goals_cfg,
+                )
+                goal_bonus = float(gb.get("bonus") or 0.0)
+                goal_points = float(gb.get("points") or 0.0)
+                goal_detail = {
+                    "horizons": gb.get("horizons") or {},
+                    "eligible": bool(gb.get("eligible")),
+                }
+                if goal_bonus > 0:
+                    multiplier += goal_bonus
+            except Exception:
+                pass
+
         multiplier = round(max(MIN_MULTIPLIER, min(MAX_MULTIPLIER, multiplier)), 3)
 
         agents[aid] = {
@@ -407,6 +445,9 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
             "blame_score": blame,
             "reward_score": credit,
             "benchmark_reward_score": benchmark_credit,
+            "goal_bonus": round(goal_bonus, 4),
+            "goal_points": round(goal_points, 2),
+            "goal_detail": goal_detail,
             "benchmark_tiers_hit": tiers_hit,
             "held_overlap": bool(held),
         }
@@ -417,6 +458,7 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
         "held_symbols": sorted(held),
         "lookback_points": lookback,
         "daily_benchmarks_pct": list(DAILY_GROWTH_BENCHMARKS_PCT),
+        "account_goals": goals_progress,
         "trend": trend,
         "is_declining": is_declining,
         "is_rising": is_rising,
@@ -426,6 +468,13 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
         "agents": agents,
     }
     _write_json(PENALTIES_FILE, payload)
+    # Keep goals status file fresh for UI
+    try:
+        from account_goals import write_goals_status
+
+        write_goals_status()
+    except Exception:
+        pass
     return payload
 
 
@@ -439,6 +488,12 @@ def penalty_label(agent_id: str) -> str:
     if tiers:
         peak = max(int(t) for t in tiers)
         parts.append(f"day T{peak}")
+    try:
+        gp = float(entry.get("goal_points") or 0.0)
+        if gp > 0.5:
+            parts.append(f"goal +{gp:.0f}pts")
+    except (TypeError, ValueError):
+        pass
     mult = entry.get("multiplier")
     if mult is not None:
         try:

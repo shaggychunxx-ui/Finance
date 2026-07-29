@@ -182,9 +182,19 @@ class CivilTransportationAnalyst(BaseExpert):
         return adjusted
 
     def _socrata_get(self, dataset_id: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        """Socrata query with short timeouts so pipeline agent budget is not exhausted.
+
+        Prior hang: DOT endpoints sometimes stall past ThreadPool timeouts when connect
+        hangs; use (connect, read) timeouts and fail closed to calibrated fallbacks.
+        """
         url = f"{DOT_BASE}/{dataset_id}.json"
         try:
-            resp = requests.get(url, headers=HEADERS, params=params, timeout=45)
+            resp = requests.get(
+                url,
+                headers=HEADERS,
+                params=params,
+                timeout=(2, 6),
+            )
             resp.raise_for_status()
             data = resp.json()
             return data if isinstance(data, list) else []

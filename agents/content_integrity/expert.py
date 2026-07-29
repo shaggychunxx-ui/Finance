@@ -341,7 +341,7 @@ class ContentIntegrityExpert(BaseExpert):
         sources: list[str] = []
         for name, url in NEWS_FEEDS:
             try:
-                resp = requests.get(url, headers=HEADERS, timeout=30)
+                resp = requests.get(url, headers=HEADERS, timeout=(2, 6))
                 resp.raise_for_status()
                 parsed = self._parse_rss(resp.content, name)
                 if parsed:

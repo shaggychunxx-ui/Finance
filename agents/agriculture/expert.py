@@ -823,12 +823,23 @@ class AgricultureExpert(BaseExpert):
 
     @staticmethod
     def _load_config_key() -> str:
-        for cfg in (Path("config.json"), Path(__file__).resolve().parents[2] / "config.json"):
+        root = Path(__file__).resolve().parents[2]
+        for cfg in (
+            root / "etrade_config.json",
+            root / "config.json",
+            Path("config.json"),
+            root / "config" / "data_apis.example.json",
+        ):
             if not cfg.exists():
                 continue
             try:
                 data = json.loads(cfg.read_text(encoding="utf-8"))
-                return str(data.get("nass_api_key", "") or "")
+                if not isinstance(data, dict):
+                    continue
+                apis = data.get("data_apis") if isinstance(data.get("data_apis"), dict) else {}
+                key = apis.get("nass_api_key") or data.get("nass_api_key") or ""
+                if key:
+                    return str(key).strip()
             except Exception:
                 continue
         return ""
@@ -857,7 +868,7 @@ class AgricultureExpert(BaseExpert):
             "agg_level_desc": "STATE",
             "format": "JSON",
         }
-        resp = requests.get(QUICKSTATS_API_URL, params=params, headers=HEADERS, timeout=45)
+        resp = requests.get(QUICKSTATS_API_URL, params=params, headers=HEADERS, timeout=(4, 8))
         resp.raise_for_status()
         data = resp.json()
         return data.get("data", []) if isinstance(data, dict) else []
@@ -900,14 +911,23 @@ class AgricultureExpert(BaseExpert):
             forecast_value=round(forecast_value, 2),
         )
 
-    def _analyze_state(self, state_id: str, cfg: dict[str, Any]) -> StateProfile:
+    def _analyze_state(
+        self,
+        state_id: str,
+        cfg: dict[str, Any],
+        *,
+        allow_live_api: bool = True,
+    ) -> StateProfile:
         source = "Calibrated proxy (set nass_api_key in config.json for live Quick Stats)"
         commodities: list[CommodityMetric] = []
         live_commodity_count = 0
+        # Cap live Quick Stats calls so the agent finishes inside the pipeline wall-clock.
+        max_live_commodities = 1 if allow_live_api else 0
+        live_budget = max_live_commodities
 
         for name, ccfg in cfg["commodities"].items():
             merged_cfg = dict(ccfg)
-            if self.api_key:
+            if self.api_key and live_budget > 0:
                 query = NASS_COMMODITY_QUERY.get(name, name.replace("_", " ").upper())
                 try:
                     rows = self._fetch_quickstats(cfg["name"], query)
@@ -915,6 +935,7 @@ class AgricultureExpert(BaseExpert):
                     if live_hist:
                         merged_cfg["history"] = {**dict(ccfg.get("history") or {}), **live_hist}
                         live_commodity_count += 1
+                        live_budget -= 1
                 except Exception:
                     pass
             commodities.append(self._build_commodity(name, merged_cfg))
@@ -1112,10 +1133,27 @@ class AgricultureExpert(BaseExpert):
         )
 
     def analyze(self) -> AgricultureReport:
+        # Default: calibrated proxy for all 50 states (fast, pipeline-safe).
+        # Optional live NASS for a few states when FINANCE_NASS_LIVE=1.
+        import os
+
+        live_priority = {
+            "iowa", "illinois", "nebraska", "california", "texas",
+        }
+        nass_live = str(os.environ.get("FINANCE_NASS_LIVE", "")).strip().lower() in {
+            "1", "true", "yes", "on",
+        }
         states: list[StateProfile] = []
         for state_id, cfg in STATES.items():
-            states.append(self._analyze_state(state_id, cfg))
-            time.sleep(0.1)
+            states.append(
+                self._analyze_state(
+                    state_id,
+                    cfg,
+                    allow_live_api=nass_live
+                    and bool(self.api_key)
+                    and state_id.lower() in live_priority,
+                )
+            )
 
         production_trend_score = round(
             sum(s.production_trend_score for s in states) / len(states), 4

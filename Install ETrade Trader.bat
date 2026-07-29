@@ -2,7 +2,16 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-echo Installing E*TRADE Trader desktop app...
+echo Installing E*TRADE Unified Trader (only desktop app)...
+echo Standalone Long Trader and Short Trader apps are no longer installed.
+echo.
+
+REM Prefer the robust PowerShell installer (Python discovery, tkinter check, venv, shortcuts)
+if exist "%~dp0Install-ETrade-Unified-Trader.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Install-ETrade-Unified-Trader.ps1" -InPlace -InstallDir "%~dp0"
+    if errorlevel 1 goto :fail
+    goto :cleanup
+)
 
 if not exist ".venv\Scripts\python.exe" (
     python -m venv ".venv"
@@ -18,34 +27,28 @@ if not exist "etrade_config.json" (
     )
 )
 
-".venv\Scripts\python.exe" "build_etrade_launcher.py"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0refresh_desktop_icon.ps1"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0refresh_finance_agents_icon.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0refresh_unified_desktop_icon.ps1"
+if errorlevel 1 goto :fail
+
+:cleanup
+REM Remove obsolete standalone shortcuts if present
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$paths = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'), (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'));" ^
+  "foreach ($d in $paths) { foreach ($n in @('ETrade Trader.lnk','ETrade Short Trader.lnk')) { $p = Join-Path $d $n; if (Test-Path $p) { Remove-Item $p -Force; Write-Host \"Removed $p\" } } }"
 
 echo.
-echo Desktop shortcuts:
-echo   %USERPROFILE%\Desktop\ETrade Trader.lnk
-echo   %USERPROFILE%\Desktop\Finance Agents.lnk  (opens Agents tab)
-echo Start Menu: %APPDATA%\Microsoft\Windows\Start Menu\Programs\ETrade Trader.lnk
+echo Desktop shortcut: %USERPROFILE%\Desktop\ETrade Unified Trader.lnk
+echo Start Menu: ETrade Unified Trader
 echo.
-echo One app — tabs: Home, Agents, Trades, Settings, Activity
-echo Trades: Balance, History/P&L, Attribution, Portfolio, Swing, Day
+echo Long + Short sleeves run inside the Unified window only.
+echo Optional: Install ETrade Background.bat for headless worker when GUI is closed.
+echo Optional: Start Silent Worker Only.vbs for quiet automation.
 echo.
-echo Next steps:
-echo   1. Edit etrade_config.json with your E*TRADE consumer key/secret
-echo   2. Keep sandbox: true for testing
-echo   3. Launch ETrade Trader and click Connect
-echo   4. Confirm your brokerage account in Settings
-echo   5. Optional: Install ETrade Background.bat for automation when GUI is closed
-echo   6. Phone monitor: Start Mobile Remote Access.bat (runs hidden in background)
-echo.
-echo Installing Windows startup entries...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_etrade_background.ps1"
-if errorlevel 1 goto :fail
-pause
+if /I not "%ETRADE_INSTALL_SILENT%"=="1" pause
 exit /b 0
 
 :fail
-echo Install failed.
-pause
+echo Install failed. Need Python 3.10+ on PATH with tcl/tk.
+echo Download: https://www.python.org/downloads/
+if /I not "%ETRADE_INSTALL_SILENT%"=="1" pause
 exit /b 1

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch E*TRADE Short Trader with crash logging."""
+"""Legacy entry point — opens Unified Trader only (standalone short app removed)."""
 
 from __future__ import annotations
 
@@ -12,22 +12,15 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from short_paths import SHORT_APP_LOG, SHORT_APP_USER_MODEL_ID, ensure_short_dirs
+from win_app_identity import apply_windows_app_identity
 
+apply_windows_app_identity()
 
-def _apply_identity() -> None:
-    if sys.platform != "win32":
-        return
-    try:
-        import ctypes
-
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(SHORT_APP_USER_MODEL_ID)
-    except Exception:
-        pass
+LOG = ROOT / "output" / "unified_trader.log"
 
 
 def _ensure_venv_python() -> None:
-    if os.environ.get("ETRADE_SHORT_TRADER_VENV"):
+    if os.environ.get("ETRADE_TRADER_VENV"):
         return
     venv_scripts = (ROOT / ".venv" / "Scripts").resolve()
     current = Path(sys.executable).resolve()
@@ -41,7 +34,7 @@ def _ensure_venv_python() -> None:
         launcher = venv_scripts / "python.exe"
     if not launcher.exists():
         return
-    os.environ["ETRADE_SHORT_TRADER_VENV"] = "1"
+    os.environ["ETRADE_TRADER_VENV"] = "1"
     import subprocess
 
     flags = getattr(subprocess, "DETACHED_PROCESS", 0)
@@ -55,8 +48,8 @@ def _ensure_venv_python() -> None:
 
 
 def _log_crash(text: str) -> None:
-    ensure_short_dirs()
-    with SHORT_APP_LOG.open("a", encoding="utf-8") as handle:
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    with LOG.open("a", encoding="utf-8") as handle:
         handle.write(text)
         if not text.endswith("\n"):
             handle.write("\n")
@@ -64,9 +57,8 @@ def _log_crash(text: str) -> None:
 
 if __name__ == "__main__":
     _ensure_venv_python()
-    _apply_identity()
     try:
-        from short_trader_gui import main
+        from unified_trader_gui import main
 
         raise SystemExit(main())
     except Exception:

@@ -1,42 +1,27 @@
-# Keep the headless E*TRADE worker running (watchdog for scheduled task / manual use).
+# Silent ensure — prefer VBS path (no PowerShell console when scheduled via wscript).
+# Kept for manual runs and legacy task entries.
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$py = Join-Path $root ".venv\Scripts\python.exe"
+$ensureVbs = Join-Path $root "Ensure ETrade Stack.vbs"
 $launcher = Join-Path $root "Start ETrade Background Service.vbs"
 $watchdogLog = Join-Path $root "output\worker_watchdog.log"
 
 function Write-WatchdogLog([string]$Message) {
     $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -Path $watchdogLog -Value "[$stamp] $Message"
+    try { Add-Content -Path $watchdogLog -Value "[$stamp] $Message" } catch {}
 }
 
-if (-not (Test-Path $py)) {
-    Write-WatchdogLog "Watchdog skipped - missing python venv"
-    exit 1
-}
-
-$checkCmd = 'import etrade_worker; raise SystemExit(0 if etrade_worker.service_already_running() else 1)'
-& $py -c $checkCmd | Out-Null
-if ($LASTEXITCODE -eq 0) {
+# Fast path: pure VBS (no extra windows when invoked correctly)
+if (Test-Path $ensureVbs) {
+    Start-Process -FilePath "wscript.exe" -ArgumentList @("//B", "//Nologo", "`"$ensureVbs`"") -WindowStyle Hidden -WorkingDirectory $root
     exit 0
 }
-
-Write-WatchdogLog "Worker not running - restarting background service."
-Remove-Item (Join-Path $root "output\etrade_worker.lock") -Force -ErrorAction SilentlyContinue
 
 if (Test-Path $launcher) {
-    Start-Process -FilePath "wscript.exe" -ArgumentList "`"$launcher`"" -WindowStyle Hidden -WorkingDirectory $root
-} else {
-    $script = Join-Path $root "etrade_worker.py"
-    Start-Process -FilePath $py -ArgumentList "`"$script`" --service" -WindowStyle Hidden -WorkingDirectory $root
-}
-
-Start-Sleep -Seconds 4
-& $py -c $checkCmd | Out-Null
-if ($LASTEXITCODE -eq 0) {
-    Write-WatchdogLog "Worker restart OK."
+    Start-Process -FilePath "wscript.exe" -ArgumentList @("//B", "//Nologo", "`"$launcher`"") -WindowStyle Hidden -WorkingDirectory $root
+    Write-WatchdogLog "Ensure via Start VBS (fallback)"
     exit 0
 }
 
-Write-WatchdogLog "Worker restart failed - check output\etrade_worker.log"
+Write-WatchdogLog "Ensure: no VBS launcher found"
 exit 1

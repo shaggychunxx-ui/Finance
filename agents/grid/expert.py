@@ -169,7 +169,7 @@ class ElectricalGridAnalyst(BaseExpert):
 
     def _fetch_ercot_fuel(self) -> FuelSnapshot | None:
         try:
-            resp = requests.get(ERCOT_FUEL_URL, headers=HEADERS, timeout=30)
+            resp = requests.get(ERCOT_FUEL_URL, headers=HEADERS, timeout=(2, 6))
             resp.raise_for_status()
             payload = resp.json()
         except Exception:
@@ -215,7 +215,7 @@ class ElectricalGridAnalyst(BaseExpert):
     @staticmethod
     def _parse_caiso_csv(url: str) -> list[dict[str, str]]:
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=25)
+            resp = requests.get(url, headers=HEADERS, timeout=(2, 6))
             resp.raise_for_status()
             reader = csv.DictReader(io.StringIO(resp.text))
             return list(reader)
@@ -288,7 +288,7 @@ class ElectricalGridAnalyst(BaseExpert):
                 "length": 1,
             }
             try:
-                resp = requests.get(EIA_RTO_URL, headers=HEADERS, params=params, timeout=20)
+                resp = requests.get(EIA_RTO_URL, headers=HEADERS, params=params, timeout=(2, 5))
                 resp.raise_for_status()
                 rows = resp.json().get("response", {}).get("data", [])
                 if rows:

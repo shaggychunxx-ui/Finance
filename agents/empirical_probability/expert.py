@@ -507,16 +507,15 @@ class EmpiricalProbabilityExpert(BaseExpert):
 
         pmd = ProbabilityMarketData(self)
         self._pmd = pmd
-        watchlist = pmd.prepare_watchlist(WATCHLIST)
+        watchlist = dict(WATCHLIST)
         pmd.request_enhancement(watchlist)
 
         return_map: dict[str, list[float]] = {}
 
         for symbol in watchlist:
-            _closes, returns = pmd.load_series(symbol, range_="1y")
+            _closes, returns = pmd.load_series(symbol, range_="6mo")
             if returns:
                 return_map[symbol] = returns
-            time.sleep(self.delay_seconds)
 
         if BENCHMARK not in return_map:
             raise RuntimeError("Unable to fetch SPY data for empirical probability analysis")

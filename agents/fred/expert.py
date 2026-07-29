@@ -151,14 +151,37 @@ class FredMacroeconomicAnalyst(BaseExpert):
 
     @staticmethod
     def _load_config(config_path: Path | None) -> dict[str, Any]:
-        candidates = [config_path, Path("config.json"), Path("config.example.json")]
+        root = Path(__file__).resolve().parents[2]
+        candidates = [
+            config_path,
+            root / "etrade_config.json",
+            root / "config.json",
+            Path("config.json"),
+            Path("config.example.json"),
+            root / "config" / "data_apis.example.json",
+        ]
+        merged: dict[str, Any] = {}
         for path in candidates:
             if path and path.exists():
                 try:
-                    return json.loads(path.read_text(encoding="utf-8"))
+                    raw = json.loads(path.read_text(encoding="utf-8"))
                 except Exception:
                     continue
-        return {}
+                if not isinstance(raw, dict):
+                    continue
+                # Prefer nested data_apis.fred_api_key, then top-level fred_api_key
+                apis = raw.get("data_apis") if isinstance(raw.get("data_apis"), dict) else {}
+                if apis.get("fred_api_key") and not merged.get("fred_api_key"):
+                    merged["fred_api_key"] = apis["fred_api_key"]
+                if raw.get("fred_api_key") and not merged.get("fred_api_key"):
+                    merged["fred_api_key"] = raw["fred_api_key"]
+                # Keep first full dict for other keys
+                if not merged:
+                    merged = dict(raw)
+                else:
+                    for k, v in raw.items():
+                        merged.setdefault(k, v)
+        return merged
 
     @staticmethod
     def _to_float(value: Any, default: float | None = None) -> float | None:

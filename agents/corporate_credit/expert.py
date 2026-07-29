@@ -206,7 +206,7 @@ class CorporateCreditExpert(BaseExpert):
 
     def _fetch_hy_oas(self) -> tuple[float | None, float | None, bool]:
         try:
-            resp = requests.get(FRED_GRAPH_CSV_URL, headers=HEADERS, timeout=20)
+            resp = requests.get(FRED_GRAPH_CSV_URL, headers=HEADERS, timeout=(2, 5))
             resp.raise_for_status()
             reader = csv.reader(io.StringIO(resp.text))
             rows = [r for r in reader if len(r) == 2 and r[1] not in ("", ".", FRED_SERIES_ID)]

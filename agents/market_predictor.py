@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,7 +24,8 @@ TOP_N = 25
 INTRADAY_TOP_N = 12
 PREDICTION_HORIZONS = ("1m", "1h", "24h", "1wk", "1mo", "1yr")
 SYMBOL_RETURN_HINT_WEIGHT = 0.58
-ENRICH_PRICE_RETURNS_LIMIT = 50
+# Keep enrich small so post-fusion finishes under pipeline stall/timeouts.
+ENRICH_PRICE_RETURNS_LIMIT = 25
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -231,6 +233,16 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         sym = _normalize_symbol(symbol)
         if not sym:
             return
+        # Account-aware filter: skip names too expensive for this account's slot size.
+        if price is not None and float(price) > 0:
+            try:
+                from agent_fusion import affordable_max_share_price
+
+                cap = affordable_max_share_price()
+                if cap is not None and float(price) > float(cap) * 1.02:
+                    return
+            except Exception:
+                pass
         try:
             from agent_constraints import agent_preferred_horizon
 
@@ -297,11 +309,21 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                 except (TypeError, ValueError):
                     pass
 
+    # Domain context agents (power, weather, ag, freight, etc.) tilt the *market*
+    # outlook — they must not nominate single-name equity picks into fusion.
+    market_context_votes: list[dict[str, Any]] = []
+    try:
+        from agent_groups import is_market_context_agent
+    except Exception:
+        def is_market_context_agent(_aid: str) -> bool:  # type: ignore[misc]
+            return False
+
     for src in active_agent_sources():
         data = _load_json(output_dir / src["file"])
         if not data:
             continue
         source = src["id"]
+        context_only = is_market_context_agent(source)
 
         for sig in data.get("market_signals", []):
             bias = str(sig.get("bias", "NEUTRAL")).upper()
@@ -313,6 +335,19 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                 confidence = float(sig.get("confidence"))
             except (TypeError, ValueError):
                 confidence = 0.55 if bias == "BULLISH" else 0.45 if bias == "BEARISH" else 0.35
+            if context_only:
+                # Market-context vote only — ignore any tickers listed on the signal.
+                market_context_votes.append(
+                    {
+                        "source": source,
+                        "bias": bias,
+                        "confidence": confidence,
+                        "delta": delta,
+                        "sector": sector,
+                        "reason": reason,
+                    }
+                )
+                continue
             for ticker in sig.get("tickers", []):
                 bump(
                     ticker,
@@ -378,17 +413,6 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                     source=source,
                     note=factor.get("factor", "Factor leader"),
                     confidence=0.5,
-                )
-
-        if source == "sales-analytics":
-            for retailer in data.get("retail_leaders", []):
-                bump(
-                    retailer.get("symbol", ""),
-                    0.3,
-                    source=source,
-                    note=retailer.get("category", "Retail leader"),
-                    confidence=0.5,
-                    sector_hint="retail",
                 )
 
         metrics = data.get("metrics", {})
@@ -478,6 +502,60 @@ def run_market_predictor_analysis(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     scores = _collect_ticker_scores(output_dir)
+
+    # Market-context agents (power, weather, ag, freight, etc.) tilt market outlook
+    # without nominating single-name equity picks (tickers on their signals ignored).
+    market_context: dict[str, Any] = {"votes": [], "net_tilt": 0.0, "label": "neutral", "vote_count": 0}
+    try:
+        from agent_groups import is_market_context_agent as _is_ctx
+    except Exception:
+        def _is_ctx(_a: str) -> bool:  # type: ignore[misc]
+            return False
+
+    ctx_votes: list[dict[str, Any]] = []
+    net = 0.0
+    for src in active_agent_sources():
+        aid = str(src.get("id") or "")
+        if not _is_ctx(aid):
+            continue
+        data = _load_json(output_dir / src["file"])
+        if not data:
+            continue
+        for sig in data.get("market_signals") or []:
+            if not isinstance(sig, dict):
+                continue
+            bias = str(sig.get("bias", "NEUTRAL")).upper()
+            try:
+                conf = float(sig.get("confidence") or 0.5)
+            except (TypeError, ValueError):
+                conf = 0.5
+            net += BIAS_SCORES.get(bias, 0.0) * conf
+            ctx_votes.append(
+                {
+                    "source": aid,
+                    "bias": bias,
+                    "confidence": round(conf, 3),
+                    "sector": sig.get("sector"),
+                    "reason": (sig.get("reason") or "")[:160],
+                }
+            )
+    if ctx_votes:
+        tilt = max(-0.35, min(0.35, net / max(len(ctx_votes), 1) * 0.45))
+        market_context = {
+            "votes": ctx_votes[:24],
+            "vote_count": len(ctx_votes),
+            "net_tilt": round(tilt, 4),
+            "label": "risk-on" if tilt > 0.05 else "risk-off" if tilt < -0.05 else "neutral",
+        }
+        for _sym, row in scores.items():
+            if not isinstance(row, dict):
+                continue
+            row["score"] = float(row.get("score") or 0) + tilt
+            note = f"market-context {market_context['label']} ({tilt:+.2f})"
+            notes = row.setdefault("notes", [])
+            if isinstance(notes, list) and note not in notes:
+                notes.append(note)
+
     ranked = sorted(scores.items(), key=lambda item: item[1]["score"], reverse=True)
     positive = [(sym, row) for sym, row in ranked if row["score"] > 0]
     negative = [(sym, row) for sym, row in reversed(ranked) if row["score"] < 0]
@@ -491,7 +569,14 @@ def run_market_predictor_analysis(
         if sym and sym not in seen:
             seen.add(sym)
             enrich_symbols.append(sym)
-    _enrich_symbol_price_returns(scores, enrich_symbols)
+    # Cache-only enrich by default (FINANCE_PREDICTOR_FETCH_PRICES=1 enables Yahoo).
+    fetch_missing = str(os.environ.get("FINANCE_PREDICTOR_FETCH_PRICES", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    _enrich_symbol_price_returns(scores, enrich_symbols, fetch_missing=fetch_missing)
 
     predictions = {
         horizon: _build_horizon_rows(
@@ -537,12 +622,20 @@ def run_market_predictor_analysis(
             "tickers_scored": len(scores),
             "horizons": list(predictions.keys()),
             "fusion": fusion_meta,
+            "market_context": market_context,
             "pipeline_memory": pipeline_memory,
         },
         "predictions": predictions,
         "recommendations": [
             f"Fused {len(sources_used)} agent report(s) into ranked mover predictions.",
             "Accuracy-weighted fusion with per-horizon, regime, domain, and cluster caps applied.",
+            (
+                f"Market-context tilt: {market_context.get('label')} "
+                f"({market_context.get('net_tilt', 0):+.2f}) from "
+                f"{market_context.get('vote_count', 0)} non-picker agent signal(s)."
+                if market_context.get("vote_count")
+                else "No market-context agent votes this cycle."
+            ),
         ],
     }
 

@@ -38,7 +38,6 @@ SIGNAL_AGENTS = [
     "datascience",
     "financial-data",
     "geopolitics",
-    "sales-analytics",
 ]
 
 _shutdown_requested = False
@@ -88,7 +87,6 @@ def _run_signal_agent(agent_id: str) -> bool:
         "datascience": "datascience.json",
         "financial-data": "financial_data.json",
         "geopolitics": "geopolitics.json",
-        "sales-analytics": "sales_analytics.json",
     }
     runner = RUNNERS.get(agent_id)
     if runner is None:

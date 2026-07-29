@@ -137,23 +137,25 @@ class EstimateRevisionsExpert(BaseExpert):
 
     def __init__(
         self,
-        delay_seconds: float = 0.35,
+        delay_seconds: float = 0.08,
         *,
         pipeline_context: dict | None = None,
+        max_symbols: int = 10,
     ) -> None:
         super().__init__(pipeline_context=pipeline_context, agent_id="estimate-revisions")
         self.delay_seconds = delay_seconds
-        self.symbols = list(WATCHLIST)
+        # Full 20-name scan with 20s timeouts was hanging the schedule at agent 43.
+        self.symbols = list(WATCHLIST)[: max(4, int(max_symbols))]
 
     def _fetch_quote_summary(self, symbol: str) -> dict[str, Any] | None:
         headers = {**HEADERS}
         try:
-            time.sleep(self.delay_seconds)
+            time.sleep(min(self.delay_seconds, 0.15))
             resp = requests.get(
                 QUOTE_SUMMARY_API.format(symbol=symbol),
                 params={"modules": QUOTE_SUMMARY_MODULES},
                 headers=headers,
-                timeout=20,
+                timeout=(3, 10),
             )
             resp.raise_for_status()
             result = resp.json()["quoteSummary"]["result"]

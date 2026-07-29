@@ -69,7 +69,6 @@ DASHBOARDS: list[dict[str, str]] = [
     {"label": "Predictions Dashboard", "file": "predictions_dashboard.html", "module": "predictions"},
     {"label": "Sales Dashboard", "file": "sales_dashboard.html", "module": "sales"},
     {"label": "World Events Tracker", "file": "index.html", "module": "events"},
-    {"label": "Mobile Dashboard", "file": "mobile_dashboard.html", "module": "mobile"},
 ]
 
 CATEGORY_ICONS: dict[str, str] = {
@@ -280,7 +279,6 @@ class FinanceAgentsApp(tk.Frame):
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Open Market Predictor App", command=self._open_market_predictor)
         tools_menu.add_command(label="Sync Agents from GitHub", command=self._sync_agents)
-        tools_menu.add_command(label="Start Mobile API Server", command=self._start_mobile_server)
 
         help_menu = tk.Menu(menubar, tearoff=0, bg=PANEL, fg=TEXT, activebackground=ACCENT)
         menubar.add_cascade(label="Help", menu=help_menu)
@@ -1197,8 +1195,7 @@ class FinanceAgentsApp(tk.Frame):
         agent_id = self._selected_id or ""
         mapping = {
             "market-predictor": DASHBOARDS[0],
-            "sales-analytics": DASHBOARDS[1],
-            "events": DASHBOARDS[2],
+            "events": DASHBOARDS[2] if len(DASHBOARDS) > 2 else DASHBOARDS[0],
         }
         dash = mapping.get(agent_id)
         if dash:
@@ -1216,9 +1213,6 @@ class FinanceAgentsApp(tk.Frame):
                 from dashboard_server import open_predictions_dashboard
 
                 path = open_predictions_dashboard(ROOT)
-            elif dash["module"] == "mobile":
-                webbrowser.open(html.as_uri())
-                path = str(html)
             else:
                 webbrowser.open(html.as_uri())
                 path = str(html)
@@ -1286,14 +1280,6 @@ class FinanceAgentsApp(tk.Frame):
                 self._schedule_ui(self._progress.stop)
                 self._schedule_ui(self._progress.pack_forget)
 
-    def _start_mobile_server(self) -> None:
-        bat = ROOT / "Start Mobile Server.bat"
-        if bat.exists():
-            subprocess.Popen(["cmd", "/c", str(bat)], cwd=str(ROOT))
-            self._set_status("Mobile API server starting…", ACCENT2)
-        else:
-            messagebox.showwarning("Missing", "Start Mobile Server.bat not found.")
-
     def _open_github(self) -> None:
         webbrowser.open("https://github.com/shaggychunxx-ui/Finance")
 
@@ -1332,10 +1318,11 @@ class FinanceAgentsApp(tk.Frame):
 
 def main() -> int:
     if os.environ.get("FINANCE_AGENTS_STANDALONE") != "1":
+        # Standalone long trader app removed — open unified app (agents tab if supported).
         os.environ.setdefault("ETRADE_TAB", "agents")
-        from etrade_trader_gui import main as etrade_main
+        from unified_trader_gui import main as unified_main
 
-        return etrade_main()
+        return unified_main()
     try:
         app = FinanceAgentsApp()
         app._window.mainloop()

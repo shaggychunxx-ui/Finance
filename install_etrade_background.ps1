@@ -64,17 +64,24 @@ function Install-RunKeyStartup {
 }
 
 $taskOk = $false
+$serviceSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
+$servicePrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 try {
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$serviceLauncher`""
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    # wscript.exe + quoted VBS path — required when path has spaces (e.g. "Box One")
+    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$serviceLauncher`"" -WorkingDirectory $root
     Unregister-ScheduledTask -TaskName $serviceTask -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-    Register-ScheduledTask -TaskName $serviceTask -Action $action -Trigger $trigger -Force -ErrorAction Stop | Out-Null
+    Register-ScheduledTask -TaskName $serviceTask -Action $action -Trigger $trigger `
+        -Settings $serviceSettings -Principal $servicePrincipal -Force -ErrorAction Stop | Out-Null
     $taskOk = $true
     Write-Host "Scheduled task (logon): $serviceTask"
 } catch {
     Write-Host "Task Scheduler logon task skipped ($($_.Exception.Message))."
     try {
-        schtasks /Create /F /TN $serviceTask /TR $serviceRunCommand /SC ONLOGON /RL LIMITED 2>&1 | Out-Null
+        # schtasks: whole TR must be one quoted string; use wscript not the VBS path as Execute
+        $tr = "wscript.exe //B //Nologo `"$serviceLauncher`""
+        schtasks /Create /F /TN $serviceTask /TR $tr /SC ONLOGON /RL LIMITED 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             $taskOk = $true
             Write-Host "Scheduled task (schtasks logon): $serviceTask"
@@ -108,17 +115,44 @@ if (Test-Path $guiExe) {
 }
 
 $watchdogOk = $false
-if (Test-Path $watchdogScript) {
-    $watchCmd = "`"$watchdogBat`""
+$ensureVbs = Join-Path $root "Ensure ETrade Stack.vbs"
+if ((Test-Path $watchdogScript) -or (Test-Path $ensureVbs) -or (Test-Path $watchdogBat)) {
     try {
         Unregister-ScheduledTask -TaskName $watchdogTask -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
     } catch {}
-    schtasks /Create /F /TN $watchdogTask /TR $watchCmd /SC MINUTE /MO 5 /RL LIMITED 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
+    # Prefer wscript → Ensure VBS (handles paths with spaces). Never set Execute to a .bat under "Box One\".
+    try {
+        $wdSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 3) -MultipleInstances IgnoreNew
+        $wdPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        if (Test-Path $ensureVbs) {
+            $wdAction = New-ScheduledTaskAction -Execute "wscript.exe" `
+                -Argument "//B //Nologo `"$ensureVbs`"" -WorkingDirectory $root
+        } else {
+            $wdAction = New-ScheduledTaskAction -Execute "cmd.exe" `
+                -Argument "/c `"$watchdogBat`"" -WorkingDirectory $root
+        }
+        $wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+            -RepetitionInterval (New-TimeSpan -Minutes 5) `
+            -RepetitionDuration (New-TimeSpan -Days 3650)
+        Register-ScheduledTask -TaskName $watchdogTask -Action $wdAction -Trigger $wdTrigger `
+            -Settings $wdSettings -Principal $wdPrincipal -Force -ErrorAction Stop | Out-Null
         $watchdogOk = $true
         Write-Host "Scheduled task (every 5 min): $watchdogTask"
-    } else {
-        Write-Host "Watchdog task skipped (schtasks exit $LASTEXITCODE)."
+    } catch {
+        Write-Host "Watchdog Register-ScheduledTask failed ($($_.Exception.Message)); trying schtasks..."
+        $tr = if (Test-Path $ensureVbs) {
+            "wscript.exe //B //Nologo `"$ensureVbs`""
+        } else {
+            "cmd.exe /c `"$watchdogBat`""
+        }
+        schtasks /Create /F /TN $watchdogTask /TR $tr /SC MINUTE /MO 5 /RL LIMITED 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $watchdogOk = $true
+            Write-Host "Scheduled task (schtasks every 5 min): $watchdogTask"
+        } else {
+            Write-Host "Watchdog task skipped (schtasks exit $LASTEXITCODE)."
+        }
     }
 }
 
@@ -143,13 +177,6 @@ Write-Host "Confirm your account once in the GUI - it is saved across restarts."
 Write-Host ""
 Write-Host "Starting background service now..."
 Start-Process -FilePath "wscript.exe" -ArgumentList "`"$serviceLauncher`"" -WindowStyle Hidden
-
-$mobileRemoteInstaller = Join-Path $root "install_mobile_remote_background.ps1"
-if (Test-Path $mobileRemoteInstaller) {
-    Write-Host ""
-    Write-Host "Installing mobile remote access (phone monitor tunnel)..."
-    & $mobileRemoteInstaller | Out-Host
-}
 
 if ($taskOk) {
     Get-ScheduledTask -TaskName $serviceTask -ErrorAction SilentlyContinue | Select-Object TaskName, State

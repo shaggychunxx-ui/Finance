@@ -172,8 +172,8 @@ class MigrationDataAnalyst(BaseExpert):
             resp = requests.get(
                 url,
                 headers=HEADERS,
-                params={"format": "json", "per_page": 10, "mrnev": 1},
-                timeout=30,
+                params={"format": "json", "per_page": 5, "mrnev": 1},
+                timeout=(2, 6),
             )
             resp.raise_for_status()
             payload = resp.json()
@@ -188,33 +188,47 @@ class MigrationDataAnalyst(BaseExpert):
             return None
 
     def _fetch_countries(self) -> tuple[list[CountryMigrationProfile], int, int]:
+        """Seed-first corridor book; optional live refresh for top corridors only.
+
+        Previous design: 10 countries × 4 World Bank calls × 30s timeout = multi-minute
+        hangs that regularly exceeded the 75s pipeline agent kill budget.
+        """
+        import os
+
+        live = str(os.environ.get("FINANCE_MIGRATION_LIVE", "")).strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+        # Live only for the largest remittance corridors when explicitly enabled.
+        live_iso = {"MEX", "IND", "PHL", "CHN", "NGA"} if live else set()
+
         profiles: list[CountryMigrationProfile] = []
         live_fields = 0
         seed_fields = 0
         for seed in DEFAULT_COUNTRIES:
-            net_mig = self._worldbank_get(seed["iso3"], "SM.POP.NETM")
-            remit = self._worldbank_get(seed["iso3"], "BX.TRF.PWKR.CD.DT")
-            remit_pct = self._worldbank_get(seed["iso3"], "BX.TRF.PWKR.DT.GD.ZS")
-            stock_pct = self._worldbank_get(seed["iso3"], "SM.POP.TOTL.ZS")
+            iso3 = seed["iso3"]
+            if iso3 in live_iso:
+                net_mig = self._worldbank_get(iso3, "SM.POP.NETM")
+                remit = self._worldbank_get(iso3, "BX.TRF.PWKR.CD.DT")
+                remit_pct = self._worldbank_get(iso3, "BX.TRF.PWKR.DT.GD.ZS")
+                stock_pct = self._worldbank_get(iso3, "SM.POP.TOTL.ZS")
+            else:
+                net_mig = remit = remit_pct = stock_pct = None
 
-            for live_val, seed_val in (
-                (net_mig, seed["net_migration"]),
-                (remit, seed["remittances_usd"]),
-                (remit_pct, seed["remittances_pct_gdp"]),
-                (stock_pct, seed["migrant_stock_pct_pop"]),
-            ):
+            for live_val in (net_mig, remit, remit_pct, stock_pct):
                 if live_val is not None:
                     live_fields += 1
                 else:
                     seed_fields += 1
 
             profiles.append(CountryMigrationProfile(
-                iso3=seed["iso3"],
+                iso3=iso3,
                 name=seed["name"],
                 net_migration=net_mig if net_mig is not None else float(seed["net_migration"]),
                 remittances_usd=remit if remit is not None else float(seed["remittances_usd"]),
                 remittances_pct_gdp=remit_pct if remit_pct is not None else float(seed["remittances_pct_gdp"]),
-                migrant_stock_pct_pop=stock_pct if stock_pct is not None else float(seed["migrant_stock_pct_pop"]),
+                migrant_stock_pct_pop=(
+                    stock_pct if stock_pct is not None else float(seed["migrant_stock_pct_pop"])
+                ),
             ))
 
         profiles.sort(key=lambda p: p.remittances_usd, reverse=True)

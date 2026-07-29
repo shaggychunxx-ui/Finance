@@ -1,4 +1,6 @@
-# E*TRADE Short Trader (sister app)
+# E*TRADE Short sleeve (embedded in Unified Trader)
+
+> **Standalone Short Trader app removed.** Use **ETrade Unified Trader** for long + short in one window. Backend modules (`short_*`) remain for the Short tab.
 
 Short-selling counterpart to **E*TRADE Trader**. Same machine, same agent research, **separate** config, worker, plans, and trade log.
 

@@ -123,10 +123,22 @@ def inject_account_open_anchor(
         return rows
     first_row = min(rows, key=lambda row: str(row.get("at", "")))
     anchor_at = opened_at.replace(hour=0, minute=0, second=0, microsecond=0)
+    anchor_total = opening_balance if opening_balance is not None else first_row.get("total_account_value")
+    # Do not copy first-snapshot cash onto the open anchor — that makes a pre-tracking
+    # deposit look like pure equity growth (cash flat, total jumps).
+    try:
+        first_total = float(first_row.get("total_account_value"))
+        anchor_f = float(anchor_total) if anchor_total is not None else None
+        totals_differ = (
+            anchor_f is not None
+            and abs(first_total - anchor_f) >= 0.01
+        )
+    except (TypeError, ValueError):
+        totals_differ = True
     anchor = {
         "at": anchor_at.isoformat(),
-        "total_account_value": opening_balance if opening_balance is not None else first_row.get("total_account_value"),
-        "cash_buying_power": first_row.get("cash_buying_power"),
+        "total_account_value": anchor_total,
+        "cash_buying_power": None if totals_differ else first_row.get("cash_buying_power"),
         "account_id_key": first_row.get("account_id_key"),
         "source": "account_open_anchor",
     }
@@ -449,12 +461,16 @@ class AccountGrowthChart(tk.Frame):
         open_val = self._account_open_value if self._account_open_value is not None else self._points[0][1]
         last = self._points[-1][1]
         invested = self._profit_invested_capital
-        if invested is not None and invested > 0:
+        # When invested capital is known, % / $ are trading profit (deposits excluded).
+        # Still show raw balance path for context, but label gain as profit.
+        if invested is not None and invested > 0 and self._metric_key == "balance":
             delta = last - float(invested)
             pct = delta / float(invested) * 100
+            gain_label = "profit"
         else:
             delta = last - open_val
             pct = (delta / open_val * 100) if open_val else 0.0
+            gain_label = "Δ"
         sign = "+" if delta >= 0 else ""
         color = UP if delta >= 0 else DOWN
         flat_note = " · flat" if abs(delta) < 0.01 else ""
@@ -464,7 +480,8 @@ class AccountGrowthChart(tk.Frame):
         self._stats.configure(
             text=(
                 f"{self._range_key} · {self._metric_label()} · {len(self._points)} pts · "
-                f"${open_val:,.2f} → ${last:,.2f} ({sign}{pct:.2f}%){open_label}{flat_note}"
+                f"${open_val:,.2f} → ${last:,.2f} · {gain_label} {sign}${delta:,.2f} "
+                f"({sign}{pct:.2f}%){open_label}{flat_note}"
             ),
             fg=color if abs(delta) >= 0.01 else MUTED,
         )

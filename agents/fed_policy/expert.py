@@ -254,7 +254,7 @@ class FedPolicyExpert(BaseExpert):
                 FRED_CSV_URL,
                 params={"id": series_id},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             rows = list(csv.reader(io.StringIO(resp.text)))
@@ -308,7 +308,7 @@ class FedPolicyExpert(BaseExpert):
                 FRED_CSV_URL,
                 params={"id": series_id},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             rows = list(csv.reader(io.StringIO(resp.text)))

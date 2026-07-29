@@ -105,7 +105,7 @@ class MarketRegimeExpert(BaseExpert):
                 CHART_API.format(symbol=symbol),
                 params={"interval": "1d", "range": range_},
                 headers=HEADERS,
-                timeout=25,
+                timeout=(2, 6),
             )
             resp.raise_for_status()
             quote = resp.json()["chart"]["result"][0]["indicators"]["quote"][0]

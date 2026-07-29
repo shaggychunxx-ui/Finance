@@ -677,12 +677,14 @@ class MomentumReversionExpert(BaseExpert):
         watchlist = pmd.prepare_watchlist(WATCHLIST)
         pmd.request_enhancement(watchlist)
 
+        # 1y is enough for 120d momentum / pair stats; 2y × many tickers was hanging
+        # the schedule at agent 47 (Momentum Reversion) under slow Yahoo responses.
+        hist_range = "1y"
         close_map: dict[str, list[float]] = {}
         for symbol in watchlist:
-            closes = self.fetch_yahoo_closes(symbol, range_="2y", interval="1d")
+            closes = self.fetch_yahoo_closes(symbol, range_=hist_range, interval="1d")
             if closes:
                 close_map[symbol] = closes
-            time.sleep(self.delay_seconds)
 
         if BENCHMARK not in close_map:
             raise RuntimeError("Unable to fetch SPY data for momentum-reversion analysis")
@@ -699,10 +701,12 @@ class MomentumReversionExpert(BaseExpert):
 
         pairs: list[StatArbSignal] = []
         for symbol_a, symbol_b in STAT_ARB_PAIRS:
-            closes_a = self.fetch_yahoo_closes(symbol_a, range_="2y", interval="1d")
-            time.sleep(self.delay_seconds)
-            closes_b = self.fetch_yahoo_closes(symbol_b, range_="2y", interval="1d")
-            time.sleep(self.delay_seconds)
+            closes_a = close_map.get(symbol_a) or self.fetch_yahoo_closes(
+                symbol_a, range_=hist_range, interval="1d"
+            )
+            closes_b = close_map.get(symbol_b) or self.fetch_yahoo_closes(
+                symbol_b, range_=hist_range, interval="1d"
+            )
             if not closes_a or not closes_b:
                 continue
             sig = self._stat_arb_signal(symbol_a, symbol_b, closes_a, closes_b)

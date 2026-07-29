@@ -154,16 +154,26 @@ class WorldEventsTracker(BaseExpert):
     def _fetch_headlines(self) -> tuple[list[dict[str, Any]], list[str]]:
         headlines: list[dict[str, Any]] = []
         sources: list[str] = []
-        for name, url in NEWS_FEEDS:
-            try:
-                resp = requests.get(url, headers=HEADERS, timeout=30)
-                resp.raise_for_status()
-                parsed = self._parse_rss(resp.content, name)
-                if parsed:
-                    headlines.extend(parsed)
-                    sources.append(name)
-            except Exception:
-                continue
+        # Proxy-first: multi-feed RSS with 30s timeouts hung agent 6 and killed cycles.
+        import os
+
+        live = str(os.environ.get("FINANCE_EVENTS_LIVE", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if live:
+            for name, url in NEWS_FEEDS[:2]:
+                try:
+                    resp = requests.get(url, headers=HEADERS, timeout=(2, 5))
+                    resp.raise_for_status()
+                    parsed = self._parse_rss(resp.content, name)
+                    if parsed:
+                        headlines.extend(parsed)
+                        sources.append(name)
+                except Exception:
+                    continue
 
         if not headlines:
             headlines = self._proxy_headlines()

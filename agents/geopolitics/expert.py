@@ -188,22 +188,26 @@ class GeopoliticsExpert(BaseExpert):
         all_articles: list[NewsArticle] = []
         sources: list[str] = []
 
-        for name, url in NEWS_FEEDS:
-            try:
-                resp = requests.get(url, headers=HEADERS, timeout=30)
-                resp.raise_for_status()
-                parsed = self._parse_rss(resp.content, name)
-                if parsed:
-                    all_articles.extend(parsed)
-                    sources.append(name)
-            except Exception:
-                continue
+        import os
 
-        if self.use_gdelt and len(all_articles) < 8:
-            gdelt = self._fetch_gdelt_headlines()
-            if gdelt:
-                all_articles.extend(gdelt)
-                sources.append("GDELT DOC API")
+        live = str(os.environ.get("FINANCE_GEOPOLITICS_LIVE", "")).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if live:
+            for name, url in NEWS_FEEDS[:2]:
+                try:
+                    resp = requests.get(url, headers=HEADERS, timeout=(2, 5))
+                    resp.raise_for_status()
+                    parsed = self._parse_rss(resp.content, name)
+                    if parsed:
+                        all_articles.extend(parsed)
+                        sources.append(name)
+                except Exception:
+                    continue
+            # GDELT disabled in schedule path — prior 6s sleep + 30s timeout hung agent 3.
 
         if not all_articles:
             all_articles = self._proxy_headlines()
@@ -220,7 +224,7 @@ class GeopoliticsExpert(BaseExpert):
 
     def _fetch_gdelt_headlines(self) -> list[NewsArticle]:
         try:
-            time.sleep(6)
+            # No multi-second sleep — schedule budget is tight.
             resp = requests.get(
                 GDELT_DOC_URL,
                 params={
@@ -231,7 +235,7 @@ class GeopoliticsExpert(BaseExpert):
                     "timespan": "3d",
                 },
                 headers=HEADERS,
-                timeout=30,
+                timeout=(2, 6),
             )
             if resp.status_code == 429 or not resp.text.strip().startswith("{"):
                 return []

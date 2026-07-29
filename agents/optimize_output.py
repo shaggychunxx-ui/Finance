@@ -92,7 +92,56 @@ def optimize_agent_output(path: Path, agent_id: str = "") -> dict[str, Any] | No
     meta.setdefault("preferred_horizon", horizon)
     if aid:
         meta.setdefault("agent_id", aid)
+
+    # Live vs proxy labeling for fusion / UI (FRED, CPI, Census, NASS, etc.)
+    source_blobs: list[str] = []
+    for key in ("data_sources", "sources"):
+        blob = meta.get(key) if key in meta else data.get(key)
+        if isinstance(blob, list):
+            source_blobs.extend(str(x) for x in blob)
+        elif isinstance(blob, str) and blob.strip():
+            source_blobs.append(blob)
+    joined = " | ".join(source_blobs).lower()
+    is_proxy = any(
+        tok in joined
+        for tok in ("calibrated proxy", "proxy feed", "proxy series", "unreachable", "fallback")
+    )
+    is_live = any(
+        tok in joined
+        for tok in (
+            "fred api",
+            "bls",
+            "census api",
+            "nass",
+            "quick stats",
+            "eia ",
+            "yahoo",
+            "edgar",
+            "live",
+        )
+    ) and not is_proxy
+    if is_proxy and not is_live:
+        meta["data_mode"] = "proxy"
+        meta["live_data"] = False
+    elif is_live:
+        meta["data_mode"] = "live"
+        meta["live_data"] = True
+    elif source_blobs:
+        meta.setdefault("data_mode", "mixed")
+        meta.setdefault("live_data", None)
     data["meta"] = meta
+
+    context_only = False
+    try:
+        from agent_groups import is_market_context_agent
+
+        context_only = bool(aid and is_market_context_agent(aid))
+    except Exception:
+        context_only = False
+    if context_only:
+        meta["signal_role"] = "market_context"
+        meta["stock_picking"] = False
+        data["meta"] = meta
 
     signals = data.get("market_signals")
     if not isinstance(signals, list):
@@ -102,6 +151,10 @@ def optimize_agent_output(path: Path, agent_id: str = "") -> dict[str, Any] | No
     for row in enhanced:
         if isinstance(row, dict) and row.get("symbol"):
             seen_enhance.add(str(row["symbol"]).upper())
+    # Context agents must not queue E*TRADE enhancements for stock picks
+    if context_only:
+        enhanced = []
+        seen_enhance = set()
 
     optimized: list[dict[str, Any]] = []
     for sig in signals:
@@ -117,6 +170,12 @@ def optimize_agent_output(path: Path, agent_id: str = "") -> dict[str, Any] | No
                 row.setdefault("confidence", 0.45)
             else:
                 row.setdefault("confidence", 0.58)
+        if context_only:
+            # Keep bias/reason for market tilt; drop single-name tickers.
+            row["tickers"] = []
+            row["signal_role"] = "market_context"
+            optimized.append(row)
+            continue
         tickers = row.get("tickers") or row.get("symbols") or []
         if isinstance(tickers, str):
             tickers = [tickers]
@@ -143,6 +202,8 @@ def optimize_agent_output(path: Path, agent_id: str = "") -> dict[str, Any] | No
     data["market_signals"] = optimized
     if enhanced:
         data["enhance_symbols"] = enhanced
+    elif context_only:
+        data["enhance_symbols"] = []
 
     # Opportunities / trading_opportunities ticker enhancement
     for key in ("trading_opportunities", "opportunities"):

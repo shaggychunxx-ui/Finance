@@ -30,15 +30,19 @@ SHORT_PLAN = OUTPUT / "short" / "short_strategy_plan.json"
 
 DEFAULT_POLICY = {
     "enabled": True,
-    # One capital pool — both sleeves use total account value / buying power.
+    # One capital pool when long + short trade the same brokerage account.
+    # Deployed long MV + short MV both count against this shared pool.
     "shared_capital": True,
-    # Soft ceilings as % of total equity (not exclusive reservations).
+    # Joint ceiling as % of free equity (after cash buffer). Long+short combined
+    # market value cannot exceed this when shared_capital is true.
+    "shared_max_deploy_pct": 90.0,
+    # Soft per-sleeve ceilings as % of free equity (further limit each side).
     "long_max_deploy_pct": 75.0,
     "short_max_deploy_pct": 35.0,
     # Hard capital cap for the buy (long) app: "pct" | "usd" | "off".
     # pct  → use long_max_deploy_pct of free equity
     # usd  → hard dollar ceiling (long_max_capital_usd), e.g. $5,000 of a $20k account
-    # off  → no long soft ceiling (only cash buffer / buying power)
+    # off  → no long soft ceiling beyond shared pool / free equity
     "long_capital_cap_mode": "pct",
     "long_max_capital_usd": 0.0,
     "shared_cash_buffer_pct": 5.0,
@@ -200,25 +204,28 @@ def shared_capital_budget(
     sleeve: Sleeve,
     policy: dict[str, Any] | None = None,
     balance: dict[str, Any] | None = None,
+    positions: list[dict[str, Any]] | None = None,
 ) -> dict[str, float | str | bool]:
-    """Compute deployable notional from the shared capital pool.
+    """Compute deployable notional when long + short share one brokerage account.
 
-    Cash is shared. Each sleeve gets a soft ceiling as a fraction of equity
-    (optionally tilted by sleeve_coordinator for joint profit); available
-    buying power is the shared BP pool (not reserved exclusively).
+    When shared_capital is True (default):
+      - One joint pool: free_equity × shared_max_deploy_pct
+      - Long MV + short MV both reduce remaining pool
+      - Each sleeve also has its own soft ceiling (long_max_deploy_pct / short_…)
+      - New risk = min(sleeve room, shared remaining, buying power)
 
-    Long sleeve also supports a hard capital cap:
+    Long sleeve hard cap modes still apply:
       long_capital_cap_mode = "pct" | "usd" | "off"
-      long_max_capital_usd  = absolute $ ceiling when mode is "usd"
-      long_max_deploy_pct   = % of free equity when mode is "pct"
     """
     policy = policy or load_sleeve_policy()
     total = max(0.0, float(total_account_value or 0))
     buffer = float(policy.get("shared_cash_buffer_pct", 5.0)) / 100.0
     free_equity = total * max(0.0, 1.0 - buffer)
+    shared_on = bool(policy.get("shared_capital", True))
 
     long_pct = float(policy.get("long_max_deploy_pct", 75.0))
     short_pct = float(policy.get("short_max_deploy_pct", 35.0))
+    shared_pct = float(policy.get("shared_max_deploy_pct", 90.0))
     long_mode = _normalize_cap_mode(policy.get("long_capital_cap_mode", "pct"))
     long_max_usd = max(0.0, float(policy.get("long_max_capital_usd") or 0))
 
@@ -246,12 +253,38 @@ def shared_capital_budget(
     if long_mode == "usd" and long_max_usd > 0:
         long_cap = long_max_usd
     elif long_mode == "off":
-        long_cap = free_equity  # no soft long ceiling beyond free equity
+        long_cap = free_equity  # no soft long ceiling beyond free equity / shared pool
     else:
         long_cap = free_equity * max(0.0, long_pct) / 100.0
 
     short_cap = free_equity * max(0.0, short_pct) / 100.0
     ceiling = long_cap if sleeve == "long" else short_cap
+
+    longs, shorts = split_positions(list(positions or []))
+    long_mv = sum(float(p.get("market_value") or 0) for p in longs.values())
+    short_mv = sum(float(p.get("market_value") or 0) for p in shorts.values())
+    total_deployed = long_mv + short_mv
+    this_mv = long_mv if sleeve == "long" else short_mv
+    other_mv = short_mv if sleeve == "long" else long_mv
+
+    # Joint account pool (same account → one capital limit)
+    shared_pool = free_equity * max(0.0, min(100.0, shared_pct)) / 100.0
+    if shared_on:
+        # This sleeve's target book size cannot exceed shared pool minus the other side
+        sleeve_book_cap = max(0.0, shared_pool - other_mv)
+        if ceiling > 0:
+            sleeve_book_cap = min(ceiling, sleeve_book_cap) if sleeve_book_cap > 0 else 0.0
+        else:
+            sleeve_book_cap = max(0.0, shared_pool - other_mv)
+        shared_remaining = max(0.0, shared_pool - total_deployed)
+        sleeve_remaining = max(0.0, sleeve_book_cap - this_mv)
+        # New capital available = room under joint pool and under this sleeve's book
+        deployable = min(shared_remaining, sleeve_remaining)
+        ceiling = sleeve_book_cap
+    else:
+        shared_remaining = free_equity
+        sleeve_remaining = max(0.0, ceiling - this_mv) if ceiling > 0 else free_equity
+        deployable = sleeve_remaining if ceiling > 0 else free_equity
 
     bp = 0.0
     if balance:
@@ -262,15 +295,23 @@ def shared_capital_budget(
             or balance.get("net_cash")
             or 0
         )
-    # Shared capital: use min of sleeve ceiling and available BP when known
-    if bp > 0 and policy.get("shared_capital", True):
-        deployable = min(ceiling, bp) if ceiling > 0 else bp
-    else:
-        deployable = ceiling
+    if bp > 0 and shared_on:
+        deployable = min(deployable, bp) if deployable > 0 else 0.0
+    elif bp > 0 and not shared_on:
+        deployable = min(deployable, bp) if deployable > 0 else bp
 
     return {
         "total_account_value": round(total, 2),
         "shared_free_equity": round(free_equity, 2),
+        "shared_capital": shared_on,
+        "shared_pool_usd": round(shared_pool, 2),
+        "shared_max_deploy_pct": round(shared_pct, 2),
+        "long_market_value_usd": round(long_mv, 2),
+        "short_market_value_usd": round(short_mv, 2),
+        "total_deployed_usd": round(total_deployed, 2),
+        "shared_remaining_usd": round(max(0.0, shared_remaining), 2),
+        "sleeve_market_value_usd": round(this_mv, 2),
+        "sleeve_remaining_usd": round(max(0.0, sleeve_remaining), 2),
         "sleeve_ceiling_usd": round(max(0.0, ceiling), 2),
         "shared_buying_power": round(bp, 2),
         "deployable_usd": round(max(0.0, deployable), 2),
@@ -390,6 +431,7 @@ def apply_sleeve_to_plan(
         float(getattr(plan, "total_account_value", 0) or 0),
         sleeve=sleeve,
         policy=policy,
+        positions=positions,
     )
     meta["sleeve"] = sleeve
     meta["sleeve_policy"] = {
@@ -438,6 +480,7 @@ def ensure_config_sleeve_block(path: Path) -> None:
         # Ensure shared_capital stays true unless user explicitly set it
         sp = raw["sleeve_policy"]
         sp.setdefault("shared_capital", True)
+        sp.setdefault("shared_max_deploy_pct", DEFAULT_POLICY["shared_max_deploy_pct"])
         sp.setdefault("enabled", True)
         sp.setdefault("forbid_opposite_side", True)
         sp.setdefault("forbid_same_symbol_both_sleeves", True)
@@ -445,6 +488,7 @@ def ensure_config_sleeve_block(path: Path) -> None:
         sp.setdefault("long_capital_cap_mode", DEFAULT_POLICY["long_capital_cap_mode"])
         sp.setdefault("long_max_capital_usd", DEFAULT_POLICY["long_max_capital_usd"])
         sp.setdefault("long_max_deploy_pct", DEFAULT_POLICY["long_max_deploy_pct"])
+        sp.setdefault("short_max_deploy_pct", DEFAULT_POLICY["short_max_deploy_pct"])
         raw["sleeve_policy"] = sp
     else:
         raw["sleeve_policy"] = dict(DEFAULT_POLICY)

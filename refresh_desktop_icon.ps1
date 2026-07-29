@@ -116,31 +116,13 @@ if (Test-Path $serviceLauncher) {
         -Description 'Finance E*TRADE background trading worker'
 }
 
-$phoneMonitorBat = Join-Path $root "Install Phone Monitor.bat"
-if (Test-Path $phoneMonitorBat) {
-    Set-ETradeShortcut `
-        -LinkPath (Join-Path $desktop "Install Phone Monitor.lnk") `
-        -TargetPath $phoneMonitorBat `
-        -Description 'Install E*TRADE Trader monitor app on your phone'
-}
-
-$mobileRemoteBat = Join-Path $root "Start Mobile Remote Access.bat"
-if (Test-Path $mobileRemoteBat) {
-    Set-ETradeShortcut `
-        -LinkPath (Join-Path $desktop "Mobile Remote Access.lnk") `
-        -TargetPath $mobileRemoteBat `
-        -Description 'Phone monitor tunnel - runs hidden in background'
-}
-
-$fixHomeBat = Join-Path $root "Install Phone App.bat"
-if (-not (Test-Path $fixHomeBat)) {
-    $fixHomeBat = Join-Path $root "Fix Phone Home Screen.bat"
-}
-if (Test-Path $fixHomeBat) {
-    Set-ETradeShortcut `
-        -LinkPath (Join-Path $desktop "Install Phone App.lnk") `
-        -TargetPath $fixHomeBat `
-        -Description 'Fix phone error 1033 - stable Wi-Fi home screen icon'
+# Remove obsolete phone/mobile desktop shortcuts if present
+foreach ($old in @(
+    "Install Phone Monitor.lnk",
+    "Mobile Remote Access.lnk",
+    "Install Phone App.lnk"
+)) {
+    Remove-Item (Join-Path $desktop $old) -Force -ErrorAction SilentlyContinue
 }
 
 Remove-Item "$env:LOCALAPPDATA\IconCache.db" -Force -ErrorAction SilentlyContinue

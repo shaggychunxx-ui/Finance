@@ -115,7 +115,7 @@ class SentimentAltDataExpert(BaseExpert):
                 NEWS_RSS_API,
                 params={"s": symbol, "region": "US", "lang": "en-US"},
                 headers=HEADERS,
-                timeout=20,
+                timeout=(2, 5),
             )
             resp.raise_for_status()
             root = ET.fromstring(resp.content)
