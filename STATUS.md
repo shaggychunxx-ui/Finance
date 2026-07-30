@@ -1,7 +1,11 @@
 # Status
 
-**Last updated:** 2026-07-30  
-**Updated by:** AI-CODING
+**Act on:** AI-CODING
+
+**Active owner:** none
+
+**Last updated:** 2026-07-30
+**Updated by:** PHONE-OXYGEN
 
 Standing instructions for contributors and agents working in this **public** repo.
 
@@ -13,3 +17,9 @@ Standing instructions for contributors and agents working in this **public** rep
 - **Body:** 1–3 sentences — why, key paths/IDs, outcome. No secrets.
 - Prefer multi-line messages (`git commit -m subject -m body`) over a bare one-liner.
 - Automated scripts should attach a body; agents must match this standard.
+
+## Next
+- [ ] **AI-CODING** stop sending info to etrader UI
+
+## Notes
+- PHONE: stop sending info to etrader UI → Act on AI-CODING
