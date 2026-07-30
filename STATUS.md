@@ -1,11 +1,10 @@
 # Status
 
-**Act on:** AI-CODING
-
-**Active owner:** none
-
-**Last updated:** 2026-07-30
 **Updated by:** PHONE-OXYGEN
+**Active owner:** none
+**Act on:** AI-CODING
+**Last updated:** 2026-07-30
+
 
 Standing instructions for contributors and agents working in this **public** repo.
 
