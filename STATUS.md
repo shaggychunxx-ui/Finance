@@ -1,31 +1,40 @@
-# Status
+# Status / Handoff — Finance
 
-**Updated by:** PHONE-OXYGEN
+**Last updated:** 2026-07-31
+**Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** AI-CODING
-**Last updated:** 2026-07-31
 
+## Current goal
 
-Standing instructions for contributors and agents working in this **public** repo.
+Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch → headless Grok on AI-CODING.
 
-## Commits (mandatory)
+## NOTIFY
 
-**All commits have a summary.** Never subject-only.
+- (none)
 
-- **Subject:** short what (≤72 chars when practical).
-- **Body:** 1–3 sentences — why, key paths/IDs, outcome. No secrets.
-- Prefer multi-line messages (`git commit -m subject -m body`) over a bare one-liner.
-- Automated scripts should attach a body; agents must match this standard.
+## Done
+
+- [x] **AI-CODING:** Scaffolded Finance phone bus (RULES, AGENTS, tasks/, watch-and-act, install-watcher). Scheduled task **FinanceWorkspaceWatch** on AI-CODING. Phone Send path now has a watcher (was missing).
+- [x] **AI-CODING:** Received HUMAN GitStatus **test** — **RECEIPT OK** on **Finance** (AI-CODING, 2026-07-31 04:28).
+- [x] **AI-CODING:** GitStatus remote probe `gitstatus-remote-probe-20260731-042147` — **RECEIPT OK**. Public STATUS phone bus fields OK (Act on/Next/Notes).
 
 ## Next
+
 - [ ] **AI-CODING** make sure all transfered positions count as deposits. zero out profit and p/l at time of deposti
+- [ ] **AI-CODING** stop sending info to etrader UI
+
+## Blockers
+
+- (none)
 
 ## Notes
-- [x] **AI-CODING:** Received HUMAN GitStatus **test** — **RECEIPT OK** on **Finance** (AI-CODING, 2026-07-31 04:28).
-- Armed for HUMAN GitStatus test: send **test** from phone; AI-CODING will confirm receipt per repo.
-- [x] **AI-CODING:** GitStatus remote probe `gitstatus-remote-probe-20260731-042147` — **RECEIPT OK**. Public STATUS phone bus fields OK (Act on/Next/Notes).
-- PHONE: stop sending info to etrader UI → Act on AI-CODING
+
+- **Phone bus (2026-07-31):** Finance previously accepted GitStatus writes but had **no watcher** — agents never woke on `Act on: AI-CODING`. Fixed: install `FinanceWorkspaceWatch` (every ~2 min). See `RULES.md` / `AGENTS.md`.
+- PHONE: make sure all transfered positions count as deposits. zero out profit and p/l at time of deposti → Act on AI-CODING
+- PHONE: stop sending info to etrader UI → Act on AI-CODING (re-armed after bus scaffold).
+- Standing commit rules (mandatory): subject + body; no secrets. Prefer multi-line `git commit -m subject -m body`.
+- Runtime trading stack may be `C:\Users\Box One\Finance` (local); this clone is `Documents\GitHub\Finance` (git + phone bus). Do not commit secrets from runtime.
+- Armed for HUMAN GitStatus: Send any message from phone on Finance window → AI-CODING should claim and respond.
 - PHONE: gitstatus-remote-probe-20260731-042147 -> Act on AI-CODING
 - PHONE: test → Act on AI-CODING
-- PHONE: make sure all transfered positions count as deposits. zero out profit and p/l at time of deposti → Act on AI-CODING
-

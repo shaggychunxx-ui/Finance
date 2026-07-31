@@ -38,3 +38,6 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+# Watcher / local runtime (never commit)
+.local/
+
