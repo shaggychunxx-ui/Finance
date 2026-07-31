@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-07-31
-**Updated by:** AI-CODING
+**Updated by:** PHONE-OXYGEN
 **Active owner:** none
-**Act on:** BOXONE
+**Act on:** AI-CODING
 
 ## Current goal
 
@@ -24,6 +24,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - (none)
+- [ ] **AI-CODING** what does this mean? "Prior pipeline cycle 20260726T180307Z: 0/0 agents succeeded."
 
 ## Blockers
 
@@ -37,3 +38,5 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - **Etrader UI info OFF:** set `phone_ui_info_enabled: true` in runtime `phone_bridge_config.json`, delete `output/phone_ui_info_disabled.flag`, restart bridge to re-enable agents feed.
 - Armed for HUMAN GitStatus: Send any message from phone on Finance window → AI-CODING should claim and respond.
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
+- PHONE: what does this mean? "Prior pipeline cycle 20260726T180307Z: 0/0 agents succeeded." → Act on AI-CODING
+
