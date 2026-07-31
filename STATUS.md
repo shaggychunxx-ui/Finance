@@ -1,7 +1,7 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-07-31
-**Updated by:** AI-CODING
+**Updated by:** PHONE-OXYGEN
 **Active owner:** none
 **Act on:** AI-CODING
 
@@ -22,7 +22,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - [ ] **AI-CODING** make sure all transfered positions count as deposits. zero out profit and p/l at time of deposti
-- [ ] **AI-CODING** stop sending info to etrader UI
+- [ ] **AI-CODING** stop sending info to etrader desktop UI
 
 ## Blockers
 
