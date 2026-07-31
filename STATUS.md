@@ -1,8 +1,8 @@
 # Status
 
-**Updated by:** PHONE-OXYGEN
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** none
 **Last updated:** 2026-07-31
 
 
@@ -19,9 +19,10 @@ Standing instructions for contributors and agents working in this **public** rep
 
 ## Next
 - [ ] **AI-CODING** stop sending info to etrader UI
-- [ ] **AI-CODING** gitstatus-remote-probe-20260731-042147
 
 ## Notes
+- Armed for HUMAN GitStatus test: send **test** from phone; AI-CODING will confirm receipt per repo.
+- [x] **AI-CODING:** GitStatus remote probe `gitstatus-remote-probe-20260731-042147` — **RECEIPT OK**. Public STATUS phone bus fields OK (Act on/Next/Notes).
 - PHONE: stop sending info to etrader UI → Act on AI-CODING
 - PHONE: gitstatus-remote-probe-20260731-042147 -> Act on AI-CODING
 

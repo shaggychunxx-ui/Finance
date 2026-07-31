@@ -77,6 +77,9 @@ from agents.momentum_reversion import run_momentum_reversion_analysis
 from agents.options_flow import run_options_flow_analysis
 from agents.quality_factor import run_quality_factor_analysis
 from agents.sector_rotation import run_sector_rotation_analysis
+from agents.etrade_ipo_mail import run_etrade_ipo_mail_analysis
+from agents.ipo_debut import run_ipo_debut_analysis
+from agents.ipo_monitor import run_ipo_monitor_analysis
 from historical_simulation import run_accuracy_benchmark_cli, run_historical_simulation_cli
 
 
@@ -1403,6 +1406,9 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "options-flow": run_options_flow_analysis,
     "quality-factor": run_quality_factor_analysis,
     "sector-rotation": run_sector_rotation_analysis,
+    "etrade-ipo-mail": run_etrade_ipo_mail_analysis,
+    "ipo-debut": run_ipo_debut_analysis,
+    "ipo-monitor": run_ipo_monitor_analysis,
 }
 
 

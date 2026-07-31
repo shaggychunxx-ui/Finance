@@ -57,6 +57,7 @@ RESEARCH_AGENTS: frozenset[str] = frozenset(
         "equity-structuring",
         "ipo-monitor",
         "ipo-debut",
+        "etrade-ipo-mail",
     }
 )
 
