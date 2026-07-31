@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-07-31
-**Updated by:** PHONE-OXYGEN
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** BOXONE
 
 ## Current goal
 
@@ -11,10 +11,15 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## NOTIFY
 
-- **NOTIFY → BOXONE:** AI-CODING finished Finance PHONE batch (037 transfer=deposits + 036 stop etrader UI info). Runtime bridge **v1.3.6**; `phone_ui_info_enabled=false` (re-enable in `phone_bridge_config.json` + restart bridge). Account P/L excludes ACATS book-in (live total_pl ≈ −$17.55). Ack once → Act on: none.
+- **NOTIFY → BOXONE:** AI-CODING answered PHONE re: "Prior pipeline cycle … 0/0 agents succeeded." = last recorded agent-pipeline run id `20260726T180307Z` (2026-07-26 18:03:07 UTC) had **zero agents scheduled**, not mass failure. Hint from `pipeline_memory.prior_cycle_hint`. Ack once → Act on: none.
 
 ## Done
 
+- [x] **AI-CODING (PHONE):** what does "Prior pipeline cycle 20260726T180307Z: 0/0 agents succeeded." mean? — **answered**.
+  - **Where it comes from:** `agents/pipeline_memory.py` builds `prior_cycle_hint` from the last entry in pipeline-run history and injects it as a `[Memory]` note so later agents know how the previous full cycle went.
+  - **Cycle id:** `20260726T180307Z` = one pipeline run stamped **2026-07-26 18:03:07 UTC** (not a clock error).
+  - **0/0:** `agents_ok` / `agents_total`. **0 succeeded out of 0 total** means **no agents were in that cycle** (empty roster / not run / recorded with zero count) — **not** “all agents crashed.” A real failure run would look like `0/20` or `18/20`.
+  - **Why you see it:** harmless context for the next pipeline; only worth investigating if cycles keep logging `0/0` when you expect a full agent batch.
 - [x] **AI-CODING (PHONE):** transferred positions = deposits; zero P/L at book-in — **done**. `account_profit.py` ACATS/capital-event detection in git+runtime; bridge zeros open P/L on transfer lots (SPCX+SAGMF + learned). Live: net_flows ~$3.7k, total_pl ~−$17.55. See `tasks/done/037-transfer-positions-as-deposits.md`.
 - [x] **AI-CODING (PHONE):** stop sending info to etrader UI — **done**. Gated `/api/agents` + idea rows via `phone_ui_info_enabled=false`; emptied `etrade-agents.json` publish path; OAuth/controls/balances still available. Re-enable documented in task Result. See `tasks/done/036-stop-etrader-ui-info.md`.
 - [x] **AI-CODING:** Scaffolded Finance phone bus (RULES, AGENTS, tasks/, watch-and-act, install-watcher). Scheduled task **FinanceWorkspaceWatch** on AI-CODING. Phone Send path now has a watcher (was missing).
@@ -24,7 +29,6 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - (none)
-- [ ] **AI-CODING** what does this mean? "Prior pipeline cycle 20260726T180307Z: 0/0 agents succeeded."
 
 ## Blockers
 
@@ -38,5 +42,4 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - **Etrader UI info OFF:** set `phone_ui_info_enabled: true` in runtime `phone_bridge_config.json`, delete `output/phone_ui_info_disabled.flag`, restart bridge to re-enable agents feed.
 - Armed for HUMAN GitStatus: Send any message from phone on Finance window → AI-CODING should claim and respond.
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
-- PHONE: what does this mean? "Prior pipeline cycle 20260726T180307Z: 0/0 agents succeeded." → Act on AI-CODING
-
+- **Pipeline 0/0 hint:** string from last `record_pipeline_run` / memory bundle; `0/0` = empty agent count that cycle, not mass agent failure.
