@@ -1,8 +1,8 @@
 # Status
 
-**Updated by:** AI-CODING
+**Updated by:** PHONE-OXYGEN
 **Active owner:** none
-**Act on:** none
+**Act on:** AI-CODING
 **Last updated:** 2026-07-31
 
 
@@ -19,6 +19,7 @@ Standing instructions for contributors and agents working in this **public** rep
 
 ## Next
 - [ ] **AI-CODING** stop sending info to etrader UI
+- [ ] **AI-CODING** make sure all transfered positions count as deposits. zero out profit and p/l at time of deposti
 
 ## Notes
 - [x] **AI-CODING:** Received HUMAN GitStatus **test** — **RECEIPT OK** on **Finance** (AI-CODING, 2026-07-31 04:28).
@@ -27,4 +28,5 @@ Standing instructions for contributors and agents working in this **public** rep
 - PHONE: stop sending info to etrader UI → Act on AI-CODING
 - PHONE: gitstatus-remote-probe-20260731-042147 -> Act on AI-CODING
 - PHONE: test → Act on AI-CODING
+- PHONE: make sure all transfered positions count as deposits. zero out profit and p/l at time of deposti → Act on AI-CODING
 
