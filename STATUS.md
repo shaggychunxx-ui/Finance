@@ -18,7 +18,6 @@ Standing instructions for contributors and agents working in this **public** rep
 - Automated scripts should attach a body; agents must match this standard.
 
 ## Next
-- [ ] **AI-CODING** stop sending info to etrader UI
 - [ ] **AI-CODING** make sure all transfered positions count as deposits. zero out profit and p/l at time of deposti
 
 ## Notes
