@@ -12,6 +12,7 @@ rolls off the retention window).
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -22,7 +23,14 @@ EXTERNAL_FLOW_MIN_ABS = 10.0
 EXTERNAL_FLOW_NO_CASH_MIN_ABS = 50.0
 EXTERNAL_FLOW_NO_CASH_PCT = 0.10
 # Cash movement must cover at least this fraction of the total-value jump.
-CASH_MATCH_MIN_RATIO = 0.55
+# 0.50 catches mixed cash+securities ACATS that barely miss a stricter 0.55 (e.g. ratio 0.54).
+CASH_MATCH_MIN_RATIO = 0.50
+# Partial cash still counts as deposit when cash covers a material share of the jump.
+PARTIAL_CASH_MATCH_RATIO = 0.40
+# Capital-event: equity jumps by this fraction of prior value → treat as deposit/ACATS even
+# when cash barely moves (mixed securities transfer). Example: 2055 → 3999 (~+94%).
+CAPITAL_EVENT_MIN_PCT = 0.50
+CAPITAL_EVENT_MIN_ABS = 50.0
 
 
 def _parse_at(value: str | None) -> datetime | None:
@@ -67,23 +75,40 @@ def _no_cash_threshold(prior_total: float) -> float:
     return max(EXTERNAL_FLOW_NO_CASH_MIN_ABS, abs(prior_total) * EXTERNAL_FLOW_NO_CASH_PCT)
 
 
+def _is_capital_event(total_delta: float, prior_total: float) -> bool:
+    """Large equity jump relative to account size — almost always capital in, not trading."""
+    if total_delta < max(CAPITAL_EVENT_MIN_ABS, EXTERNAL_FLOW_MIN_ABS):
+        return False
+    if prior_total <= 0:
+        return total_delta >= CAPITAL_EVENT_MIN_ABS
+    return total_delta >= max(CAPITAL_EVENT_MIN_ABS, abs(prior_total) * CAPITAL_EVENT_MIN_PCT)
+
+
 def _is_external_deposit(total_delta: float, cash_delta: float | None, prior_total: float) -> bool:
     """True when a balance jump is capital in (deposit), not trading gain.
 
     Future deposits are caught when:
       • cash buying power rises with total equity (cash-matched), or
-      • cash series is missing and the jump is large (no-cash threshold).
+      • cash series is missing and the jump is large (no-cash threshold), or
+      • cash is essentially flat while equity jumps a lot (ACATS / in-kind transfer), or
+      • equity jumps ≥50% of prior value (capital-event / mixed ACATS).
     """
     if total_delta < EXTERNAL_FLOW_MIN_ABS:
         return False
+    # Capital-event first: mixed cash+securities transfers often miss cash-match ratios.
+    if _is_capital_event(total_delta, prior_total):
+        return True
     if cash_delta is not None:
+        # In-kind stock transfer (ACATS): equity up, cash flat.
+        if abs(cash_delta) < EXTERNAL_FLOW_MIN_ABS:
+            return total_delta >= _no_cash_threshold(prior_total)
         if cash_delta <= 0:
             return False
         # Cash rose with equity — treat as deposit (covers future ACH/wires).
         if cash_delta >= total_delta * CASH_MATCH_MIN_RATIO:
             return True
         # Cash rose almost as much as equity even if slightly noisy.
-        if cash_delta >= EXTERNAL_FLOW_MIN_ABS and cash_delta >= total_delta * 0.40:
+        if cash_delta >= EXTERNAL_FLOW_MIN_ABS and cash_delta >= total_delta * PARTIAL_CASH_MATCH_RATIO:
             return True
         return False
     # No cash series: only large jumps (avoids classifying ordinary P&L as deposits).
@@ -212,6 +237,12 @@ def detect_external_flow_events(
                 elif _is_external_withdrawal(total_delta, cash_delta, prev_total):
                     kind = "withdrawal"
                 if kind:
+                    src = "transition"
+                    if kind == "deposit":
+                        if cash_delta is not None and abs(cash_delta) < EXTERNAL_FLOW_MIN_ABS:
+                            src = "acats_transfer"
+                        elif _is_capital_event(total_delta, prev_total):
+                            src = "capital_event"
                     events.append(
                         _make_flow_event(
                             at=str(row.get("at") or ""),
@@ -222,13 +253,74 @@ def detect_external_flow_events(
                             cash_before=prev_cash,
                             cash_after=cash,
                             account_id_key=str(row.get("account_id_key") or account_id_key or ""),
-                            source="transition",
+                            source=src,
                         )
                     )
         prev_total = total
         prev_cash = cash
         prev_source = source
-    return events
+
+    # Explicit human/agent overrides (e.g. ACATS line items named by symbol).
+    events.extend(load_manual_external_flows(account_id_key))
+    # De-dupe by (at, amount, kind) keeping first occurrence.
+    seen: set[tuple[str, float, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for event in events:
+        key = (
+            str(event.get("at") or ""),
+            round(float(event.get("amount") or 0), 2),
+            str(event.get("kind") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(event)
+    return deduped
+
+
+def load_manual_external_flows(account_id_key: str = "") -> list[dict[str, Any]]:
+    """Load output/manual_external_flows.json entries (deposits / withdrawals)."""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent / "output" / "manual_external_flows.json"
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = raw if isinstance(raw, list) else raw.get("events") if isinstance(raw, dict) else []
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, Any]] = []
+    key = str(account_id_key or "").strip()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("enabled") is False:
+            continue
+        amount = _float(row.get("amount"))
+        if amount is None or abs(amount) < 0.01:
+            continue
+        row_key = str(row.get("account_id_key") or "").strip()
+        if key and row_key and row_key != key:
+            continue
+        kind = str(row.get("kind") or ("deposit" if amount >= 0 else "withdrawal")).lower()
+        out.append(
+            {
+                "at": str(row.get("at") or datetime.now(timezone.utc).isoformat()),
+                "amount": round(amount, 2),
+                "kind": kind if kind in ("deposit", "withdrawal") else "deposit",
+                "total_before": row.get("total_before"),
+                "total_after": row.get("total_after"),
+                "cash_before": row.get("cash_before"),
+                "cash_after": row.get("cash_after"),
+                "account_id_key": row_key or key or None,
+                "source": str(row.get("source") or "manual"),
+                "note": row.get("note") or row.get("symbol") or "",
+            }
+        )
+    return out
 
 
 def net_external_flow_amount(events: list[dict[str, Any]]) -> float:

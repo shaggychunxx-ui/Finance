@@ -1,0 +1,7 @@
+﻿{
+  "host": "0.0.0.0",
+  "port": 8787,
+  "bridge_token": "GENERATE_ON_FIRST_RUN",
+  "phone_ui_info_enabled": true,
+  "phone_ui_info_note": "Set false to stop outbound phone UI info (/api/agents + idea rows). OAuth/controls/balances still work. Restart phone_bridge after change."
+}
