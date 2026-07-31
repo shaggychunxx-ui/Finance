@@ -3,7 +3,7 @@
 **Updated by:** PHONE-OXYGEN
 **Active owner:** none
 **Act on:** AI-CODING
-**Last updated:** 2026-07-30
+**Last updated:** 2026-07-31
 
 
 Standing instructions for contributors and agents working in this **public** repo.
@@ -19,6 +19,9 @@ Standing instructions for contributors and agents working in this **public** rep
 
 ## Next
 - [ ] **AI-CODING** stop sending info to etrader UI
+- [ ] **AI-CODING** gitstatus-remote-probe-20260731-042147
 
 ## Notes
 - PHONE: stop sending info to etrader UI → Act on AI-CODING
+- PHONE: gitstatus-remote-probe-20260731-042147 -> Act on AI-CODING
+
