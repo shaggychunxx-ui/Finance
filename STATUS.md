@@ -19,7 +19,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
   Or double-click `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`
 
-  Then open ETrade Unified Trader, restart worker, confirm share `broker/` is fresh. Task **042**. Practice stays ON. Ack once, set Act on: none.
+  Then open ETrade Unified Trader, restart worker, confirm share `broker/` is fresh. Task **042**. Practice stays ON.
+
+  **When 042 done:** arm Next for **PHONE/OXYGEN GitStatus verify** (task **043**); set Act on: none; ack once — no ping-pong. Do **not** Act on PHONE.
 
 
 
@@ -56,7 +58,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
 ## Next
 
-- [ ] **BOXONE:** Run broker apply script (see NOTIFY one-liner / `Apply-Broker-Role-BOXONE.ps1` on share). Restart Unified Trader + worker. Verify share `broker/` freshness. Task **042**.
+- [ ] **BOXONE:** Run broker apply script (see NOTIFY one-liner / `Apply-Broker-Role-BOXONE.ps1` on share). Restart Unified Trader + worker. Verify share `broker/` freshness. Task **042**. When done → arm PHONE GitStatus verify (task **043**).
+- [ ] **PHONE (GitStatus / OXYGEN):** After **042** Done — verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`.
 
 
 
@@ -67,6 +70,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 ## Notes
 
 - **Role flip B (2026-08-01):** BOXONE=broker, AI-CODING=pipeline. Tokens stay on BOXONE only. AI-CODING trading flags off. See ROLE_FLIP_B.md / DUAL_PC_DEPLOYMENT.md.
+- **After BOXONE done — OXYGEN verify (2026-08-01):** Human uses **GitStatus** (Finance window) to confirm bus/data connection (task **043**). Never `Act on: PHONE`. Probe string: `gitstatus-data-probe-verify-role-B`.
 - **Full day backtest (2026-08-01):** Continuous walk-forward from 2000-01-01 on AI-CODING. `python run_full_day_backtest.py` or `Start Full Day Backtest.bat`. Check `output/history/full_day_backtest_state.json` / `.log`. Resumes mid-pass unless `--fresh`.
 - **PL points (2026-08-01):** Groups earn points per full 1.0% total trading P/L (deposit-aware). Intraday 12, alpha 10, platform 2. Daily half-weight. See `agent_groups.ROLE_PL_POINTS_PER_PCT` and task **040**.
 - **Dropshipping (2026-08-01):** PHONE asked that all dropshipping info live in Finance. Canonical path: `dropshipping/README.md`. ShopifyDS keeps automation/scripts; gsw `work/dropshipping-store/` is a legacy mirror only.
