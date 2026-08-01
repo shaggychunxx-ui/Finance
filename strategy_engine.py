@@ -1038,6 +1038,14 @@ def _run_platform_agent_body(
             if on_progress:
                 on_progress(f"Personality patch skipped for {label}: {exc}")
 
+        try:
+            from agent_learning import patch_agent_output_learning
+
+            patch_agent_output_learning(out_path, agent_id)
+        except Exception as exc:
+            if on_progress:
+                on_progress(f"Learning patch skipped for {label}: {exc}")
+
         validation_error = validate_agent_output(out_path, started_at=started_at)
         if validation_error:
             raise RuntimeError(validation_error)
@@ -1128,6 +1136,12 @@ def _run_platform_agent(
                 from agent_personality import patch_agent_output_personality
 
                 patch_agent_output_personality(out_path, agent_id)
+            except Exception:
+                pass
+            try:
+                from agent_learning import patch_agent_output_learning
+
+                patch_agent_output_learning(out_path, agent_id)
             except Exception:
                 pass
             validation_error = validate_agent_output(out_path, started_at=started_at)

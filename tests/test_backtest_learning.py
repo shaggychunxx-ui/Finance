@@ -149,6 +149,22 @@ def test_rebuild_learning_and_brief(trial_paths):
     assert loaded.get("for_session") == "next_RTH"
 
 
+def test_policy_fusion_multiplier(trial_paths):
+    _store, learning, tmp = trial_paths
+    policy = {
+        "boost_agents": ["grid"],
+        "cut_agents": ["bear-thesis"],
+        "agents": {
+            "grid": {"edge_score": 0.3},
+            "bear-thesis": {"edge_score": -0.4},
+        },
+    }
+    learning.LEARNING_POLICY_FILE.write_text(json.dumps(policy), encoding="utf-8")
+    assert learning.policy_fusion_multiplier("grid") > 1.0
+    assert learning.policy_fusion_multiplier("bear-thesis", for_trading=True) < 0.5
+    assert learning.policy_fusion_multiplier("unknown") == 1.0
+
+
 def test_base_expert_apply_learning(trial_paths, monkeypatch):
     _store, learning, tmp = trial_paths
     # minimal learning file

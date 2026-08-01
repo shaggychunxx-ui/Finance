@@ -140,6 +140,10 @@ def _passes_short_gates(
 ) -> tuple[bool, str]:
     if ticker.symbol in {s.upper() for s in (settings.get("exclude_symbols") or [])}:
         return False, "excluded"
+    # Global walk-forward avoid list (from night backtest learning)
+    learning_avoid = settings.get("_learning_avoid_symbols") or set()
+    if ticker.symbol in learning_avoid:
+        return False, "learning-avoid"
     min_price = float(settings.get("min_price", 5.0))
     if ticker.price is not None and ticker.price < min_price:
         return False, f"price < ${min_price}"
@@ -187,6 +191,25 @@ def generate_short_portfolio(
     tickers = list(scores.values())
     try:
         _backfill_etrade_prices(agent_dir, tickers)
+    except Exception:
+        pass
+
+    # Night walk-forward learning: avoid list + trust boost for short book
+    learning_avoid: set[str] = set()
+    learning_trust: set[str] = set()
+    try:
+        from agent_learning import learning_avoid_trust_symbols
+
+        learning_avoid, learning_trust = learning_avoid_trust_symbols()
+        if learning_avoid or learning_trust:
+            settings = dict(settings)
+            settings["_learning_avoid_symbols"] = learning_avoid
+            for t in tickers:
+                if t.symbol in learning_trust:
+                    t.score -= 0.12  # more bearish / short-friendly after invert path
+                    t.sources.add("learning-trust")
+                    t.notes.append("Walk-forward trust symbol (short book)")
+            sources_used.append("agent_learning")
     except Exception:
         pass
 

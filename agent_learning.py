@@ -745,17 +745,35 @@ def patch_agent_output_learning(path: Path, agent_id: str) -> bool:
         meta = {}
         data["meta"] = meta
 
+    min_conf = float(learning.min_confidence_to_emit or 0.35)
+    suppressed = 0
+
+    def _apply_dir_conf(bias: str, conf: float, symbol: str) -> tuple[str, float, bool]:
+        nonlocal suppressed
+        b = adjust_bias_with_learning(bias, learning, symbol=symbol)
+        c = adjust_confidence_with_learning(conf, learning, symbol=symbol)
+        gate = False
+        if c < min_conf and b != "NEUTRAL":
+            b = "NEUTRAL"
+            gate = True
+            suppressed += 1
+        return b, c, gate
+
     for sig in data.get("market_signals", []) or []:
         if not isinstance(sig, dict):
             continue
         tickers = sig.get("tickers") or []
         symbol = str(tickers[0]) if tickers else ""
-        sig["bias"] = adjust_bias_with_learning(str(sig.get("bias", "NEUTRAL")), learning, symbol=symbol)
-        if "confidence" in sig:
-            sig["confidence"] = round(
-                adjust_confidence_with_learning(sig.get("confidence", 0.5), learning, symbol=symbol),
-                3,
-            )
+        bias, conf, gated = _apply_dir_conf(
+            str(sig.get("bias", "NEUTRAL")),
+            float(sig.get("confidence") or 0.5),
+            symbol,
+        )
+        sig["bias"] = bias
+        if "confidence" in sig or gated:
+            sig["confidence"] = round(conf, 3)
+        if gated:
+            sig["learning_suppressed"] = True
 
     preds = data.get("predictions")
     if isinstance(preds, dict):
@@ -768,38 +786,47 @@ def patch_agent_output_learning(path: Path, agent_id: str) -> bool:
                 sym = str(row.get("symbol") or "")
                 direction = str(row.get("predicted_direction", "flat")).lower()
                 mapped = "BULLISH" if direction == "up" else "BEARISH" if direction == "down" else "NEUTRAL"
-                adjusted = adjust_bias_with_learning(mapped, learning, symbol=sym)
+                adjusted, conf, gated = _apply_dir_conf(mapped, float(row.get("confidence") or 0.5), sym)
                 row["predicted_direction"] = (
                     "up" if adjusted == "BULLISH" else "down" if adjusted == "BEARISH" else "flat"
                 )
-                if "confidence" in row:
-                    row["confidence"] = round(
-                        adjust_confidence_with_learning(row.get("confidence", 0.5), learning, symbol=sym),
-                        3,
-                    )
+                if "confidence" in row or gated:
+                    row["confidence"] = round(conf, 3)
+                if gated:
+                    row["learning_suppressed"] = True
 
     for key in ("trading_opportunities", "top_picks"):
         rows = data.get(key)
         if not isinstance(rows, list):
             continue
+        kept: list[dict[str, Any]] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            sym = str(row.get("symbol") or "")
+            sym = str(row.get("symbol") or "").upper()
+            if sym and sym in learning.avoid_symbols:
+                suppressed += 1
+                continue
             if "confidence" in row:
-                row["confidence"] = round(
-                    adjust_confidence_with_learning(row.get("confidence", 0.5), learning, symbol=sym),
-                    3,
-                )
+                conf = adjust_confidence_with_learning(row.get("confidence", 0.5), learning, symbol=sym)
+                if conf < min_conf:
+                    suppressed += 1
+                    continue
+                row["confidence"] = round(conf, 3)
             if "opportunity_score" in row:
                 try:
                     score = float(row["opportunity_score"])
                 except (TypeError, ValueError):
                     score = 0.0
                 row["opportunity_score"] = round(_clamp(score * learning.confidence_scale, 0.0, 1.0), 3)
+            kept.append(row)
+        data[key] = kept
 
     meta["learning"] = learning.as_dict()
     meta["preferred_horizon"] = learning.preferred_horizon
+    meta["learning_applied"] = True
+    meta["learning_suppressed_signals"] = suppressed
+    meta["learning_edge_score"] = learning.edge_score
     try:
         from agent_temperature import apply_temperature_to_result
 
@@ -815,3 +842,55 @@ def patch_agent_output_learning(path: Path, agent_id: str) -> bool:
         pass
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return True
+
+
+def load_learning_policy() -> dict[str, Any]:
+    data = _load_json(LEARNING_POLICY_FILE)
+    return data if isinstance(data, dict) else {}
+
+
+def learning_avoid_trust_symbols() -> tuple[set[str], set[str]]:
+    """Union avoid/trust across agents + next_session_brief for sleeve filters."""
+    avoid: set[str] = set()
+    trust: set[str] = set()
+    store = _learning_store()
+    agents = store.get("agents") if isinstance(store.get("agents"), dict) else {}
+    for row in agents.values():
+        if not isinstance(row, dict):
+            continue
+        for s in row.get("avoid_symbols") or []:
+            avoid.add(str(s).upper())
+        for s in row.get("trust_symbols") or []:
+            trust.add(str(s).upper())
+    brief = load_next_session_brief()
+    for s in brief.get("avoid_symbols") or []:
+        avoid.add(str(s).upper())
+    for s in brief.get("trust_symbols") or []:
+        trust.add(str(s).upper())
+    trust -= avoid
+    return avoid, trust
+
+
+def policy_fusion_multiplier(agent_id: str, *, for_trading: bool = False) -> float:
+    """Hard gates from learning_policy: boost leaders, cut weak walk-forward agents."""
+    policy = load_learning_policy()
+    aid = str(agent_id or "")
+    if not aid:
+        return 1.0
+    boost = {str(x) for x in (policy.get("boost_agents") or [])}
+    cut = {str(x) for x in (policy.get("cut_agents") or [])}
+    agents = policy.get("agents") if isinstance(policy.get("agents"), dict) else {}
+    row = agents.get(aid) if isinstance(agents.get(aid), dict) else {}
+    mult = 1.0
+    if aid in boost:
+        mult *= 1.12
+    if aid in cut:
+        # Trading paths are stricter so weak backtest agents don't drive orders.
+        mult *= 0.35 if for_trading else 0.55
+    edge = row.get("edge_score")
+    try:
+        if edge is not None and float(edge) <= -0.35:
+            mult *= 0.5 if for_trading else 0.7
+    except (TypeError, ValueError):
+        pass
+    return _clamp(mult, 0.0, 1.35)

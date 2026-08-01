@@ -480,9 +480,10 @@ def fusion_weight(
         pass
 
     try:
-        from agent_learning import learning_fusion_factor
+        from agent_learning import learning_fusion_factor, policy_fusion_multiplier
 
         base *= learning_fusion_factor(aid)
+        base *= policy_fusion_multiplier(aid, for_trading=for_trading)
     except Exception:
         pass
 

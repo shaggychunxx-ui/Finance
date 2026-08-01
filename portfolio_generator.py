@@ -650,6 +650,24 @@ def generate_portfolio(
     if not agent_controlled:
         _apply_regime_sleeve(scores, regime)
 
+    # Walk-forward learning: drop avoid symbols, nudge trust symbols for long book
+    try:
+        from agent_learning import learning_avoid_trust_symbols
+
+        avoid, trust = learning_avoid_trust_symbols()
+        if avoid or trust:
+            for sym in list(scores.keys()):
+                if sym in avoid:
+                    scores.pop(sym, None)
+                    continue
+                if sym in trust and sym in scores:
+                    scores[sym].score += 0.18
+                    scores[sym].sources.add("learning-trust")
+                    scores[sym].notes.append("Walk-forward trust symbol")
+            sources_used.append("agent_learning")
+    except Exception:
+        pass
+
     # Joint sleeve coordination: boost long-assigned names, soft-penalize short-only ideas
     try:
         from sleeve_coordinator import coordinate_sleeves, preferred_sleeve_for_symbol
