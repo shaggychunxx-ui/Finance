@@ -5,7 +5,9 @@ Runs on the broker PC (AI-CODING). Phone connects over Wiâ€‘Fi / LAN.
 
 Endpoints (all JSON; require X-Bridge-Token except /health):
   GET  /health
-  GET  /api/dashboard
+  GET  /api/dashboard      # ?refresh=1|full=1 forces live broker snapshot pull
+  GET  /api/full           # full phone pack: dashboard + agents + accounts + orders
+  GET  /api/orders         # broker orders when PC tokens available
   GET  /api/features       # shared API + independent practice flags (phone feature catalog)
   GET  /api/agents         # specialist agents + analysis/findings/projections
   GET  /api/auth/status
@@ -30,7 +32,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -48,7 +50,10 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.1"
+BRIDGE_VERSION = "1.5.2"
+
+# Phone "full data pull" flag for the current request (thread-local).
+_pull_ctx = threading.local()
 
 # Human rule (PHONE 2026-07-31): all P/L / chart / average calcs start here.
 # Transfer/deposit capital only enters P/L math from each event's date forward.
@@ -103,27 +108,50 @@ def _load_account_snapshot() -> dict[str, Any]:
     return _read_json(ROOT / "output" / "account_snapshot.json")
 
 
-def try_refresh_account_snapshot(max_age_sec: float = 300.0) -> dict[str, Any]:
+def _last_pull_meta() -> dict[str, Any]:
+    meta = getattr(_pull_ctx, "meta", None)
+    return meta if isinstance(meta, dict) else {}
+
+
+def _set_pull_meta(**kwargs: Any) -> None:
+    cur = dict(_last_pull_meta())
+    cur.update(kwargs)
+    _pull_ctx.meta = cur
+
+
+def try_refresh_account_snapshot(
+    max_age_sec: float = 300.0,
+    force: bool = False,
+) -> dict[str, Any]:
     """Best-effort live E*TRADE portfolio pull into output/account_snapshot.json.
 
     Phone "full data pull from PC" needs real lots + qty, not offline TARGET stubs.
+    When force=True (phone Refresh / /api/full?refresh=1), always attempt a live pull.
     """
     snap_path = ROOT / "output" / "account_snapshot.json"
     prior = _load_account_snapshot()
-    try:
-        fetched = str(prior.get("fetched_at") or "")
-        if fetched and prior.get("positions"):
-            from datetime import datetime, timezone
+    if not force:
+        try:
+            fetched = str(prior.get("fetched_at") or "")
+            if fetched and prior.get("positions"):
+                from datetime import datetime, timezone
 
-            ts = fetched.replace("Z", "+00:00")
-            dt = datetime.fromisoformat(ts)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
-            if 0 <= age < max_age_sec:
-                return prior
-    except Exception:
-        pass
+                ts = fetched.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
+                if 0 <= age < max_age_sec:
+                    _set_pull_meta(
+                        live=False,
+                        source="account_snapshot_cache",
+                        fetched_at=fetched,
+                        position_count=len(prior.get("positions") or []),
+                        message="Using recent PC snapshot (within max age)",
+                    )
+                    return prior
+        except Exception:
+            pass
 
     try:
         from etrade_api.client import ETradeClient
@@ -143,6 +171,13 @@ def try_refresh_account_snapshot(max_age_sec: float = 300.0) -> dict[str, Any]:
             except Exception:
                 cfg = None
         if cfg is None:
+            _set_pull_meta(
+                live=False,
+                source="account_snapshot",
+                error="No E*TRADE config on PC",
+                position_count=len(prior.get("positions") or []),
+                fetched_at=prior.get("fetched_at"),
+            )
             return prior
         client = ETradeClient(cfg)
         accounts = []
@@ -164,10 +199,24 @@ def try_refresh_account_snapshot(max_age_sec: float = 300.0) -> dict[str, Any]:
             key = str(prior.get("account_id_key") or "")
             label = str(prior.get("display_label") or "")
         if not key:
+            _set_pull_meta(
+                live=False,
+                source="account_snapshot",
+                error="No account id on PC",
+                position_count=len(prior.get("positions") or []),
+                fetched_at=prior.get("fetched_at"),
+            )
             return prior
         balance = client.get_balance(key) or {}
         positions = client.get_portfolio(key) or []
         if not positions and prior.get("positions"):
+            _set_pull_meta(
+                live=False,
+                source="account_snapshot",
+                error="Live portfolio empty — kept prior snapshot",
+                position_count=len(prior.get("positions") or []),
+                fetched_at=prior.get("fetched_at"),
+            )
             return prior
         from datetime import datetime, timezone
 
@@ -187,9 +236,24 @@ def try_refresh_account_snapshot(max_age_sec: float = 300.0) -> dict[str, Any]:
         }
         _write_json(snap_path, snap)
         _log(f"account_snapshot refreshed live: {len(snap['positions'])} positions")
+        _set_pull_meta(
+            live=True,
+            source="phone_bridge_live_pull",
+            fetched_at=snap["fetched_at"],
+            position_count=len(snap["positions"]),
+            message="Live full PC pull OK",
+        )
         return snap
     except Exception as exc:
         _log(f"live account_snapshot refresh skipped: {exc}")
+        _set_pull_meta(
+            live=False,
+            source="account_snapshot",
+            error=str(exc),
+            position_count=len(prior.get("positions") or []),
+            fetched_at=prior.get("fetched_at"),
+            message="PC live pull failed — serving last full snapshot",
+        )
         return prior
 
 
@@ -669,8 +733,12 @@ def _index_proposed_actions(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return out
 
 
-def build_positions() -> list[dict[str, Any]]:
-    """Merge live plan positions with portfolio enrichment for phone UI."""
+def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
+    """Merge live plan positions with portfolio enrichment for phone UI.
+
+    Prefer a full broker snapshot (live pull or account_snapshot.json) over offline
+    plan TARGET stubs so the phone always gets real lots + qty from the PC.
+    """
     plan = _read_json(ROOT / "output" / "strategy_plan.json")
     portfolio = _read_json(ROOT / "output" / "portfolio.json")
     proposed_by_sym = _index_proposed_actions(plan)
@@ -702,22 +770,33 @@ def build_positions() -> list[dict[str, Any]]:
 
     positions: list[dict[str, Any]] = []
     live = plan.get("current_positions") or []
-    # Full broker lots: plan may be "offline rebuild" with empty current_positions.
-    # Prefer account_snapshot (worker / live pull) so phone gets real qty + transfer lots
-    # instead of TARGET portfolio idea stubs.
+    # Full broker lots: plan may be "offline rebuild" with empty current_positions
+    # or TARGET idea stubs. Always prefer account_snapshot (worker / live pull).
     live_has_qty = any(
         isinstance(r, dict) and (_f(r.get("quantity")) or 0) != 0
         for r in (live if isinstance(live, list) else [])
     )
-    if not live_has_qty:
-        try_refresh_account_snapshot(max_age_sec=600.0)
+    plan_offline = bool((plan.get("meta") or {}).get("offline")) if isinstance(plan, dict) else False
+    want_full = force_refresh or not live_has_qty or plan_offline
+    if want_full:
+        try_refresh_account_snapshot(
+            max_age_sec=0.0 if force_refresh else 600.0,
+            force=force_refresh,
+        )
         snap = _load_account_snapshot()
         snap_pos = snap.get("positions") if isinstance(snap, dict) else None
         if isinstance(snap_pos, list) and snap_pos:
             live = snap_pos
             _log(
                 f"positions: full PC pull from account_snapshot "
-                f"({len(live)} lots) — plan current_positions empty/offline"
+                f"({len(live)} lots) — plan empty/offline or force_refresh={force_refresh}"
+            )
+        elif not live_has_qty:
+            _set_pull_meta(
+                live=False,
+                source="plan_or_empty",
+                error="No account_snapshot positions and plan has no qty",
+                position_count=0,
             )
     total_mv = 0.0
     for row in live:
@@ -1019,7 +1098,13 @@ def build_features_for_phone() -> dict[str, Any]:
     }
 
 
-def build_dashboard() -> dict[str, Any]:
+def build_dashboard(force_refresh: bool = False) -> dict[str, Any]:
+    """Build phone dashboard. force_refresh=True → live full PC portfolio pull."""
+    _pull_ctx.meta = {
+        "force_refresh": bool(force_refresh),
+        "live": False,
+        "source": "building",
+    }
     long_raw = _read_json(LONG_CONFIG)
     short_raw = _read_json(SHORT_CONFIG)
     lw = dict(long_raw.get("background_worker") or {})
@@ -1121,7 +1206,7 @@ def build_dashboard() -> dict[str, Any]:
     ]
 
     account = build_account_summary()
-    positions = build_positions()
+    positions = build_positions(force_refresh=force_refresh)
     # Mark known transfer lots (cost-only deposit capital; never MTM).
     transfer_symbols = _load_transfer_deposit_symbols()
     transfer_deposit = 0.0
@@ -1267,6 +1352,14 @@ def build_dashboard() -> dict[str, Any]:
                 row["short"] = "â€”"
         status = f"{status} Â· phone UI info OFF" if status else "phone UI info OFF"
 
+    pull_meta = dict(_last_pull_meta())
+    if not pull_meta.get("position_count"):
+        pull_meta["position_count"] = len(positions)
+    if pull_meta.get("source") in (None, "", "building"):
+        pull_meta["source"] = "account_snapshot" if positions else "empty"
+    pull_meta["force_refresh"] = bool(force_refresh)
+    pull_meta["full_pc_pull"] = True
+
     payload = {
         "ok": True,
         "version": BRIDGE_VERSION,
@@ -1276,6 +1369,7 @@ def build_dashboard() -> dict[str, Any]:
         "status_line": status,
         "coord_ok": coord_ok,
         "coord_error": coord_error,
+        "data_pull": pull_meta,
         "account": account,
         "positions": positions,
         "performance": performance,
