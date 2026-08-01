@@ -104,6 +104,11 @@ def worker_settings(path: Path | None = None) -> dict[str, Any]:
         "day_trading": True,
         "paused": False,
         "dry_run": True,
+        # Keep practice fills on a timer even when live sizing produces 0 orders.
+        "schedule_dry_run": True,
+        "dry_run_interval_minutes": 20,
+        "dry_run_force_min_share": True,
+        "dry_run_max_names": 5,
         "pipeline_interval_minutes": 5,
         "plan_interval_minutes": 30,
         "execute_min_interval_minutes": 20,

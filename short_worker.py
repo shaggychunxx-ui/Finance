@@ -280,7 +280,44 @@ def run_short_plan_cycle(*, force: bool = False, dry_run: bool | None = None) ->
         )
     else:
         _log("Short plan has no orders.")
+        # Practice mode: still accumulate sim fills when sizing yields nothing.
+        if do_dry and bool(settings.get("schedule_dry_run", True)):
+            if _interval_due(
+                state.get("last_forced_dry_run_at") or state.get("last_execute_at"),
+                int(settings.get("dry_run_interval_minutes") or settings.get("execute_min_interval_minutes") or 20),
+                force=force,
+            ):
+                return run_forced_short_dry_run(
+                    max_names=int(settings.get("dry_run_max_names") or 5),
+                )
     return 0
+
+
+def run_scheduled_short_dry_run(*, force: bool = False) -> int:
+    """Cadenced practice short cycle (service / Task Scheduler entry point)."""
+    settings = worker_settings()
+    if settings.get("paused"):
+        _log("Paused — skip scheduled dry-run.")
+        return 0
+    if not bool(settings.get("dry_run", True)):
+        _log("Scheduled dry-run skipped — practice mode off (live short uses plan/execute).")
+        return 0
+    if not bool(settings.get("schedule_dry_run", True)):
+        _log("Scheduled dry-run disabled in background_worker.schedule_dry_run.")
+        return 0
+
+    state = load_worker_state()
+    iv = int(settings.get("dry_run_interval_minutes") or settings.get("execute_min_interval_minutes") or 20)
+    if not _interval_due(state.get("last_forced_dry_run_at") or state.get("last_execute_at"), iv, force=force):
+        _log(f"Scheduled dry-run skipped — not due yet ({iv}m).")
+        return 0
+
+    # Prefer normal plan+dry execute when connected; else forced 1-share sim.
+    if not bool(settings.get("dry_run_force_min_share", True)):
+        code = run_short_plan_cycle(force=True, dry_run=True)
+        if code == 0:
+            return 0
+    return run_forced_short_dry_run(max_names=int(settings.get("dry_run_max_names") or 5))
 
 
 def run_short_day_cycle(*, force: bool = False) -> int:
@@ -332,14 +369,31 @@ def run_service_loop() -> int:
         return 0
     _log(f"Short worker service started (pid {__import__('os').getpid()}).")
     try:
+        # Kick an immediate practice cycle so the log is not empty after restart.
+        try:
+            settings = worker_settings()
+            if settings.get("dry_run", True) and settings.get("schedule_dry_run", True) and not settings.get("paused"):
+                run_scheduled_short_dry_run(force=True)
+        except Exception:
+            _log("Startup dry-run error:\n" + traceback.format_exc())
         while True:
             try:
                 settings = worker_settings()
                 if settings.get("paused"):
                     _log("Service heartbeat — paused.")
                 else:
-                    run_short_plan_cycle()
-                    run_short_day_cycle()
+                    # When practice mode is on, keep dry-runs on the timer first.
+                    if settings.get("dry_run", True) and settings.get("schedule_dry_run", True):
+                        run_scheduled_short_dry_run(force=False)
+                    # Still refresh plan/day when connected (may be no-op offline).
+                    try:
+                        run_short_plan_cycle()
+                    except Exception:
+                        _log("Plan cycle error:\n" + traceback.format_exc())
+                    try:
+                        run_short_day_cycle()
+                    except Exception:
+                        _log("Day cycle error:\n" + traceback.format_exc())
                     _log("Service heartbeat — sleeping 20s.")
             except Exception:
                 _log("Cycle error:\n" + traceback.format_exc())
@@ -527,6 +581,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_short_day_cycle(force=True)
     if "--force-dry-run" in argv or "--sim" in argv:
         return run_forced_short_dry_run()
+    if "--scheduled-dry-run" in argv or "--dry-run-once" in argv:
+        return run_scheduled_short_dry_run(force=True)
     if "--plan" in argv or not argv:
         return run_short_plan_cycle(force=True)
     _log(f"Unknown args: {argv}")
