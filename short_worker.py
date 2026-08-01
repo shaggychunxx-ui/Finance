@@ -158,46 +158,38 @@ def _pid_is_running(pid: int) -> bool:
 
 
 def _connect_client():
-    from etrade_api.client import ETradeClient
-    from etrade_api.config import build_config, load_config
-    from etrade_api.oauth import load_tokens
-
-    raw = load_merged_short_config()
+    """Connect via the **shared** long-app E*TRADE API (keys, sandbox, tokens)."""
     try:
-        key = str(raw.get("consumer_key") or "")
-        secret = str(raw.get("consumer_secret") or "")
-        token_path = Path(str(raw.get("token_path") or "etrade_tokens.json"))
-        if not token_path.is_absolute():
-            token_path = (ROOT / token_path).resolve()
-        cfg = build_config(
-            key,
-            secret,
-            sandbox=bool(raw.get("sandbox", True)),
-            callback_url=str(raw.get("callback_url") or "http://127.0.0.1:8765/callback"),
-            use_oob=bool(raw.get("use_oob", True)),
-            config_path=SHORT_CONFIG if SHORT_CONFIG.exists() else ROOT / "etrade_config.json",
-            token_path=token_path,
-        )
-    except Exception as exc:
-        try:
-            cfg = load_config(ROOT / "etrade_config.json")
-            _log(f"Short config incomplete ({exc}); using long etrade_config.json.")
-        except Exception as exc2:
-            _log(f"Missing API credentials: {exc2}")
+        from shared_etrade_api import connect_shared_client, load_shared_api_config, mirror_shared_api_into_short
+
+        mirror_shared_api_into_short()
+        client = connect_shared_client()
+        if client is None:
+            cfg = load_shared_api_config()
+            env = "sandbox" if cfg.sandbox else "production"
+            _log(
+                f"No OAuth tokens for shared API ({env}) — "
+                "connect once via Unified/Long Settings (same API for short)."
+            )
             return None
-
-    tokens = load_tokens(cfg.token_path, cfg.sandbox)
-    if not tokens:
-        _log("No OAuth tokens — connect via Short Trader Settings or long ETrade Trader first.")
-        return None
-    try:
-        return ETradeClient(cfg, tokens)
+        env = "sandbox" if client.config.sandbox else "production"
+        _log(f"Short sleeve using shared E*TRADE API ({env}).")
+        return client
     except Exception as exc:
-        _log(f"Client connect failed: {exc}")
+        _log(f"Shared API connect failed: {exc}")
         return None
 
 
 def _resolve_account(client) -> dict[str, Any] | None:
+    """Prefer shared selected_account from etrade_config.json."""
+    try:
+        from shared_etrade_api import get_shared_selected_account
+
+        sel = get_shared_selected_account()
+        if sel and sel.get("account_id_key"):
+            return sel
+    except Exception:
+        pass
     sel = get_selected_account()
     if sel and sel.get("account_id_key"):
         return sel

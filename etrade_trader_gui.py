@@ -272,8 +272,11 @@ class ETradeTraderApp(tk.Frame):
         manage_window_close: bool = True,
     ) -> None:
         # Per-instance paths so Long + Short can live in one process/UI.
+        # CONFIG_PATH = sleeve-local settings (dry_run, strategy, day trading).
+        # API_CONFIG_PATH = shared E*TRADE API (keys, sandbox, tokens, account).
         bundle = path_bundle or {}
         self.CONFIG_PATH = Path(bundle.get("config", CONFIG_PATH))
+        self.API_CONFIG_PATH = Path(bundle.get("api_config", self.CONFIG_PATH))
         self.CONFIG_EXAMPLE = Path(bundle.get("config_example", CONFIG_EXAMPLE))
         self.PLAN_FILE = Path(bundle.get("plan", PLAN_FILE))
         self.DAY_STATE_FILE = Path(bundle.get("day_state", DAY_STATE_FILE))
@@ -1957,7 +1960,7 @@ class ETradeTraderApp(tk.Frame):
         self._setup_canvas.yview_moveto(fraction)
 
     def _go_to_next_setup_step(self) -> None:
-        raw = _read_config_file(self.CONFIG_PATH)
+        raw = _read_config_file(self.API_CONFIG_PATH)
         keys_ok = _config_keys_valid(raw) or (
             self._key_var.get().strip() and self._secret_var.get().strip()
             and self._key_var.get().strip() not in ("", "YOUR_CONSUMER_KEY")
@@ -2014,7 +2017,7 @@ class ETradeTraderApp(tk.Frame):
             self._secret_status.configure(text="Required", fg=MUTED)
 
     def _setup_completion_state(self) -> tuple[int, int, list[bool]]:
-        raw = _read_config_file(self.CONFIG_PATH)
+        raw = _read_config_file(self.API_CONFIG_PATH)
         form_valid = (
             self._key_var.get().strip() not in ("", "YOUR_CONSUMER_KEY")
             and self._secret_var.get().strip() not in ("", "YOUR_CONSUMER_SECRET")
@@ -2106,21 +2109,29 @@ class ETradeTraderApp(tk.Frame):
         self._notebook.select(self._tab_setup)
 
     def _create_config_file(self) -> None:
-        if self.CONFIG_PATH.exists():
-            messagebox.showinfo("Config Exists", f"{self.CONFIG_PATH.name} already exists. Edit the fields below and click Save Settings.")
+        # API credentials always live on API_CONFIG_PATH (shared long config).
+        api_path = self.API_CONFIG_PATH
+        if api_path.exists():
+            messagebox.showinfo(
+                "Config Exists",
+                f"{api_path.name} already exists. Edit the fields below and click Save Settings.",
+            )
             return
-        if self.CONFIG_EXAMPLE.exists():
-            shutil.copy(self.CONFIG_EXAMPLE, self.CONFIG_PATH)
+        example = CONFIG_EXAMPLE if api_path == CONFIG_PATH or not self.CONFIG_EXAMPLE.exists() else self.CONFIG_EXAMPLE
+        if api_path == CONFIG_PATH and self.CONFIG_EXAMPLE.exists():
+            shutil.copy(self.CONFIG_EXAMPLE, api_path)
+        elif CONFIG_EXAMPLE.exists():
+            shutil.copy(CONFIG_EXAMPLE, api_path)
         else:
-            _write_config_file(self.CONFIG_PATH, {"consumer_key": "", "consumer_secret": "", "sandbox": True})
+            _write_config_file(api_path, {"consumer_key": "", "consumer_secret": "", "sandbox": True})
         self._load_settings_form()
-        self._log_line(f"Created {self.CONFIG_PATH.name}")
+        self._log_line(f"Created {api_path.name} (shared API for long + short)")
         self._setup_save_status.configure(text="Config file created — enter your keys", fg=ACCENT2)
 
     def _load_settings_form(self) -> None:
-        raw = _read_config_file(self.CONFIG_PATH)
-        if not raw and self.CONFIG_EXAMPLE.exists():
-            raw = _read_config_file(self.CONFIG_EXAMPLE)
+        raw = _read_config_file(self.API_CONFIG_PATH)
+        if not raw and CONFIG_EXAMPLE.exists():
+            raw = _read_config_file(CONFIG_EXAMPLE)
         self._key_var.set(raw.get("consumer_key", ""))
         secret = raw.get("consumer_secret", "")
         if secret in ("", "YOUR_CONSUMER_SECRET"):
@@ -2141,7 +2152,7 @@ class ETradeTraderApp(tk.Frame):
             sandbox=bool(self._sandbox_var.get()),
             callback_url=callback or DEFAULT_CALLBACK_URL,
             use_oob=bool(self._oob_var.get()),
-            config_path=self.CONFIG_PATH,
+            config_path=self.API_CONFIG_PATH,
         )
 
     def _persist_settings_from_form(self, *, silent: bool = False) -> ETradeConfig | None:
@@ -2152,9 +2163,9 @@ class ETradeTraderApp(tk.Frame):
                 messagebox.showwarning("Missing Fields", str(exc))
             return None
 
-        existing = _read_config_file(self.CONFIG_PATH)
-        if not existing and self.CONFIG_EXAMPLE.exists():
-            existing = _read_config_file(self.CONFIG_EXAMPLE)
+        existing = _read_config_file(self.API_CONFIG_PATH)
+        if not existing and CONFIG_EXAMPLE.exists():
+            existing = _read_config_file(CONFIG_EXAMPLE)
         existing["consumer_key"] = config.consumer_key
         existing["consumer_secret"] = config.consumer_secret
         existing["sandbox"] = config.sandbox
@@ -2168,12 +2179,22 @@ class ETradeTraderApp(tk.Frame):
         })
 
         try:
-            _write_config_file(self.CONFIG_PATH, existing)
+            _write_config_file(self.API_CONFIG_PATH, existing)
+            # Mirror shared API into short config so files stay consistent.
+            try:
+                from shared_etrade_api import mirror_shared_api_into_short
+
+                mirror_shared_api_into_short()
+            except Exception:
+                pass
             self._config = config
             self._update_env_badge(config.sandbox)
-            self._setup_save_status.configure(text="✓ Settings saved", fg=UP)
+            shared_note = ""
+            if self.API_CONFIG_PATH != self.CONFIG_PATH:
+                shared_note = " — shared with long sleeve"
+            self._setup_save_status.configure(text=f"✓ Settings saved{shared_note}", fg=UP)
             self._log_line(
-                f"API settings saved (key {credential_hint(config.consumer_key)}, "
+                f"Shared API settings saved (key {credential_hint(config.consumer_key)}, "
                 f"{'sandbox' if config.sandbox else 'production'})."
             )
             self._set_status("Settings saved — click Connect to authorize", ACCENT2)
@@ -3793,7 +3814,13 @@ class ETradeTraderApp(tk.Frame):
             self._confirmed_account_idx = None
             self._persisted_account_key = None
             try:
-                clear_selected_account(self.CONFIG_PATH)
+                clear_selected_account(self.API_CONFIG_PATH)
+                try:
+                    from shared_etrade_api import mirror_shared_api_into_short
+
+                    mirror_shared_api_into_short()
+                except Exception:
+                    pass
             except OSError as exc:
                 self._log_line(f"Could not clear saved account: {exc}")
             self._clear_account_cards()
@@ -3834,12 +3861,18 @@ class ETradeTraderApp(tk.Frame):
             save_selected_account(
                 acct["account_id_key"],
                 display_label=label,
-                path=self.CONFIG_PATH,
+                path=self.API_CONFIG_PATH,
             )
+            try:
+                from shared_etrade_api import mirror_shared_api_into_short
+
+                mirror_shared_api_into_short()
+            except Exception:
+                pass
             self._persisted_account_key = acct["account_id_key"]
         except OSError as exc:
             self._log_line(f"Could not save account choice: {exc}")
-        self._log_line(f"Account confirmed: {label} (saved for restarts)")
+        self._log_line(f"Account confirmed: {label} (shared API — both sleeves)")
         self._set_status(f"Trading account: {label}", UP)
         self._update_setup_progress()
         self._update_bg_status()
