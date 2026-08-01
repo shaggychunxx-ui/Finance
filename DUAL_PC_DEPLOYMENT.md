@@ -1,37 +1,60 @@
 # Dual-PC Finance deployment
 
-**BOXONE** runs the agent **pipeline** (always on).  
-**AI-CODING** runs the **UI**, **E\*TRADE** connection, and **order placement**.  
 Research and live quotes move over **SMB** (default: `\\10.10.10.1\HelperDrop\FinanceShare`).
 
 Practice / dry-run stays **on** until you turn it off.
 
----
+### Active assignment (2026-08-01 — option B, inverted)
 
-## Roles
+| Machine | `deployment.role` | Does |
+|---------|-------------------|------|
+| **BOXONE** | **broker** | UI, E\*TRADE OAuth, plan build, orders, publish quotes to `broker/` |
+| **AI-CODING** | **pipeline** | Agents, fusion, accuracy, night/full-day backtests; publish research to `pipeline/`; pull quotes |
+
+Handoff on share: `ROLE_FLIP_B.md` and `_deploy/deployment.json.broker-for-BOXONE.json`.
+
+### Default / original recommendation (option A)
 
 | Machine | `deployment.role` | Does | Does not |
 |---------|-------------------|------|----------|
-| **BOXONE** | `pipeline` | Agents, fusion, accuracy, off-hours backtests; push research to share; pull quotes | OAuth, place orders |
+| **BOXONE** | `pipeline` | Agents, fusion, accuracy, off-hours backtests; push research; pull quotes | OAuth, place orders |
 | **AI-CODING** | `broker` | Unified Trader UI, E\*TRADE, plan build, swing/day orders, publish quotes | Heavy agent pipeline |
 | Single PC | `all` (default) | Everything local (legacy) | — |
 
-**Stop all / Resume** on the UI affects **trading only**. Pipeline on BOXONE keeps running.
+**Stop all / Resume** on the UI affects **trading only**. Pipeline host keeps researching.
+
+---
+
+## Roles (generic)
+
+`pipeline` — agent research, fusion, accuracy/backtests; no order placement.  
+`broker` — UI host, E\*TRADE OAuth, plan build, order placement, quote feed.  
+`all` — single machine.
 
 ---
 
 ## Data flow
 
+**Option B (active):**
+
 ```
-BOXONE ──pipeline JSON──▶ \\10.10.10.1\FinanceShare\pipeline\ ──▶ AI-CODING output/
-AI-CODING ──quotes+snapshot──▶ \\...\FinanceShare\broker\ ──▶ BOXONE output/
+AI-CODING ──pipeline JSON──▶ FinanceShare\pipeline\ ──▶ BOXONE output/
+BOXONE ──quotes+snapshot──▶ FinanceShare\broker\ ──▶ AI-CODING output/
+BOXONE ◀── E*TRADE API (tokens local only)
+```
+
+**Option A (original):**
+
+```
+BOXONE ──pipeline JSON──▶ FinanceShare\pipeline\ ──▶ AI-CODING output/
+AI-CODING ──quotes+snapshot──▶ FinanceShare\broker\ ──▶ BOXONE output/
 AI-CODING ◀── E*TRADE API (tokens local only)
 ```
 
-| Share folder | Writer | Contents |
-|--------------|--------|----------|
-| `pipeline/` | BOXONE | Agent reports, portfolio targets, `pipeline_status.json` |
-| `broker/` | AI-CODING | `etrade_enhanced_quotes.json`, `account_snapshot.json` |
+| Share folder | Writer (option B) | Writer (option A) | Contents |
+|--------------|-------------------|-------------------|----------|
+| `pipeline/` | AI-CODING | BOXONE | Agent reports, portfolio targets, `pipeline_status.json` |
+| `broker/` | BOXONE | AI-CODING | `etrade_enhanced_quotes.json`, `account_snapshot.json` |
 
 **Never** put `etrade_config.json`, tokens, or consumer secrets on the share.
 
@@ -39,7 +62,7 @@ AI-CODING ◀── E*TRADE API (tokens local only)
 
 ## One-time setup
 
-### 1. AI-CODING — shared folder
+### 1. Shared folder (usually on the machine that hosts SMB)
 
 **Default (no admin):** use existing HelperDrop:
 
@@ -57,47 +80,40 @@ powershell -ExecutionPolicy Bypass -File .\Install-FinanceShare.ps1
 # then set shared_root to \\10.10.10.1\FinanceShare
 ```
 
-### 2. AI-CODING — broker config
+### 2. Broker machine config (option B: BOXONE)
 
-In the **runtime** Finance folder (e.g. `C:\Users\Box One\Finance`):
+In the **runtime** Finance folder on the broker host:
 
-1. Copy `deployment.example.json` → `deployment.json`
-2. Set:
-   ```json
-   {
-     "role": "broker",
-     "shared_root": "C:\\\\Users\\\\Public\\\\HelperDrop\\\\FinanceShare",
-     "prefer_dry_run": true
-   }
-   ```
-   Use the **local** path on AI-CODING (faster, no UNC loopback). BOXONE uses the UNC form.
+1. Copy `_deploy/deployment.json.broker-for-BOXONE.json` → `deployment.json` (or set role=broker).
+2. Set `shared_root` to UNC of the share (BOXONE typically uses `\\10.10.10.1\HelperDrop\FinanceShare`).
 3. In `etrade_config.json` / `short_etrade_config.json`:
-   - `"dry_run": true` (practice)
+   - practice: keep dry_run / prefer_dry_run true until ready
    - Confirm OAuth works in **ETrade Unified Trader**
-4. Start **ETrade Unified Trader** + background worker (silent worker / Install ETrade Background).
+4. Start **ETrade Unified Trader** + background worker.
 
-### 3. BOXONE — pipeline config
+### 3. Pipeline machine config (option B: AI-CODING)
 
-1. Git pull / GitHub Desktop update of Finance
-2. `deployment.json`:
+1. `deployment.json`:
    ```json
    {
      "role": "pipeline",
-     "shared_root": "\\\\10.10.10.1\\HelperDrop\\FinanceShare"
+     "shared_root": "C:\\Users\\Public\\HelperDrop\\FinanceShare",
+     "publish_quotes": false,
+     "consume_shared_quotes": true,
+     "prefer_dry_run": true
    }
    ```
-3. **No** need for live tokens on BOXONE for dual-PC mode (quotes come from the share).
-4. Keep worker always-on: **Start Silent Worker Only** / existing background install.
-5. **Stop** order placement on BOXONE: set `background_worker.auto_execute` / `live_trading` / `day_trading` false **or** rely on `role=pipeline` (trading paths skipped).
+   Use the **local** path when the share is on this machine.
+2. Trading flags off: `background_worker.auto_execute` / `live_trading` / `day_trading` false (role=pipeline also skips order paths).
+3. Keep silent pipeline worker always-on.
 
-### 4. Cutover from “live on BOXONE”
+### 4. Cutover checklist (option B)
 
-1. Confirm practice mode on **both** machines.
-2. Stop live trading on BOXONE (Stop all / pause + role=pipeline).
-3. On AI-CODING: connect E\*TRADE in UI, confirm account, leave **dry_run true**.
-4. Verify share: after a cycle, `\\10.10.10.1\HelperDrop\FinanceShare\pipeline\` has agent JSON and `broker\` has quotes.
-5. UI Agents tab on AI-CODING shows reports from the share pull.
-6. When ready: set `dry_run` false **only on AI-CODING** broker configs.
+1. Confirm practice mode on both machines.
+2. Stop order placement on AI-CODING (role=pipeline + trading flags off).
+3. On BOXONE: connect E\*TRADE, confirm account, leave dry_run true until ready.
+4. Verify share: `broker/` has recent snapshot/quotes (writer=BOXONE); `pipeline/` has agent JSON (writer=AI-CODING).
+5. When ready for live: set dry_run false **only on BOXONE** broker configs.
 
 ---
 
@@ -111,7 +127,7 @@ In the **runtime** Finance folder (e.g. `C:\Users\Box One\Finance`):
 
 # Role override for one process
 $env:FINANCE_ROLE = "broker"
-$env:FINANCE_SHARED_ROOT = "\\10.10.10.1\FinanceShare"
+$env:FINANCE_SHARED_ROOT = "\\10.10.10.1\HelperDrop\FinanceShare"
 ```
 
 ---
@@ -129,19 +145,21 @@ $env:FINANCE_SHARED_ROOT = "\\10.10.10.1\FinanceShare"
 
 | Symptom | Check |
 |---------|--------|
-| UI agents empty | `\\10.10.10.1\HelperDrop\FinanceShare\pipeline` reachable; worker log “Shared sync” |
-| Pipeline no live quotes | Broker connected; `broker\etrade_enhanced_quotes.json` recent; BOXONE can read share |
-| Orders still on BOXONE | `deployment.role` must be `pipeline`; stop old full worker |
+| UI agents empty | Share `pipeline/` reachable; worker log “Shared sync” |
+| Pipeline no live quotes | Broker connected; `broker\etrade_enhanced_quotes.json` recent; pipeline host can read share |
+| Orders on wrong machine | `deployment.role` must be `pipeline` on the non-broker host; stop old full worker |
 | Share access denied | Use HelperDrop path; or `Install-FinanceShare.ps1` elevated; prefer 10.10.10.x Ethernet |
 
 ---
 
-## Files added
+## Files
 
 | File | Purpose |
 |------|---------|
 | `deployment.py` | Role + shared path helpers |
 | `sync_shared_data.py` | Push/pull pipeline and broker feeds |
 | `deployment.example.json` | Template for `deployment.json` |
-| `Install-FinanceShare.ps1` | Create SMB share on AI-CODING |
+| `Install-FinanceShare.ps1` | Create SMB share |
+| `Install-PipelineOnly.ps1` | Force pipeline role + trading off |
+| `ROLE_FLIP_B.md` | Active inverted-role handoff |
 | `DUAL_PC_DEPLOYMENT.md` | This guide |
