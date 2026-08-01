@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agent groups, roles, and conduct rules — single source of organizational truth.
+"""Agent groups, roles, conduct rules, and per-group scoring systems.
 
 Groups control:
   - UI category labels
@@ -8,6 +8,7 @@ Groups control:
   - trading posture (long-lean / short-lean / risk / neutral / platform)
   - default personality traits
   - whether directional accuracy scoring applies
+  - **scoring system** — how each group is graded based on its function
 """
 
 from __future__ import annotations
@@ -15,8 +16,64 @@ from __future__ import annotations
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# Group definitions
+# Group definitions (each includes a function-specific scoring system)
 # ---------------------------------------------------------------------------
+#
+# scoring schema:
+#   mode              — scoring family (drives which KPIs matter)
+#   primary_metric    — main grade key for labels / fusion preference
+#   summary           — human-readable grading purpose
+#   direction_weight  — share of combined score from direction hits (0–1)
+#   magnitude_weight  — share from magnitude / sizing quality (0–1)
+#   score_horizon     — preferred evaluation horizon (may match group horizon)
+#   metrics           — weighted KPI list (weights should sum ≈ 1.0)
+#   success_criteria  — short done-well description
+#
+
+def _scoring(
+    *,
+    mode: str,
+    primary_metric: str,
+    summary: str,
+    metrics: list[dict[str, Any]],
+    direction_weight: float = 0.6,
+    magnitude_weight: float = 0.4,
+    score_horizon: str = "24h",
+    success_criteria: str = "",
+) -> dict[str, Any]:
+    """Build a normalized scoring-system dict for one group."""
+    cleaned: list[dict[str, Any]] = []
+    weight_sum = 0.0
+    for m in metrics:
+        w = float(m.get("weight") or 0.0)
+        weight_sum += w
+        cleaned.append(
+            {
+                "id": str(m["id"]),
+                "weight": w,
+                "label": str(m.get("label") or m["id"]),
+                "description": str(m.get("description") or ""),
+            }
+        )
+    if weight_sum > 0 and abs(weight_sum - 1.0) > 1e-6:
+        for row in cleaned:
+            row["weight"] = round(float(row["weight"]) / weight_sum, 4)
+    dw = float(direction_weight)
+    mw = float(magnitude_weight)
+    total = dw + mw
+    if total > 0:
+        dw, mw = dw / total, mw / total
+    return {
+        "mode": mode,
+        "primary_metric": primary_metric,
+        "summary": summary,
+        "direction_weight": round(dw, 4),
+        "magnitude_weight": round(mw, 4),
+        "score_horizon": score_horizon,
+        "metrics": cleaned,
+        "success_criteria": success_criteria,
+    }
+
 
 AGENT_GROUPS: dict[str, dict[str, Any]] = {
     "markets_core": {
@@ -41,6 +98,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.28,
             "volatility_tolerance": 0.62,
         },
+        "scoring": _scoring(
+            mode="directional_alpha",
+            primary_metric="opportunity_hit_rate",
+            summary="Grade core market agents on liquid directional edge and opportunity capture.",
+            score_horizon="24h",
+            direction_weight=0.65,
+            magnitude_weight=0.35,
+            metrics=[
+                {
+                    "id": "direction_hit",
+                    "weight": 0.55,
+                    "label": "Direction hit rate",
+                    "description": "BULLISH/BEARISH calls that match realized moves on liquid names.",
+                },
+                {
+                    "id": "magnitude_capture",
+                    "weight": 0.25,
+                    "label": "Magnitude capture",
+                    "description": "Whether predicted move size aligns with realized return bands.",
+                },
+                {
+                    "id": "liquid_coverage",
+                    "weight": 0.20,
+                    "label": "Liquid coverage",
+                    "description": "Share of signals on tradeable, liquid equities/ETFs.",
+                },
+            ],
+            success_criteria="High hit rate on liquid opportunities without forcing thin shorts.",
+        ),
     },
     "quant_stats": {
         "label": "Quant & Statistics",
@@ -63,6 +149,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.38,
             "volatility_tolerance": 0.55,
         },
+        "scoring": _scoring(
+            mode="calibration",
+            primary_metric="probability_calibration",
+            summary="Grade quant agents on calibration and edge-vs-noise discipline, not storytelling.",
+            score_horizon="1wk",
+            direction_weight=0.50,
+            magnitude_weight=0.50,
+            metrics=[
+                {
+                    "id": "direction_hit",
+                    "weight": 0.40,
+                    "label": "Direction hit rate",
+                    "description": "Directional accuracy when a non-NEUTRAL stand is taken.",
+                },
+                {
+                    "id": "confidence_calibration",
+                    "weight": 0.35,
+                    "label": "Confidence calibration",
+                    "description": "High-confidence calls should hit more often than low-confidence ones.",
+                },
+                {
+                    "id": "edge_vs_noise",
+                    "weight": 0.25,
+                    "label": "Edge vs noise",
+                    "description": "Reward abstaining (NEUTRAL) when statistical edge is weak.",
+                },
+            ],
+            success_criteria="Calibrated probabilities; directional only when edge exceeds noise.",
+        ),
     },
     "macro_index": {
         "label": "Macro & Global Indices",
@@ -85,6 +200,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.48,
             "volatility_tolerance": 0.46,
         },
+        "scoring": _scoring(
+            mode="regime_timing",
+            primary_metric="regime_alignment",
+            summary="Grade macro agents on regime framing and index/ETF proxy accuracy.",
+            score_horizon="1mo",
+            direction_weight=0.55,
+            magnitude_weight=0.45,
+            metrics=[
+                {
+                    "id": "index_etf_direction",
+                    "weight": 0.45,
+                    "label": "Index/ETF direction",
+                    "description": "Hits on SPY/TLT/sector and regional ETF proxies.",
+                },
+                {
+                    "id": "regime_label_accuracy",
+                    "weight": 0.35,
+                    "label": "Regime label accuracy",
+                    "description": "Risk-on/off and rates/inflation regime labels that match outcomes.",
+                },
+                {
+                    "id": "proxy_discipline",
+                    "weight": 0.20,
+                    "label": "Macro proxy discipline",
+                    "description": "Signals stay on macro/index proxies, not random single names.",
+                },
+            ],
+            success_criteria="Correct regime map with investable index/sector ETF signals.",
+        ),
     },
     "intelligence": {
         "label": "Intelligence & Events",
@@ -107,6 +251,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.68,
             "volatility_tolerance": 0.40,
         },
+        "scoring": _scoring(
+            mode="risk_overlay",
+            primary_metric="early_warning_quality",
+            summary="Grade intel agents on early warning of adverse events, not momentum chasing.",
+            score_horizon="1wk",
+            direction_weight=0.45,
+            magnitude_weight=0.55,
+            metrics=[
+                {
+                    "id": "adverse_event_recall",
+                    "weight": 0.40,
+                    "label": "Adverse event recall",
+                    "description": "Share of material adverse moves preceded by a defensive/BEARISH flag.",
+                },
+                {
+                    "id": "false_alarm_control",
+                    "weight": 0.30,
+                    "label": "False-alarm control",
+                    "description": "Penalize constant BEARISH noise when markets remain calm.",
+                },
+                {
+                    "id": "defensive_timing",
+                    "weight": 0.30,
+                    "label": "Defensive timing",
+                    "description": "Defensive bias rises before stress and relaxes after resolution.",
+                },
+            ],
+            success_criteria="Catch real event risk early with controlled false-alarm rate.",
+        ),
     },
     "infrastructure": {
         "label": "Energy, Grid & Infrastructure",
@@ -129,6 +302,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.62,
             "volatility_tolerance": 0.45,
         },
+        "scoring": _scoring(
+            mode="domain_specialist",
+            primary_metric="domain_hit_rate",
+            summary="Grade energy/grid/ag specialists on domain hit rate and universe adherence.",
+            score_horizon="1wk",
+            direction_weight=0.60,
+            magnitude_weight=0.40,
+            metrics=[
+                {
+                    "id": "domain_direction_hit",
+                    "weight": 0.50,
+                    "label": "Domain direction hit",
+                    "description": "Directional accuracy inside energy/utilities/ag/infra tickers.",
+                },
+                {
+                    "id": "universe_adherence",
+                    "weight": 0.30,
+                    "label": "Universe adherence",
+                    "description": "Share of signals that stay inside the declared domain universe.",
+                },
+                {
+                    "id": "physical_to_ticker_map",
+                    "weight": 0.20,
+                    "label": "Physical→ticker map",
+                    "description": "Stress (grid/weather/crops) correctly maps to listed proxies.",
+                },
+            ],
+            success_criteria="Domain-first signals with high in-universe hit rate.",
+        ),
     },
     "transport_logistics": {
         "label": "Transport & Logistics",
@@ -151,6 +353,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.50,
             "volatility_tolerance": 0.50,
         },
+        "scoring": _scoring(
+            mode="domain_specialist",
+            primary_metric="domain_hit_rate",
+            summary="Grade transport/logistics specialists on freight beta and congestion signals.",
+            score_horizon="1wk",
+            direction_weight=0.60,
+            magnitude_weight=0.40,
+            metrics=[
+                {
+                    "id": "domain_direction_hit",
+                    "weight": 0.50,
+                    "label": "Domain direction hit",
+                    "description": "Hits on rails, shipping, airlines, and logistics names.",
+                },
+                {
+                    "id": "universe_adherence",
+                    "weight": 0.30,
+                    "label": "Universe adherence",
+                    "description": "Signals stay in transport/logistics universe.",
+                },
+                {
+                    "id": "stress_map",
+                    "weight": 0.20,
+                    "label": "Stress/easing map",
+                    "description": "Congestion stress → BEARISH; easing → BULLISH logistics.",
+                },
+            ],
+            success_criteria="Correct transport beta reads tied to freight/congestion evidence.",
+        ),
     },
     "consumer": {
         "label": "Consumer & Retail",
@@ -173,6 +404,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.40,
             "volatility_tolerance": 0.48,
         },
+        "scoring": _scoring(
+            mode="domain_specialist",
+            primary_metric="domain_hit_rate",
+            summary="Grade consumer/retail agents on demand reads for staples and discretionary.",
+            score_horizon="1wk",
+            direction_weight=0.60,
+            magnitude_weight=0.40,
+            metrics=[
+                {
+                    "id": "domain_direction_hit",
+                    "weight": 0.50,
+                    "label": "Retail direction hit",
+                    "description": "Hits on retailers and consumer sector proxies.",
+                },
+                {
+                    "id": "demand_signal_quality",
+                    "weight": 0.30,
+                    "label": "Demand signal quality",
+                    "description": "Sales/sentiment evidence supports the bias.",
+                },
+                {
+                    "id": "universe_adherence",
+                    "weight": 0.20,
+                    "label": "Universe adherence",
+                    "description": "Signals stay in consumer/retail names.",
+                },
+            ],
+            success_criteria="Demand-linked retail signals with solid in-sector hit rate.",
+        ),
     },
     "day_trading": {
         "label": "Day Trading & Microstructure",
@@ -195,6 +455,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.28,
             "volatility_tolerance": 0.74,
         },
+        "scoring": _scoring(
+            mode="intraday",
+            primary_metric="session_hit_rate",
+            summary="Grade day-trading agents on same-session edge and liquid, flatten-by-close discipline.",
+            score_horizon="24h",
+            direction_weight=0.70,
+            magnitude_weight=0.30,
+            metrics=[
+                {
+                    "id": "session_direction_hit",
+                    "weight": 0.50,
+                    "label": "Same-session hit rate",
+                    "description": "Direction accuracy on 24h / same-session horizons only.",
+                },
+                {
+                    "id": "liquid_only_discipline",
+                    "weight": 0.25,
+                    "label": "Liquid-only discipline",
+                    "description": "Prefer highly liquid names; penalize illiquid microstructure noise.",
+                },
+                {
+                    "id": "session_risk_control",
+                    "weight": 0.25,
+                    "label": "Session risk control",
+                    "description": "Does not promote multi-week holds; flatten/urgency posture holds.",
+                },
+            ],
+            success_criteria="Same-session edge on liquid names without swing-hold leakage.",
+        ),
     },
     "short_mechanics": {
         "label": "Short-Selling Mechanics",
@@ -218,6 +507,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.55,
             "volatility_tolerance": 0.48,
         },
+        "scoring": _scoring(
+            mode="short_alpha",
+            primary_metric="short_candidate_quality",
+            summary="Grade short-mechanics agents on bearish hit rate and squeeze-block precision.",
+            score_horizon="1wk",
+            direction_weight=0.50,
+            magnitude_weight=0.50,
+            metrics=[
+                {
+                    "id": "bearish_hit_rate",
+                    "weight": 0.40,
+                    "label": "Bearish hit rate",
+                    "description": "BEARISH short theses that correctly anticipate downside.",
+                },
+                {
+                    "id": "squeeze_block_precision",
+                    "weight": 0.30,
+                    "label": "Squeeze-block precision",
+                    "description": "Correctly flag names where shorting is dangerous (squeeze/HTB).",
+                },
+                {
+                    "id": "thin_bullish_control",
+                    "weight": 0.30,
+                    "label": "Thin-bullish control",
+                    "description": "Avoid weak BULLISH upgrades; prefer NEUTRAL when thesis is thin.",
+                },
+            ],
+            success_criteria="Quality short candidates with effective squeeze avoidance.",
+        ),
     },
     "risk_protection": {
         "label": "Risk & Capital Protection",
@@ -240,6 +558,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.86,
             "volatility_tolerance": 0.22,
         },
+        "scoring": _scoring(
+            mode="risk_gate",
+            primary_metric="capital_protection",
+            summary="Grade risk agents on capital protection and drawdown avoidance, not alpha chase.",
+            score_horizon="24h",
+            direction_weight=0.40,
+            magnitude_weight=0.60,
+            metrics=[
+                {
+                    "id": "drawdown_avoidance",
+                    "weight": 0.45,
+                    "label": "Drawdown avoidance",
+                    "description": "Risk-off / reduce signals that precede material portfolio drawdowns.",
+                },
+                {
+                    "id": "risk_signal_precision",
+                    "weight": 0.30,
+                    "label": "Risk signal precision",
+                    "description": "BEARISH/reduce calls that correspond to real stress, not noise.",
+                },
+                {
+                    "id": "false_bullish_penalty",
+                    "weight": 0.25,
+                    "label": "False-bullish penalty",
+                    "description": "Heavy penalty when BULLISH is emitted into elevated risk.",
+                },
+            ],
+            success_criteria="Protect capital first; high bar for any bullish risk-on call.",
+        ),
     },
     "fundamental_tech": {
         "label": "Fundamental & Technical Analysis",
@@ -262,6 +609,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.42,
             "volatility_tolerance": 0.52,
         },
+        "scoring": _scoring(
+            mode="multi_horizon",
+            primary_metric="thesis_accuracy",
+            summary="Grade fundamental/technical agents on multi-horizon thesis accuracy and robustness.",
+            score_horizon="1mo",
+            direction_weight=0.55,
+            magnitude_weight=0.45,
+            metrics=[
+                {
+                    "id": "direction_hit",
+                    "weight": 0.45,
+                    "label": "Direction hit rate",
+                    "description": "Hits at preferred 1wk–1mo horizons.",
+                },
+                {
+                    "id": "multi_horizon_consistency",
+                    "weight": 0.30,
+                    "label": "Multi-horizon consistency",
+                    "description": "Agreement quality across horizons without conflicting noise.",
+                },
+                {
+                    "id": "adversarial_robustness",
+                    "weight": 0.25,
+                    "label": "Adversarial robustness",
+                    "description": "Theses that survive bull/bear challenge and conflicting evidence.",
+                },
+            ],
+            success_criteria="Robust multi-horizon theses with solid directional accuracy.",
+        ),
     },
     "portfolio_alloc": {
         "label": "Portfolio Construction",
@@ -284,6 +660,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.42,
             "volatility_tolerance": 0.40,
         },
+        "scoring": _scoring(
+            mode="allocation",
+            primary_metric="portfolio_quality",
+            summary="Grade allocators on diversification and risk-adjusted portfolio quality, not single-name alpha.",
+            score_horizon="1mo",
+            direction_weight=0.35,
+            magnitude_weight=0.65,
+            metrics=[
+                {
+                    "id": "risk_adjusted_return",
+                    "weight": 0.40,
+                    "label": "Risk-adjusted return",
+                    "description": "Allocation frameworks that improve risk-adjusted outcomes.",
+                },
+                {
+                    "id": "diversification",
+                    "weight": 0.30,
+                    "label": "Diversification",
+                    "description": "Healthy weight dispersion across factors/sectors/assets.",
+                },
+                {
+                    "id": "concentration_control",
+                    "weight": 0.30,
+                    "label": "Concentration control",
+                    "description": "Penalize over-concentration and excessive turnover advice.",
+                },
+            ],
+            success_criteria="Balanced weights with better risk-adjusted portfolio outcomes.",
+        ),
     },
     "data_platform": {
         "label": "Data Platform",
@@ -306,6 +711,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.52,
             "volatility_tolerance": 0.28,
         },
+        "scoring": _scoring(
+            mode="platform_quality",
+            primary_metric="data_health",
+            summary="Grade platform agents on data freshness, completeness, and integrity — not price direction.",
+            score_horizon="1wk",
+            direction_weight=0.0,
+            magnitude_weight=1.0,
+            metrics=[
+                {
+                    "id": "freshness",
+                    "weight": 0.35,
+                    "label": "Data freshness",
+                    "description": "Feeds and archives stay current within SLA.",
+                },
+                {
+                    "id": "completeness",
+                    "weight": 0.30,
+                    "label": "Completeness",
+                    "description": "Coverage of expected sources without silent gaps.",
+                },
+                {
+                    "id": "integrity",
+                    "weight": 0.35,
+                    "label": "Integrity",
+                    "description": "Lineage, validation, and content integrity checks pass.",
+                },
+            ],
+            success_criteria="Fresh, complete, integrity-checked data that supports other agents.",
+        ),
     },
     "execution": {
         "label": "Order Execution",
@@ -328,6 +762,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.60,
             "volatility_tolerance": 0.25,
         },
+        "scoring": _scoring(
+            mode="execution_quality",
+            primary_metric="fill_quality",
+            summary="Grade execution agents on fill quality, slippage, and impact awareness — not direction.",
+            score_horizon="24h",
+            direction_weight=0.0,
+            magnitude_weight=1.0,
+            metrics=[
+                {
+                    "id": "slippage_control",
+                    "weight": 0.40,
+                    "label": "Slippage control",
+                    "description": "Realized slippage vs expected for chosen order type.",
+                },
+                {
+                    "id": "fill_rate",
+                    "weight": 0.30,
+                    "label": "Fill rate",
+                    "description": "Successful fills without unnecessary cancel churn.",
+                },
+                {
+                    "id": "impact_awareness",
+                    "weight": 0.30,
+                    "label": "Impact awareness",
+                    "description": "Warns/blocks when liquidity would destroy edge.",
+                },
+            ],
+            success_criteria="High-quality fills with controlled slippage and impact.",
+        ),
     },
     "fusion": {
         "label": "Ensemble Fusion",
@@ -349,6 +812,35 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             "defensive_bias": 0.45,
             "volatility_tolerance": 0.50,
         },
+        "scoring": _scoring(
+            mode="ensemble",
+            primary_metric="blend_calibration",
+            summary="Grade fusion on ensemble blend quality and fairness — not self-scored directional alpha.",
+            score_horizon="24h",
+            direction_weight=0.40,
+            magnitude_weight=0.60,
+            metrics=[
+                {
+                    "id": "consensus_hit_rate",
+                    "weight": 0.40,
+                    "label": "Consensus hit rate",
+                    "description": "Fused output directional quality vs realized market.",
+                },
+                {
+                    "id": "weight_fairness",
+                    "weight": 0.30,
+                    "label": "Weight fairness",
+                    "description": "Does not double-count self; weights reflect peer evidence.",
+                },
+                {
+                    "id": "overconfidence_control",
+                    "weight": 0.30,
+                    "label": "Overconfidence control",
+                    "description": "Blend confidence stays calibrated under disagreement.",
+                },
+            ],
+            success_criteria="Fair, calibrated blends that improve on single-agent noise.",
+        ),
     },
 }
 
@@ -723,6 +1215,158 @@ def uses_directional_scoring(agent_id: str) -> bool:
     return bool(agent_group(agent_id).get("directional", True))
 
 
+def group_scoring_for(group_id: str) -> dict[str, Any]:
+    """Return the scoring system for a group id (copy; never empty for known groups)."""
+    g = AGENT_GROUPS.get(group_id) or AGENT_GROUPS["markets_core"]
+    scoring = g.get("scoring")
+    if isinstance(scoring, dict) and scoring:
+        out = dict(scoring)
+        out["group_id"] = group_id if group_id in AGENT_GROUPS else "markets_core"
+        out["group_label"] = g.get("label")
+        out["directional"] = bool(g.get("directional", True))
+        out["trading_role"] = g.get("trading_role")
+        return out
+    # Fallback for any group missing an explicit system
+    return _scoring(
+        mode="directional_alpha",
+        primary_metric="opportunity_hit_rate",
+        summary="Default directional scoring.",
+        metrics=[{"id": "direction_hit", "weight": 1.0, "label": "Direction hit rate"}],
+    ) | {
+        "group_id": group_id if group_id in AGENT_GROUPS else "markets_core",
+        "group_label": g.get("label"),
+        "directional": bool(g.get("directional", True)),
+        "trading_role": g.get("trading_role"),
+    }
+
+
+def agent_scoring_system(agent_id: str) -> dict[str, Any]:
+    """Scoring system for an agent based on its group function."""
+    gid = agent_group_id(agent_id)
+    scoring = group_scoring_for(gid)
+    scoring["agent_id"] = normalize_agent_id(agent_id)
+    return scoring
+
+
+def agent_scoring_mode(agent_id: str) -> str:
+    return str(agent_scoring_system(agent_id).get("mode") or "directional_alpha")
+
+
+def agent_primary_metric(agent_id: str) -> str:
+    return str(agent_scoring_system(agent_id).get("primary_metric") or "direction_hit")
+
+
+def group_accuracy_weights(agent_id: str) -> tuple[float, float]:
+    """Direction/magnitude weights for combined accuracy (from group scoring)."""
+    s = agent_scoring_system(agent_id)
+    dw = float(s.get("direction_weight") if s.get("direction_weight") is not None else 0.6)
+    mw = float(s.get("magnitude_weight") if s.get("magnitude_weight") is not None else 0.4)
+    total = dw + mw
+    if total <= 0:
+        return 0.6, 0.4
+    return dw / total, mw / total
+
+
+def score_horizon_for_agent(agent_id: str) -> str:
+    """Preferred evaluation horizon from the group's scoring system (falls back to group horizon)."""
+    s = agent_scoring_system(agent_id)
+    return str(s.get("score_horizon") or agent_horizon(agent_id) or "24h")
+
+
+def composite_group_score(
+    agent_id: str,
+    metric_values: dict[str, float],
+    *,
+    scale: float = 100.0,
+) -> dict[str, Any]:
+    """Compute a 0–scale composite score from named metric values using group weights.
+
+    metric_values keys should match scoring.metrics[].id; missing keys are skipped
+    and remaining weights are renormalized.
+    """
+    scoring = agent_scoring_system(agent_id)
+    metrics = list(scoring.get("metrics") or [])
+    used: list[dict[str, Any]] = []
+    weight_sum = 0.0
+    for m in metrics:
+        mid = str(m.get("id") or "")
+        if mid not in metric_values:
+            continue
+        try:
+            val = float(metric_values[mid])
+        except (TypeError, ValueError):
+            continue
+        w = float(m.get("weight") or 0.0)
+        used.append({"id": mid, "weight": w, "value": val, "label": m.get("label")})
+        weight_sum += w
+    if not used or weight_sum <= 0:
+        return {
+            "agent_id": normalize_agent_id(agent_id),
+            "group_id": scoring.get("group_id"),
+            "mode": scoring.get("mode"),
+            "primary_metric": scoring.get("primary_metric"),
+            "score": None,
+            "scale": scale,
+            "components": [],
+            "coverage": 0.0,
+        }
+    total = 0.0
+    components: list[dict[str, Any]] = []
+    for row in used:
+        nw = float(row["weight"]) / weight_sum
+        contrib = nw * float(row["value"])
+        total += contrib
+        components.append(
+            {
+                "id": row["id"],
+                "label": row.get("label"),
+                "weight": round(nw, 4),
+                "value": round(float(row["value"]), 4),
+                "contribution": round(contrib, 4),
+            }
+        )
+    # Values are assumed already on 0–scale (e.g. accuracy pct). Clamp.
+    score = max(0.0, min(float(scale), total))
+    n_defined = len(metrics) or 1
+    return {
+        "agent_id": normalize_agent_id(agent_id),
+        "group_id": scoring.get("group_id"),
+        "mode": scoring.get("mode"),
+        "primary_metric": scoring.get("primary_metric"),
+        "score": round(score, 2),
+        "scale": scale,
+        "components": components,
+        "coverage": round(len(used) / n_defined, 3),
+        "summary": scoring.get("summary"),
+    }
+
+
+def all_scoring_systems() -> list[dict[str, Any]]:
+    """One row per group with scoring mode, primary metric, and KPI weights."""
+    rows: list[dict[str, Any]] = []
+    for gid in AGENT_GROUPS:
+        s = group_scoring_for(gid)
+        rows.append(
+            {
+                "group_id": gid,
+                "group_label": s.get("group_label"),
+                "mode": s.get("mode"),
+                "primary_metric": s.get("primary_metric"),
+                "score_horizon": s.get("score_horizon"),
+                "direction_weight": s.get("direction_weight"),
+                "magnitude_weight": s.get("magnitude_weight"),
+                "directional": s.get("directional"),
+                "trading_role": s.get("trading_role"),
+                "summary": s.get("summary"),
+                "success_criteria": s.get("success_criteria"),
+                "metrics": s.get("metrics"),
+                "member_count": len(agents_in_group(gid)),
+            }
+        )
+    rows.sort(key=lambda r: str(r.get("group_label") or r.get("group_id")))
+    return rows
+
+
 def group_trait_defaults(agent_id: str) -> dict[str, float]:
     traits = agent_group(agent_id).get("traits") or {}
     return {k: float(v) for k, v in traits.items()}
@@ -732,6 +1376,7 @@ def group_personality_seed(agent_id: str, *, label: str | None = None) -> dict[s
     """Default personality entry for an agent based on its group."""
     g = agent_group(agent_id)
     traits = dict(g.get("traits") or {})
+    scoring = g.get("scoring") if isinstance(g.get("scoring"), dict) else {}
     seed = {
         "label": label or normalize_agent_id(agent_id).replace("-", " ").title(),
         "group": g.get("id"),
@@ -740,6 +1385,8 @@ def group_personality_seed(agent_id: str, *, label: str | None = None) -> dict[s
         "trading_role": g.get("trading_role"),
         "preferred_horizon": g.get("horizon"),
         "conduct": g.get("conduct"),
+        "scoring_mode": scoring.get("mode"),
+        "primary_metric": scoring.get("primary_metric"),
         **traits,
     }
     return seed
@@ -753,6 +1400,7 @@ def all_groups_summary() -> list[dict[str, Any]]:
     rows = []
     for gid, meta in AGENT_GROUPS.items():
         members = agents_in_group(gid)
+        scoring = meta.get("scoring") if isinstance(meta.get("scoring"), dict) else {}
         rows.append(
             {
                 "id": gid,
@@ -765,6 +1413,12 @@ def all_groups_summary() -> list[dict[str, Any]]:
                 "member_count": len(members),
                 "members": members,
                 "conduct": meta["conduct"],
+                "scoring_mode": scoring.get("mode"),
+                "primary_metric": scoring.get("primary_metric"),
+                "scoring_summary": scoring.get("summary"),
+                "score_horizon": scoring.get("score_horizon"),
+                "direction_weight": scoring.get("direction_weight"),
+                "magnitude_weight": scoring.get("magnitude_weight"),
             }
         )
     rows.sort(key=lambda r: r["label"])
@@ -776,6 +1430,7 @@ def apply_group_conduct_to_report(data: dict[str, Any], agent_id: str) -> dict[s
     if not isinstance(data, dict):
         return data
     g = agent_group(agent_id)
+    scoring = agent_scoring_system(agent_id)
     meta = dict(data.get("meta") or {})
     meta["agent_group"] = g.get("id")
     meta["agent_group_label"] = g.get("label")
@@ -783,6 +1438,10 @@ def apply_group_conduct_to_report(data: dict[str, Any], agent_id: str) -> dict[s
     meta["agent_trading_role"] = g.get("trading_role")
     meta["preferred_horizon"] = g.get("horizon")
     meta["conduct"] = g.get("conduct")
+    meta["scoring_mode"] = scoring.get("mode")
+    meta["primary_metric"] = scoring.get("primary_metric")
+    meta["scoring_summary"] = scoring.get("summary")
+    meta["score_horizon"] = scoring.get("score_horizon")
     data["meta"] = meta
 
     posture = str(g.get("posture") or "neutral")

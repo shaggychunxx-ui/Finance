@@ -64,7 +64,12 @@ def preferred_horizon_for_agent(agent_id: str) -> str:
 
         return agent_preferred_horizon(agent_id)
     except Exception:
-        return "24h"
+        try:
+            from agent_groups import score_horizon_for_agent
+
+            return score_horizon_for_agent(agent_id)
+        except Exception:
+            return "24h"
 
 
 def _horizon_slice(by_horizon: dict[str, Any] | None, horizon: str) -> dict[str, Any] | None:
@@ -79,17 +84,40 @@ def _combined_from_slice(
     weighted_pct: float | None,
     magnitude_pct: float | None,
     magnitude_total: int,
+    direction_weight: float = DIRECTION_WEIGHT,
+    magnitude_weight: float = MAGNITUDE_WEIGHT,
 ) -> float | None:
     if weighted_pct is None:
         return None
     if magnitude_total >= MIN_SAMPLES_FOR_MAGNITUDE and magnitude_pct is not None:
-        return round(DIRECTION_WEIGHT * weighted_pct + MAGNITUDE_WEIGHT * magnitude_pct, 1)
+        dw = float(direction_weight)
+        mw = float(magnitude_weight)
+        total_w = dw + mw
+        if total_w <= 0:
+            dw, mw = DIRECTION_WEIGHT, MAGNITUDE_WEIGHT
+        else:
+            dw, mw = dw / total_w, mw / total_w
+        return round(dw * weighted_pct + mw * magnitude_pct, 1)
     return weighted_pct
+
+
+def _group_blend_weights(agent_id: str = "") -> tuple[float, float]:
+    """Per-group direction/magnitude blend from agent_groups scoring systems."""
+    if not agent_id:
+        return DIRECTION_WEIGHT, MAGNITUDE_WEIGHT
+    try:
+        from agent_groups import group_accuracy_weights
+
+        return group_accuracy_weights(agent_id)
+    except Exception:
+        return DIRECTION_WEIGHT, MAGNITUDE_WEIGHT
 
 
 def horizon_accuracy_metrics(
     entry: dict[str, Any],
     horizon: str,
+    *,
+    agent_id: str = "",
 ) -> dict[str, Any] | None:
     """Direction + combined metrics for one horizon slice."""
     hb = _horizon_slice(entry.get("by_horizon"), horizon)
@@ -105,10 +133,13 @@ def horizon_accuracy_metrics(
         if hb.get("magnitude_accuracy_pct") is not None
         else (round(mag_hits / mag_total * 100, 1) if mag_total else None)
     )
+    dw, mw = _group_blend_weights(agent_id)
     combined = _combined_from_slice(
         weighted_pct=direction_pct,
         magnitude_pct=magnitude_pct,
         magnitude_total=mag_total,
+        direction_weight=dw,
+        magnitude_weight=mw,
     )
     return {
         "horizon": horizon,
@@ -118,6 +149,8 @@ def horizon_accuracy_metrics(
         "magnitude_accuracy_pct": magnitude_pct,
         "magnitude_scored": mag_total,
         "combined_accuracy_pct": combined,
+        "direction_weight": round(dw, 4),
+        "magnitude_weight": round(mw, 4),
     }
 
 
@@ -141,6 +174,16 @@ def effective_accuracy_metrics(
     prefer_label = bool(gate.get("prefer_preferred_horizon_for_label", True))
     prefer_fusion = bool(gate.get("prefer_preferred_horizon_for_fusion", True))
 
+    scoring_mode = None
+    primary_metric = None
+    try:
+        from agent_groups import agent_primary_metric, agent_scoring_mode
+
+        scoring_mode = agent_scoring_mode(agent_id)
+        primary_metric = agent_primary_metric(agent_id)
+    except Exception:
+        pass
+
     direction_pct = entry.get("accuracy_pct")
     if direction_pct is None and int(entry.get("total_scored") or 0):
         total = int(entry.get("total_scored") or 0)
@@ -149,7 +192,7 @@ def effective_accuracy_metrics(
 
     weighted_pct = entry.get("weighted_accuracy_pct") or direction_pct
     combined_pct = entry.get("combined_accuracy_pct") or weighted_pct
-    pref_slice = horizon_accuracy_metrics(entry, preferred)
+    pref_slice = horizon_accuracy_metrics(entry, preferred, agent_id=agent_id)
 
     use_preferred = (
         pref_slice is not None
@@ -172,6 +215,7 @@ def effective_accuracy_metrics(
         magnitude_out = entry.get("magnitude_accuracy_pct")
         preferred_samples = int((pref_slice or {}).get("total") or 0)
 
+    dw, mw = _group_blend_weights(agent_id)
     return {
         "preferred_horizon": preferred,
         "preferred_horizon_samples": preferred_samples,
@@ -184,6 +228,10 @@ def effective_accuracy_metrics(
         "measurement_kind": measurement_kind,
         "measurement_primary_pct": primary_pct,
         "prefer_preferred_horizon_for_fusion": prefer_fusion and use_preferred,
+        "scoring_mode": scoring_mode,
+        "primary_metric": primary_metric,
+        "direction_weight": round(dw, 4),
+        "magnitude_weight": round(mw, 4),
     }
 
 
@@ -204,6 +252,14 @@ def enrich_agent_accuracy_entry(
     row["measurement_kind"] = metrics.get("measurement_kind")
     row["measurement_primary_pct"] = metrics.get("measurement_primary_pct")
     row["prefer_preferred_horizon_for_fusion"] = metrics.get("prefer_preferred_horizon_for_fusion")
+    if metrics.get("scoring_mode") is not None:
+        row["scoring_mode"] = metrics.get("scoring_mode")
+    if metrics.get("primary_metric") is not None:
+        row["primary_metric"] = metrics.get("primary_metric")
+    if metrics.get("direction_weight") is not None:
+        row["direction_weight"] = metrics.get("direction_weight")
+    if metrics.get("magnitude_weight") is not None:
+        row["magnitude_weight"] = metrics.get("magnitude_weight")
 
     if metrics.get("prefer_preferred_horizon_for_fusion") and metrics.get("measurement_primary_pct") is not None:
         pct = float(metrics["measurement_primary_pct"])

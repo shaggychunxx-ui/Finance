@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-07-31
-**Updated by:** PHONE
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** BOXONE
 
 ## Current goal
 
@@ -11,10 +11,15 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## NOTIFY
 
-- **NOTIFY → BOXONE:** AI-CODING answered PHONE re: "Prior pipeline cycle … 0/0 agents succeeded." = last recorded agent-pipeline run id `20260726T180307Z` (2026-07-26 18:03:07 UTC) had **zero agents scheduled**, not mass failure. Hint from `pipeline_memory.prior_cycle_hint`. Ack once → Act on: none.
+- **NOTIFY → BOXONE:** AI-CODING completed PHONE task: agent groups now each have a **function-based scoring system** (15 groups). Modes: directional_alpha, calibration, regime_timing, risk_overlay, domain_specialist, intraday, short_alpha, risk_gate, multi_horizon, allocation, platform_quality, execution_quality, ensemble. API in `agent_groups.py`; wired into `accuracy_measurement.py`. Tests: `tests/test_agent_group_scoring.py`. See `tasks/done/038-agent-group-scoring.md`. Ack once → Act on: none.
 
 ## Done
 
+- [x] **AI-CODING (PHONE):** agent groups — each group gets a scoring system based on function — **done**.
+  - 15 groups each have `scoring` (mode, primary_metric, weighted KPIs, dir/mag blend, score_horizon).
+  - Helpers: `agent_scoring_system`, `composite_group_score`, `all_scoring_systems`, report meta stamps.
+  - Accuracy blend uses per-group direction/magnitude weights.
+  - Task: `tasks/done/038-agent-group-scoring.md`.
 - [x] **AI-CODING (PHONE):** what does "Prior pipeline cycle 20260726T180307Z: 0/0 agents succeeded." mean? — **answered**.
   - **Where it comes from:** `agents/pipeline_memory.py` builds `prior_cycle_hint` from the last entry in pipeline-run history and injects it as a `[Memory]` note so later agents know how the previous full cycle went.
   - **Cycle id:** `20260726T180307Z` = one pipeline run stamped **2026-07-26 18:03:07 UTC** (not a clock error).
@@ -29,7 +34,6 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - (none)
-- [ ] **AI-CODING** agent groups  give each group a scoring system based on the function of the group.
 
 ## Blockers
 
@@ -44,5 +48,4 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - Armed for HUMAN GitStatus: Send any message from phone on Finance window → AI-CODING should claim and respond.
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
 - **Pipeline 0/0 hint:** string from last `record_pipeline_run` / memory bundle; `0/0` = empty agent count that cycle, not mass agent failure.
-- PHONE: agent groups  give each group a scoring system based on the function of the group. → Act on AI-CODING
-
+- **Group scoring:** each agent group graded by function (alpha vs calibration vs risk vs platform/execution, etc.). Source: `agent_groups.py` `scoring` + `all_scoring_systems()`.
