@@ -107,6 +107,8 @@ def build_short_strategy_plan(
     investable = min(investable, total_value * (1 - cash_buffer / 100) * (max_book_pct / 100))
     min_drift = float(settings.get("min_drift_pct", 2.0))
     min_trade = float(settings.get("min_trade_usd", 75.0))
+    # Practice / small-account: allow 1-share simulated shorts when capital can't size normally.
+    force_min_share = bool(settings.get("force_min_share_dry_run") or settings.get("simulate_min_share"))
 
     if portfolio is None:
         portfolio = generate_short_portfolio(notional_usd=total_value, settings=settings)
@@ -129,6 +131,24 @@ def build_short_strategy_plan(
             px = _quote_price(client, sym)
             if px > 0:
                 prices[sym] = px
+            elif force_min_share:
+                # Yahoo fallback for practice simulation when E*TRADE quotes fail
+                try:
+                    import urllib.request
+
+                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=1d&interval=1d"
+                    req = urllib.request.Request(url, headers={"User-Agent": "FinanceShortDryRun/1.0"})
+                    with urllib.request.urlopen(req, timeout=12) as resp:
+                        payload = json.loads(resp.read().decode())
+                    meta = (payload.get("chart") or {}).get("result") or []
+                    if meta:
+                        last = meta[0].get("meta", {}).get("regularMarketPrice") or meta[0].get("meta", {}).get(
+                            "previousClose"
+                        )
+                        if last:
+                            prices[sym] = float(last)
+                except Exception:
+                    pass
 
     orders: list[TradeOrder] = []
     handled: set[str] = set()
@@ -147,17 +167,23 @@ def build_short_strategy_plan(
             continue
         current_weight = (current_value / total_value * 100) if total_value else 0
         drift = abs(target_value - current_value) / investable * 100 if investable else 0
-        if drift < min_drift:
+        if not force_min_share and drift < min_drift:
             continue
         delta = target_value - current_value
-        if abs(delta) < min_trade:
+        if not force_min_share and abs(delta) < min_trade:
             continue
-        if delta > 0:
-            qty = int(delta // price)
+        if delta > 0 or (force_min_share and current_qty <= 0):
+            qty = int(delta // price) if delta > 0 else 0
+            if qty <= 0 and force_min_share and current_qty <= 0:
+                qty = 1  # 1-share practice short
             action = "SELL_SHORT"
             rationale = holding.get("rationale") or "Open/add short from bearish agents"
+            if force_min_share and qty == 1 and (delta // price if price else 0) < 1:
+                rationale = f"[sim 1-share] {rationale}"
         else:
-            qty = min(current_qty, int(abs(delta) // price))
+            qty = min(current_qty, int(abs(delta) // price)) if price else 0
+            if qty <= 0 and force_min_share and current_qty > 0:
+                qty = 1
             action = "BUY_TO_COVER"
             rationale = holding.get("rationale") or "Reduce short toward target"
         if qty <= 0:
@@ -169,7 +195,7 @@ def build_short_strategy_plan(
                 quantity=qty,
                 target_weight_pct=weight,
                 current_weight_pct=current_weight,
-                target_value_usd=target_value,
+                target_value_usd=target_value if target_value > 0 else qty * price,
                 current_value_usd=current_value,
                 estimated_price=price,
                 rationale=str(rationale),
@@ -362,12 +388,33 @@ def execute_short_orders(
     dry_run: bool = True,
     settings: dict[str, Any] | None = None,
 ) -> StrategyPlan:
-    """Preview/place short-book orders. Defaults to dry_run for safety."""
+    """Preview/place short-book orders. Defaults to dry_run for safety.
+
+    Dry-run marks fills as simulated, appends short trade history, and tracks
+    simulated open short lots for later success-rate measurement.
+    """
     from strategy_engine import execute_orders, preview_orders
 
     settings = settings or load_short_strategy_settings()
     if dry_run:
-        return preview_orders(client, plan)
+        # Prefer strategy_engine dry_run when available; else local simulate.
+        try:
+            result = execute_orders(client, plan, dry_run=True)
+        except TypeError:
+            result = preview_orders(client, plan)
+        for order in result.orders:
+            if order.status in {"error", "blocked", "skipped"}:
+                continue
+            if order.status in {"previewed", "proposed", "", None} or not order.status:
+                order.status = "dry_run"
+            if not order.message:
+                order.message = "Simulated short fill (practice mode)"
+        try:
+            _append_short_trade_log(result, dry_run=True)
+            _update_short_sim_book(result, dry_run=True)
+        except Exception:
+            pass
+        return result
 
     result = execute_orders(client, plan, dry_run=False)
     for order in result.orders:
@@ -378,6 +425,7 @@ def execute_short_orders(
                 pass
     try:
         _append_short_trade_log(result, dry_run=False)
+        _update_short_sim_book(result, dry_run=False)
     except Exception:
         pass
     return result
@@ -406,8 +454,11 @@ def _append_short_trade_log(plan: StrategyPlan, *, dry_run: bool) -> None:
     for order in plan.orders:
         if order.status in {"error", "blocked", "skipped"}:
             continue
-        if dry_run and order.status not in {"previewed", "proposed"}:
-            continue
+        # Accept dry_run / previewed / placed statuses for journaling
+        if dry_run and order.status not in {"previewed", "proposed", "dry_run", "placed", "filled"}:
+            # still log if quantity present (local sim)
+            if not (order.quantity and order.symbol):
+                continue
         rows.append(
             {
                 "at": now,
@@ -415,7 +466,8 @@ def _append_short_trade_log(plan: StrategyPlan, *, dry_run: bool) -> None:
                 "action": order.action,
                 "quantity": order.quantity,
                 "price": order.estimated_price,
-                "status": order.status,
+                "value_usd": round(float(order.quantity or 0) * float(order.estimated_price or 0), 2),
+                "status": order.status or ("dry_run" if dry_run else "placed"),
                 "message": order.message,
                 "rationale": order.rationale,
                 "mode": "short",
@@ -423,3 +475,94 @@ def _append_short_trade_log(plan: StrategyPlan, *, dry_run: bool) -> None:
             }
         )
     path.write_text(json.dumps(rows[-2000:], indent=2), encoding="utf-8")
+
+
+def _update_short_sim_book(plan: StrategyPlan, *, dry_run: bool) -> None:
+    """Track simulated short lots + realized cover PnL for success-rate stats."""
+    from short_paths import SHORT_OUTPUT, ensure_short_dirs
+
+    ensure_short_dirs()
+    path = SHORT_OUTPUT / "short_sim_book.json"
+    store: dict[str, Any] = {"open_shorts": {}, "closed": [], "stats": {"wins": 0, "losses": 0, "flat": 0, "realized_pnl_usd": 0.0}}
+    if path.exists():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                store.update(raw)
+                store.setdefault("open_shorts", {})
+                store.setdefault("closed", [])
+                store.setdefault("stats", {"wins": 0, "losses": 0, "flat": 0, "realized_pnl_usd": 0.0})
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    open_shorts: dict[str, Any] = dict(store.get("open_shorts") or {})
+    closed: list[dict[str, Any]] = list(store.get("closed") or [])
+    stats: dict[str, Any] = dict(store.get("stats") or {})
+    now = datetime.now(timezone.utc).isoformat()
+
+    for order in plan.orders:
+        if order.status in {"error", "blocked", "skipped"}:
+            continue
+        sym = str(order.symbol or "").upper()
+        qty = int(order.quantity or 0)
+        px = float(order.estimated_price or 0)
+        if not sym or qty <= 0 or px <= 0:
+            continue
+        action = str(order.action or "").upper()
+        if action == "SELL_SHORT":
+            lot = open_shorts.get(sym) or {"symbol": sym, "quantity": 0, "avg_entry": 0.0, "entries": []}
+            prev_q = int(lot.get("quantity") or 0)
+            prev_avg = float(lot.get("avg_entry") or 0)
+            new_q = prev_q + qty
+            lot["avg_entry"] = ((prev_avg * prev_q) + (px * qty)) / new_q if new_q else px
+            lot["quantity"] = new_q
+            lot["last_price"] = px
+            lot["updated_at"] = now
+            lot["dry_run"] = dry_run
+            entries = list(lot.get("entries") or [])
+            entries.append({"at": now, "qty": qty, "price": px, "dry_run": dry_run})
+            lot["entries"] = entries[-50:]
+            open_shorts[sym] = lot
+        elif action == "BUY_TO_COVER":
+            lot = open_shorts.get(sym)
+            if not lot:
+                continue
+            open_q = int(lot.get("quantity") or 0)
+            entry = float(lot.get("avg_entry") or 0)
+            take = min(open_q, qty)
+            if take <= 0 or entry <= 0:
+                continue
+            # Short PnL: entry - exit
+            pnl = (entry - px) * take
+            closed.append(
+                {
+                    "at": now,
+                    "symbol": sym,
+                    "quantity": take,
+                    "entry_price": entry,
+                    "exit_price": px,
+                    "realized_pnl_usd": round(pnl, 2),
+                    "dry_run": dry_run,
+                    "win": pnl > 0,
+                }
+            )
+            if pnl > 0:
+                stats["wins"] = int(stats.get("wins", 0)) + 1
+            elif pnl < 0:
+                stats["losses"] = int(stats.get("losses", 0)) + 1
+            else:
+                stats["flat"] = int(stats.get("flat", 0)) + 1
+            stats["realized_pnl_usd"] = round(float(stats.get("realized_pnl_usd", 0)) + pnl, 2)
+            left = open_q - take
+            if left <= 0:
+                open_shorts.pop(sym, None)
+            else:
+                lot["quantity"] = left
+                lot["updated_at"] = now
+                open_shorts[sym] = lot
+
+    store["open_shorts"] = open_shorts
+    store["closed"] = closed[-2000:]
+    store["stats"] = stats
+    store["updated_at"] = now
+    path.write_text(json.dumps(store, indent=2), encoding="utf-8")

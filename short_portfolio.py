@@ -18,11 +18,16 @@ from portfolio_generator import (
     _ingest_datascience,
     _ingest_finance_opportunities,
     _ingest_predictions,
-    _ingest_sales_retailers,
     _ingest_signals,
     _load_json,
     AGENT_OUTPUTS,
 )
+
+try:
+    from portfolio_generator import _ingest_sales_retailers  # type: ignore
+except ImportError:  # pragma: no cover - older portfolio_generator builds
+    def _ingest_sales_retailers(data: dict[str, Any], scores: dict[str, TickerScore]) -> None:
+        return
 from short_paths import SHORT_OUTPUT, SHORT_PORTFOLIO_FILE, ensure_short_dirs
 
 DEFAULT_SHORT_HOLDINGS = 8

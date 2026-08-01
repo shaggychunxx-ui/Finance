@@ -254,25 +254,32 @@ def run_short_plan_cycle(*, force: bool = False, dry_run: bool | None = None) ->
     live = bool(settings.get("live_trading")) and bool(settings.get("auto_execute")) and not do_dry
     market_ok = is_us_market_open() or bool(settings.get("allow_off_hours_trading"))
     exec_iv = int(settings.get("execute_min_interval_minutes", 20))
-    if live and market_ok and _interval_due(state.get("last_execute_at"), exec_iv, force=force):
-        if plan.orders:
-            result = execute_short_orders(client, plan, dry_run=False, settings=strat)
-            placed = sum(1 for o in result.orders if o.status not in {"error", "blocked", "skipped"})
-            _log(f"Live short execute attempted for {placed} order(s).")
-            state["last_execute_at"] = time.time()
-            save_worker_state(state)
-        else:
-            _log("Short plan has no orders.")
+    # Practice mode: always simulate fills when we have orders (builds success-rate log).
+    # Live: only during market hours (or allow_off_hours) and on execute cadence.
+    should_exec = False
+    if plan.orders:
+        if do_dry:
+            should_exec = True
+        elif live and market_ok and _interval_due(state.get("last_execute_at"), exec_iv, force=force):
+            should_exec = True
+
+    if should_exec and plan.orders:
+        result = execute_short_orders(client, plan, dry_run=do_dry, settings=strat)
+        save_short_strategy_plan(result)
+        placed = sum(1 for o in result.orders if o.status not in {"error", "blocked", "skipped"})
+        mode = "DRY-RUN" if do_dry else "LIVE"
+        _log(f"{mode} short execute: {placed} order(s) logged.")
+        state["last_execute_at"] = time.time()
+        save_worker_state(state)
+    elif plan.orders:
+        preview_short_orders(client, plan)
+        save_short_strategy_plan(plan)
+        _log(
+            f"Short orders previewed only "
+            f"(dry_run={do_dry}, live={settings.get('live_trading')}, auto={settings.get('auto_execute')})."
+        )
     else:
-        if plan.orders:
-            preview_short_orders(client, plan)
-            save_short_strategy_plan(plan)
-            _log(
-                f"Short orders previewed only "
-                f"(dry_run={do_dry}, live={settings.get('live_trading')}, auto={settings.get('auto_execute')})."
-            )
-        else:
-            _log("Short plan has no orders.")
+        _log("Short plan has no orders.")
     return 0
 
 
@@ -309,12 +316,12 @@ def run_short_day_cycle(*, force: bool = False) -> int:
 
     do_dry = bool(settings.get("dry_run", True))
     live = bool(settings.get("live_trading")) and bool(settings.get("auto_execute")) and not do_dry
-    if plan.orders and live:
-        execute_short_orders(client, plan, dry_run=False)
-        _log("Short day orders submitted (live).")
+    if plan.orders and (do_dry or live):
+        execute_short_orders(client, plan, dry_run=do_dry)
+        _log("Short day orders " + ("simulated (dry-run)." if do_dry else "submitted (live)."))
     elif plan.orders:
         preview_short_orders(client, plan)
-        _log("Short day orders previewed (dry-run).")
+        _log("Short day orders previewed only.")
     return 0
 
 
@@ -343,6 +350,174 @@ def run_service_loop() -> int:
     return 0
 
 
+def _yahoo_last(symbol: str) -> float:
+    import urllib.request
+
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1d"
+    req = urllib.request.Request(url, headers={"User-Agent": "FinanceShortDryRun/1.0"})
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        payload = json.loads(resp.read().decode())
+    meta = ((payload.get("chart") or {}).get("result") or [{}])[0].get("meta") or {}
+    return float(meta.get("regularMarketPrice") or meta.get("previousClose") or 0)
+
+
+def run_forced_short_dry_run(*, max_names: int = 5) -> int:
+    """Force a practice short cycle: 1-share sim orders + trade log + sim book.
+
+    Works offline (Yahoo prices) when E*TRADE tokens are missing so we can still
+    accumulate simulated success-rate data on small accounts.
+    """
+    from strategy_engine import StrategyPlan, TradeOrder
+
+    strat = load_short_strategy_settings()
+    strat = dict(strat)
+    strat["min_trade_usd"] = min(float(strat.get("min_trade_usd") or 75), 5.0)
+    strat["min_drift_pct"] = 0.0
+    strat["force_min_share_dry_run"] = True
+    strat["simulate_min_share"] = True
+    strat["max_positions"] = max_names
+
+    client = _connect_client()
+    acct = _resolve_account(client) if client else None
+    notional = None
+    account_key = "SIM-DRY-RUN"
+    account_name = "Simulated short (practice)"
+    if acct and acct.get("account_id_key"):
+        account_key = str(acct["account_id_key"])
+        account_name = str(acct.get("display_label") or account_name)
+        try:
+            bal = client.get_balance(account_key)  # type: ignore[union-attr]
+            notional = float(bal.get("total_account_value") or 0) or None
+        except Exception as exc:
+            _log(f"Balance fetch note: {exc}")
+
+    if notional is None:
+        # Prefer last known short plan equity, else a stable sim notional
+        try:
+            prev = json.loads((ROOT / "output" / "short" / "short_strategy_plan.json").read_text(encoding="utf-8"))
+            notional = float(prev.get("total_account_value") or 0) or 1000.0
+        except Exception:
+            notional = 1000.0
+
+    try:
+        portfolio = generate_short_portfolio(notional_usd=notional, settings=strat)
+    except Exception as exc:
+        _log(f"Portfolio generate failed ({exc}); reusing last short_portfolio.json")
+        from short_paths import SHORT_PORTFOLIO_FILE
+
+        portfolio = {}
+        if SHORT_PORTFOLIO_FILE.exists():
+            try:
+                portfolio = json.loads(SHORT_PORTFOLIO_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                portfolio = {}
+        if not isinstance(portfolio, dict):
+            portfolio = {}
+    holdings = list(portfolio.get("holdings") or [])[:max_names]
+    portfolio["holdings"] = holdings
+    if holdings:
+        save_short_portfolio(portfolio)
+
+    plan: StrategyPlan | None = None
+    if client and acct and acct.get("account_id_key"):
+        try:
+            plan = build_short_strategy_plan(
+                client,
+                account_key,
+                account_name=account_name,
+                portfolio=portfolio,
+                settings=strat,
+            )
+        except Exception as exc:
+            _log(f"Live short plan failed ({exc}); synthesizing offline dry-run.")
+            plan = None
+
+    if plan is None or not plan.orders:
+        synth: list[TradeOrder] = []
+        for h in holdings:
+            sym = str(h.get("symbol") or "").upper()
+            if not sym:
+                continue
+            px = float(h.get("price") or 0)
+            if px <= 0:
+                try:
+                    px = _yahoo_last(sym)
+                except Exception as exc:
+                    _log(f"Quote fail {sym}: {exc}")
+                    px = 0.0
+            if px <= 0:
+                continue
+            synth.append(
+                TradeOrder(
+                    symbol=sym,
+                    action="SELL_SHORT",
+                    quantity=1,
+                    target_weight_pct=float(h.get("weight_pct") or 0),
+                    current_weight_pct=0.0,
+                    target_value_usd=px,
+                    current_value_usd=0.0,
+                    estimated_price=px,
+                    status="dry_run",
+                    message="Simulated short fill (offline practice)",
+                    rationale=f"[sim 1-share forced] {h.get('rationale') or 'bearish target'}",
+                )
+            )
+        plan = StrategyPlan(
+            generated_at=datetime.now().astimezone().isoformat(),
+            account_id_key=account_key,
+            account_name=account_name,
+            sandbox=True,
+            total_account_value=float(notional or 0),
+            investable_usd=float(notional or 0),
+            cash_buffer_pct=float(strat.get("cash_buffer_pct") or 20),
+            regime={},
+            target_holdings=holdings,
+            current_positions=[],
+            orders=synth,
+            meta={
+                "mode": "short_swing",
+                "side": "short",
+                "forced_dry_run": True,
+                "offline": client is None,
+                "synthesized_orders": len(synth),
+            },
+        )
+
+    # Ensure statuses for logging
+    for order in plan.orders:
+        if order.status in {"", None, "proposed", "previewed"}:
+            order.status = "dry_run"
+        if not order.message:
+            order.message = "Simulated short fill (practice mode)"
+
+    save_short_strategy_plan(plan)
+    _log(f"Forced dry-run plan: {len(plan.orders)} order(s), {len(holdings)} target(s).")
+    if not plan.orders:
+        _log("Forced dry-run produced no orders — check portfolio / quotes.")
+        return 1
+
+    if client is not None:
+        result = execute_short_orders(client, plan, dry_run=True, settings=strat)
+    else:
+        # Offline: log + sim book without broker
+        from short_strategy_engine import _append_short_trade_log, _update_short_sim_book
+
+        _append_short_trade_log(plan, dry_run=True)
+        _update_short_sim_book(plan, dry_run=True)
+        result = plan
+
+    save_short_strategy_plan(result)
+    placed = sum(1 for o in result.orders if o.status not in {"error", "blocked", "skipped"})
+    _log(f"Forced DRY-RUN short execute: {placed} simulated fill(s) logged.")
+    state = load_worker_state()
+    state["last_plan_at"] = time.time()
+    state["last_execute_at"] = time.time()
+    state["last_forced_dry_run_at"] = time.time()
+    state["last_plan_orders"] = len(result.orders)
+    save_worker_state(state)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     ensure_short_dirs()
@@ -350,6 +525,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_service_loop()
     if "--day" in argv:
         return run_short_day_cycle(force=True)
+    if "--force-dry-run" in argv or "--sim" in argv:
+        return run_forced_short_dry_run()
     if "--plan" in argv or not argv:
         return run_short_plan_cycle(force=True)
     _log(f"Unknown args: {argv}")
