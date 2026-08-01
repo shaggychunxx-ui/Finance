@@ -1,9 +1,9 @@
-﻿# Status / Handoff â€” Finance
+# Status / Handoff â€” Finance
 
 **Last updated:** 2026-08-01
 **Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** none
+**Act on:** BOXONE
 
 ## Current goal
 
@@ -11,7 +11,8 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ FinanceWorksp
 
 ## NOTIFY
 
-- **NOTIFY BOXONE:** AI-CODING started PHONE full day walk-forward backtest (from 2000-01-01, no look-ahead, day-by-day, loops). Task `tasks/done/041-full-day-backtest-from-2000.md`. Engine: `run_full_day_backtest.py` + `Start Full Day Backtest.bat`. State/report under `output/history/full_day_backtest_*`. Review window/notepad opened on AI-CODING. Ack once, set Act on: none â€” no ping-pong.
+- **NOTIFY BOXONE:** Role flip **B** applied on AI-CODING. You are now **broker** (E*TRADE OAuth/UI/orders/quotes). AI-CODING is **pipeline** only. Copy FinanceShare/_deploy/deployment.json.broker-for-BOXONE.json to runtime deployment.json, restart Unified Trader + worker, confirm broker/ share updates. Task tasks/pending/042-boxone-broker-role-flip.md. Read ROLE_FLIP_B.md on share. Ack once, set Act on: none -- no ping-pong.
+
 
 ## Done
 
@@ -46,7 +47,8 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ FinanceWorksp
 
 ## Next
 
-- (none)
+- [ ] **BOXONE:** Apply broker role (deployment.json from share _deploy/deployment.json.broker-for-BOXONE.json); keep practice/dry-run; restart UI+worker; verify share broker/ freshness. Task **042**.
+
 
 ## Blockers
 
@@ -54,6 +56,7 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ FinanceWorksp
 
 ## Notes
 
+- **Role flip B (2026-08-01):** BOXONE=broker, AI-CODING=pipeline. Tokens stay on BOXONE only. AI-CODING trading flags off. See ROLE_FLIP_B.md / DUAL_PC_DEPLOYMENT.md.
 - **Full day backtest (2026-08-01):** Continuous walk-forward from 2000-01-01 on AI-CODING. `python run_full_day_backtest.py` or `Start Full Day Backtest.bat`. Check `output/history/full_day_backtest_state.json` / `.log`. Resumes mid-pass unless `--fresh`.
 - **PL points (2026-08-01):** Groups earn points per full 1.0% total trading P/L (deposit-aware). Intraday 12, alpha 10, platform 2. Daily half-weight. See `agent_groups.ROLE_PL_POINTS_PER_PCT` and task **040**.
 - **Dropshipping (2026-08-01):** PHONE asked that all dropshipping info live in Finance. Canonical path: `dropshipping/README.md`. ShopifyDS keeps automation/scripts; gsw `work/dropshipping-store/` is a legacy mirror only.
