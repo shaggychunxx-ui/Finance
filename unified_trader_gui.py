@@ -583,14 +583,30 @@ class UnifiedTraderApp:
         if both_paused:
             lm, lc = "STOPPED", WARN
             sm, sc = "STOPPED", WARN
-        env_l = "Sandbox" if long_raw.get("sandbox") else "Production"
-        env_s = "Sandbox" if short_raw.get("sandbox") else "Production"
+        # One shared API environment (sandbox vs production) for both sleeves.
+        try:
+            from shared_etrade_api import get_shared_selected_account, mirror_shared_api_into_short
 
-        # Top strip
-        self._strip_long.configure(text=f"  Long: {lm} · {env_l}  ", fg=lc)
-        self._strip_short.configure(text=f"  Short: {sm} · {env_s}  ", fg=sc)
+            mirror_shared_api_into_short()
+            shared_acct = get_shared_selected_account() or {}
+            if shared_acct.get("display_label"):
+                long_acct = str(shared_acct.get("display_label"))
+                short_acct = long_acct
+            elif shared_acct.get("account_id_key"):
+                long_acct = short_acct = "Account set"
+        except Exception:
+            pass
+        env = "Sandbox" if long_raw.get("sandbox", True) else "Production"
+
+        # Top strip — practice mode independent; API env shared
+        self._strip_long.configure(text=f"  Long: {lm}  ", fg=lc)
+        self._strip_short.configure(text=f"  Short: {sm}  ", fg=sc)
         self._strip_ready.configure(
-            text="  STOPPED  " if both_paused else ("  Ready  " if self._sleeves_built else "  Loading  "),
+            text=(
+                "  STOPPED  "
+                if both_paused
+                else (f"  {env} API  " if self._sleeves_built else "  Loading  ")
+            ),
             fg=WARN if both_paused else (UP if self._sleeves_built else WARN),
         )
 
@@ -603,8 +619,8 @@ class UnifiedTraderApp:
 
         self._long_badge.configure(text=f"  {lm}  ", fg=lc)
         self._short_badge.configure(text=f"  {sm}  ", fg=sc)
-        self._long_acct.configure(text=f"{long_acct}  ·  {env_l}")
-        self._short_acct.configure(text=f"{short_acct}  ·  {env_s}")
+        self._long_acct.configure(text=f"{long_acct}  ·  {env} (shared API)")
+        self._short_acct.configure(text=f"{short_acct}  ·  {env} (shared API)")
 
         # Coordination
         try:

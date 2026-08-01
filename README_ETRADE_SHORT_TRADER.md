@@ -2,7 +2,7 @@
 
 > **Standalone Short Trader app removed.** Use **ETrade Unified Trader** for long + short in one window. Backend modules (`short_*`) remain for the Short tab.
 
-Short-selling counterpart to **E*TRADE Trader**. Same machine, same agent research, **separate** config, worker, plans, and trade log.
+Short-selling counterpart to **E*TRADE Trader**. Same machine, same agent research, **shared E\*TRADE API** (keys / sandbox / tokens / account from `etrade_config.json` via `shared_etrade_api.py`). Short keeps its **own** strategy config, worker, plans, trade log, and **independent practice mode** (`dry_run`).
 
 ## UI
 

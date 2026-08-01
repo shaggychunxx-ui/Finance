@@ -2904,7 +2904,7 @@ class ETradeTraderApp(tk.Frame):
             range_key = self._balance_growth_chart.range_key
         baseline = self._balance_growth_baseline
         account_key = self._current_account_key()
-        config_selected = get_selected_account(self.CONFIG_PATH)
+        config_selected = get_selected_account(self.API_CONFIG_PATH)
         try:
             from analysis_history import get_account_growth
 
@@ -2990,7 +2990,7 @@ class ETradeTraderApp(tk.Frame):
         )
 
         account_key = self._current_account_key()
-        config_selected = get_selected_account(self.CONFIG_PATH)
+        config_selected = get_selected_account(self.API_CONFIG_PATH)
         accounts_meta = growth.get("accounts") if isinstance(growth.get("accounts"), dict) else {}
         scoped_points = points_for_account(list(growth.get("points") or []), account_key)
         baseline = resolve_opening_balance_for_account(

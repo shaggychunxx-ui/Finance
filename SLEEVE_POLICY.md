@@ -2,6 +2,21 @@
 
 Long **E\*TRADE Trader** and **E\*TRADE Short Trader** may use the **same brokerage account**.
 
+## Shared API (required)
+
+Both sleeves use **one** E\*TRADE API connection:
+
+| Shared (from `etrade_config.json`) | Independent per sleeve |
+|------------------------------------|-------------------------|
+| Consumer key / secret | `background_worker.dry_run` (**practice mode**) |
+| Sandbox vs production | `auto_execute` / `live_trading` / `day_trading` |
+| OAuth tokens (`etrade_tokens.json`) | Long `strategy` vs short `short_strategy` |
+| Selected account | Plans, trade logs, day-trade state |
+
+Implementation: `shared_etrade_api.py`. Short config may **mirror** API fields for display, but runtime always loads the API from the long config. Connect once in Unified/Long Settings.
+
+**Practice mode:** Long can be LIVE while Short stays PRACTICE (or the reverse). Toggles live on Unified Home and each sleeve’s automation controls.
+
 ## Rules
 
 ### 1. Shared capital (one pool) + joint profit coordination

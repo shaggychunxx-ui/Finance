@@ -1,17 +1,7 @@
 {
-  "comment": "Sister app config for short selling. Shares OAuth tokens with the long trader via token_path when left as etrade_tokens.json. Defaults are safer: dry_run true, conservative size limits.",
-  "consumer_key": "YOUR_CONSUMER_KEY",
-  "consumer_secret": "YOUR_CONSUMER_SECRET",
-  "sandbox": true,
-  "callback_url": "http://127.0.0.1:8765/callback",
-  "use_oob": true,
-  "token_path": "etrade_tokens.json",
+  "comment": "Short sleeve strategy + independent practice mode. API keys, sandbox, tokens, and selected account ALWAYS come from etrade_config.json (shared_etrade_api). Do not put separate API credentials here.",
+  "shared_api_from": "etrade_config.json",
   "inherit_credentials_from": "etrade_config.json",
-  "selected_account": {
-    "account_id_key": "",
-    "display_label": "",
-    "confirmed_at": ""
-  },
   "short_strategy": {
     "enabled": true,
     "cash_buffer_pct": 20.0,
@@ -72,5 +62,17 @@
     "plan": "Every 30 min — rebuild short book from bearish agent scores",
     "live_trading": "Every 20 min — SELL_SHORT / BUY_TO_COVER (market hours, when live enabled)",
     "day_trading": "Every 5 min — intraday short entries/covers from 24h down signals"
+  },
+  "sleeve_policy": {
+    "enabled": true,
+    "shared_capital": true,
+    "coordinate_for_profit": true,
+    "long_max_deploy_pct": 75.0,
+    "long_capital_cap_mode": "pct",
+    "long_max_capital_usd": 5000.0,
+    "short_max_deploy_pct": 35.0,
+    "shared_cash_buffer_pct": 5.0,
+    "forbid_opposite_side": true,
+    "forbid_same_symbol_both_sleeves": true
   }
 }

@@ -54,8 +54,12 @@ from strategy_engine import StrategyPlan, plan_from_dict  # noqa: E402
 
 
 def short_path_bundle() -> dict[str, Path]:
+    # Sleeve-local strategy/practice settings in SHORT_CONFIG;
+    # shared E*TRADE API (keys, sandbox, tokens, account) from long config.
+    long_api = ROOT / "etrade_config.json"
     return {
         "config": SHORT_CONFIG,
+        "api_config": long_api,
         "config_example": SHORT_CONFIG_EXAMPLE,
         "plan": SHORT_PLAN_FILE,
         "day_state": SHORT_DAY_STATE_FILE,
@@ -84,27 +88,23 @@ def _apply_short_identity() -> None:
 
 
 def _ensure_short_config_seeded() -> None:
+    """Seed short strategy config; API always mirrors long etrade_config.json."""
     from short_config import ensure_short_config, load_merged_short_config, write_short_config_raw
 
     ensure_short_config()
+    try:
+        from shared_etrade_api import mirror_shared_api_into_short
+
+        mirror_shared_api_into_short()
+    except Exception:
+        pass
     merged = load_merged_short_config()
-    if not SHORT_CONFIG.exists() or not merged.get("consumer_key"):
-        return
     raw: dict[str, Any] = {}
     try:
-        raw = json.loads(SHORT_CONFIG.read_text(encoding="utf-8"))
+        raw = json.loads(SHORT_CONFIG.read_text(encoding="utf-8")) if SHORT_CONFIG.exists() else {}
     except (json.JSONDecodeError, OSError):
         raw = {}
-    changed = False
-    for key in ("consumer_key", "consumer_secret", "token_path", "callback_url", "use_oob", "sandbox"):
-        if (not raw.get(key) or str(raw.get(key, "")).startswith("YOUR_")) and merged.get(key) is not None:
-            raw[key] = merged[key]
-            changed = True
-    if not (raw.get("selected_account") or {}).get("account_id_key"):
-        sel = merged.get("selected_account")
-        if isinstance(sel, dict) and sel.get("account_id_key"):
-            raw["selected_account"] = sel
-            changed = True
+    raw.setdefault("shared_api_from", "etrade_config.json")
     raw.setdefault("inherit_credentials_from", "etrade_config.json")
     raw.setdefault(
         "background_worker",
@@ -117,10 +117,13 @@ def _ensure_short_config_seeded() -> None:
             "dry_run": True,
         },
     )
+    # Independent practice default for short if never set
+    worker = raw.setdefault("background_worker", {})
+    if isinstance(worker, dict) and "dry_run" not in worker:
+        worker["dry_run"] = True
     raw.setdefault("short_strategy", merged.get("short_strategy") or {})
     raw.setdefault("short_day_trading", merged.get("short_day_trading") or {})
-    if changed or not SHORT_CONFIG.exists():
-        write_short_config_raw(raw)
+    write_short_config_raw(raw)
 
 
 class ShortTraderApp(ETradeTraderApp):
