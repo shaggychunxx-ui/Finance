@@ -15,7 +15,8 @@ Live only in ``etrade_config.json``. Short strategy knobs stay in
 ``background_worker.dry_run`` — long can be live while short stays in
 practice (or the reverse).
 
-Phone / GitStatus summary: ``feature_snapshot()``.
+E*TRADE Trader **phone app** summary: ``feature_snapshot()`` (via phone_bridge
+``/api/dashboard`` + ``/api/features``). Not the GitStatus phone bus.
 """
 
 from __future__ import annotations
@@ -213,7 +214,7 @@ def set_sleeve_practice_mode(sleeve: SleeveName, dry_run: bool) -> dict[str, Any
 
 
 def feature_snapshot() -> dict[str, Any]:
-    """Compact feature/data snapshot for STATUS / GitStatus / phone."""
+    """Compact feature/data snapshot for the E*TRADE Trader phone app."""
     long_raw = read_long_raw()
     short_raw = read_short_raw()
     lw = _worker_block(long_raw)

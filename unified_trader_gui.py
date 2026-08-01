@@ -658,7 +658,7 @@ class UnifiedTraderApp:
                 self._snap.delete(item)
             rows = [
                 ("Mode", lm, sm),
-                ("Environment", env_l, env_s),
+                ("API env", env, env),
                 ("Account", self._shorten(long_acct, 28), self._shorten(short_acct, 28)),
                 ("Practice", "ON" if lw.get("dry_run") else "OFF", "ON" if sw.get("dry_run") else "OFF"),
                 ("Auto-trade", "ON" if lw.get("auto_execute") else "OFF", "ON" if sw.get("auto_execute") else "OFF"),
@@ -668,6 +668,7 @@ class UnifiedTraderApp:
                 ("# ideas", str(len(long_rows)), str(len(short_rows))),
                 ("Config", LONG_CONFIG.name, SHORT_CONFIG.name),
                 ("Isolation", "Longs only", "Shorts only"),
+                ("Shared API", "Yes (etrade_config)", "Yes (same)"),
                 ("Shared capital", "Yes", "Yes"),
             ]
             for i, (a, b, c) in enumerate(rows):
