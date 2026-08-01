@@ -31,3 +31,12 @@ Make **BOXONE** the E*TRADE **broker** host; **AI-CODING** is already **pipeline
 ## Result
 
 (empty until BOXONE completes)
+
+## Command (run on BOXONE)
+
+`powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File \\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.ps1
+`
+
+Or double-click \\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat
+

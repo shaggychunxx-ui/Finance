@@ -11,7 +11,16 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ FinanceWorksp
 
 ## NOTIFY
 
-- **NOTIFY BOXONE:** Role flip **B** applied on AI-CODING. You are now **broker** (E*TRADE OAuth/UI/orders/quotes). AI-CODING is **pipeline** only. Copy FinanceShare/_deploy/deployment.json.broker-for-BOXONE.json to runtime deployment.json, restart Unified Trader + worker, confirm broker/ share updates. Task tasks/pending/042-boxone-broker-role-flip.md. Read ROLE_FLIP_B.md on share. Ack once, set Act on: none -- no ping-pong.
+- **NOTIFY BOXONE:** RUN THIS NOW (PowerShell on BOXONE):
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.ps1"
+```
+
+  Or double-click `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`
+
+  Then open ETrade Unified Trader, restart worker, confirm share `broker/` is fresh. Task **042**. Practice stays ON. Ack once, set Act on: none.
+
 
 
 ## Done
@@ -47,7 +56,8 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ FinanceWorksp
 
 ## Next
 
-- [ ] **BOXONE:** Apply broker role (deployment.json from share _deploy/deployment.json.broker-for-BOXONE.json); keep practice/dry-run; restart UI+worker; verify share broker/ freshness. Task **042**.
+- [ ] **BOXONE:** Run broker apply script (see NOTIFY one-liner / `Apply-Broker-Role-BOXONE.ps1` on share). Restart Unified Trader + worker. Verify share `broker/` freshness. Task **042**.
+
 
 
 ## Blockers
