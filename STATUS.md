@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-01
-**Updated by:** AI-CODING
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** AI-CODING
 
 ## Current goal
 
@@ -35,6 +35,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - (none — dropshipping info now under `dropshipping/`; ShopifyDS remains ops)
+- [ ] **AI-CODING** goal: increase daily and total average  p/l.    give group appropriate points for each 1.0% increase in total p/l.
 
 ## Blockers
 
@@ -51,3 +52,5 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
 - **Pipeline 0/0 hint:** string from last `record_pipeline_run` / memory bundle; `0/0` = empty agent count that cycle, not mass agent failure.
 - **Group scoring:** each agent group graded by function (alpha vs calibration vs risk vs platform/execution, etc.). Source: `agent_groups.py` `scoring` + `all_scoring_systems()`.
+- PHONE: goal: increase daily and total average  p/l.    give group appropriate points for each 1.0% increase in total p/l. → Act on AI-CODING
+
