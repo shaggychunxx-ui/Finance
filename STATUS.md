@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-07-31
-**Updated by:** AI-CODING
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** BOXONE
+**Act on:** AI-CODING
 
 ## Current goal
 
@@ -29,6 +29,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - (none)
+- [ ] **AI-CODING** agent groups  give each group a scoring system based on the function of the group.
 
 ## Blockers
 
@@ -43,3 +44,5 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - Armed for HUMAN GitStatus: Send any message from phone on Finance window → AI-CODING should claim and respond.
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
 - **Pipeline 0/0 hint:** string from last `record_pipeline_run` / memory bundle; `0/0` = empty agent count that cycle, not mass agent failure.
+- PHONE: agent groups  give each group a scoring system based on the function of the group. → Act on AI-CODING
+
