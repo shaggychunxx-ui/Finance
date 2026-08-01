@@ -143,7 +143,7 @@
     "pipeline_off_hours_interval_minutes": 45,
     "accuracy_interval_minutes": 5,
     "accuracy_off_hours_interval_minutes": 30,
-    "pipeline_market_hours_only": false,
+    "pipeline_market_hours_only": true,
     "live_accuracy": {
       "enabled": true,
       "min_live_samples_full": 25,
@@ -170,10 +170,11 @@
     "allow_lan_without_auth": false
   },
   "trading_tasks": {
-    "agents": "Every 5 min — run Finance agents and Market Predictor",
-    "plan": "Every 30 min — rebuild strategy plan from agent research",
-    "live_trading": "Every 15 min — submit LIVE swing orders (market hours)",
-    "day_trading": "Every 5 min — intraday entries/exits from 24h signals (market hours)"
+    "agents": "Market hours only — agent lanes (critical/quant/flow/research)",
+    "plan": "Market hours — rebuild strategy plan from agent research",
+    "live_trading": "Market hours — submit swing orders when live enabled",
+    "day_trading": "Market hours — intraday entries/exits from 24h signals",
+    "night_backtest": "Off-hours continuous full-day walk-forward (run_backtest_loop.py --service)"
   },
   "sleeve_policy": {
     "enabled": true,

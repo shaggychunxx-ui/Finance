@@ -55,7 +55,7 @@ DEFAULT_WORKER = {
     "pipeline_off_hours_interval_minutes": 30,
     "accuracy_interval_minutes": 15,
     "accuracy_off_hours_interval_minutes": 60,
-    "pipeline_market_hours_only": False,
+    "pipeline_market_hours_only": True,
     "plan_interval_minutes": 20,
     "execute_min_interval_minutes": 15,
     "day_trading_interval_minutes": 5,
@@ -987,16 +987,24 @@ def _run_pipeline(
     calibration_due = _daily_calibration_due(state, config_path=config_path)
     market_open = is_us_market_open()
     off_hours_ok = _pipeline_runs_off_hours(settings)
-    if not force and not calibration_due and not market_open and not off_hours_ok:
-        _log("Pipeline skipped - US market closed (off-hours pipeline disabled).")
+    # When pipeline_market_hours_only is on, never run agent lanes overnight —
+    # including the 6am calibration flag (it fires on the first RTH cycle instead).
+    if not force and not market_open and not off_hours_ok:
+        if calibration_due:
+            _log(
+                "Daily calibration deferred — market closed "
+                "(pipeline_market_hours_only); will run after open."
+            )
+        else:
+            _log("Pipeline skipped - US market closed (off-hours pipeline disabled).")
         return False
 
-    session = "market" if (market_open or calibration_due) else "off_hours"
+    session = "market" if market_open else "off_hours"
     due_lanes = _lanes_due(
         state,
         settings,
-        market_open=bool(market_open or calibration_due),
-        force=force or calibration_due,
+        market_open=bool(market_open),
+        force=force or (calibration_due and market_open),
     )
     if only_lanes is not None:
         wanted = {str(x).strip().lower() for x in only_lanes}

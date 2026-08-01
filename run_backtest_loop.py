@@ -3,15 +3,15 @@
 
 Runs ``historical_simulation.run_accuracy_benchmark`` on a repeating timer,
 scoring every agent's historical predictions against realized returns and
-rebuilding ``output/history/agent_learning.json`` after every cycle. Designed
-to run alongside or independently of ``run_pipeline_loop.py`` /
-``run_market_predictor_loop.py`` without clobbering their state files.
+rebuilding ``output/history/agent_learning.json`` after every cycle.
 
-Usage::
+Night-only continuous mode (recommended with market-hours pipeline)::
 
-    python run_backtest_loop.py --interval-minutes 60
-    python run_backtest_loop.py --interval-minutes 15 --once
-    python run_backtest_loop.py --target-trials 2000 --max-symbols 60
+    python run_backtest_loop.py --night-only --continuous --full-day
+    pythonw run_backtest_loop.py --service
+
+During US regular session the night-only loop sleeps; after the close (and on
+weekends) it runs full-day walk-forwards back-to-back.
 
 Press Ctrl+C (or send SIGTERM) to stop cleanly after the current cycle.
 """
@@ -26,15 +26,21 @@ import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
 
-from app_paths import OUTPUT, ensure_app_path
+from app_paths import OUTPUT, ROOT, ensure_app_path
 
 ensure_app_path()
 
 STATE_FILE = OUTPUT / "history" / "backtest_loop_state.json"
 LOG_FILE = OUTPUT / "history" / "backtest_loop.log"
+SERVICE_LOCK = OUTPUT / "history" / "backtest_loop.lock"
+SERVICE_MUTEX_NAME = "Local\\FinanceFullDayBacktestNightService"
+ET_TZ = ZoneInfo("America/New_York")
 
 _shutdown_requested = False
+_service_mutex_handle: int | None = None
 
 
 def _request_shutdown(signum: int, frame: object) -> None:  # noqa: ARG001
@@ -69,6 +75,35 @@ def _log(message: str) -> None:
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with LOG_FILE.open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
+
+
+def is_us_regular_session(now: datetime | None = None) -> bool:
+    """True Mon–Fri 09:30–16:00 America/New_York (no holiday calendar)."""
+    now = now or datetime.now(ET_TZ)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=ET_TZ)
+    else:
+        now = now.astimezone(ET_TZ)
+    if now.weekday() >= 5:
+        return False
+    open_ = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    return open_ <= now < close
+
+
+def full_day_defaults() -> dict[str, Any]:
+    """Match pipeline daily_calibration (full-day) profile when present."""
+    defaults = {"target_trials": 10000, "max_symbols": 400, "full": True}
+    try:
+        from historical_simulation import resolve_pipeline_benchmark
+
+        cfg = resolve_pipeline_benchmark("daily")
+        defaults["target_trials"] = int(cfg.get("target_trials") or 10000)
+        defaults["max_symbols"] = int(cfg.get("max_symbols") or 400)
+        defaults["full"] = bool(cfg.get("full", True))
+    except Exception:
+        pass
+    return defaults
 
 
 def run_backtest_cycle(*, target_trials: int, max_symbols: int, full: bool) -> dict:
@@ -107,7 +142,28 @@ def run_backtest_cycle(*, target_trials: int, max_symbols: int, full: bool) -> d
         "top_agent": leader,
         "backtest_ok": ok,
         "status": "ok" if ok else "error",
+        "session": "night" if not is_us_regular_session() else "market",
     }
+
+
+def _sleep_interruptible(seconds: float) -> None:
+    end = time.monotonic() + max(0.0, seconds)
+    while time.monotonic() < end:
+        if _shutdown_requested:
+            return
+        time.sleep(min(1.0, end - time.monotonic()))
+
+
+def _wait_for_night_session(*, poll_seconds: float = 60.0) -> bool:
+    """Sleep until US regular session ends (or shutdown). Return False if shutdown."""
+    while not _shutdown_requested and is_us_regular_session():
+        now = datetime.now(ET_TZ)
+        _log(
+            f"  Market open ({now.strftime('%Y-%m-%d %H:%M %Z')}) — "
+            "night-only backtest paused; sleeping 60s …"
+        )
+        _sleep_interruptible(poll_seconds)
+    return not _shutdown_requested
 
 
 def run_loop(
@@ -117,10 +173,15 @@ def run_loop(
     max_symbols: int,
     full: bool,
     once: bool = False,
+    night_only: bool = False,
+    continuous: bool = False,
 ) -> int:
     """Main loop: run cycles separated by *interval_minutes*.
 
-    If *once* is True, run exactly one cycle and exit.
+    *continuous*: start the next cycle as soon as the previous finishes
+    (interval only used as a tiny settle pause, default 5s).
+    *night_only*: skip / wait during US regular market hours.
+    *once*: run exactly one eligible cycle and exit.
     """
     signal.signal(signal.SIGTERM, _request_shutdown)
     signal.signal(signal.SIGINT, _request_shutdown)
@@ -128,22 +189,50 @@ def run_loop(
     state = _load_state()
     if not state.get("started_at"):
         state["started_at"] = _now_iso()
+    state["mode"] = {
+        "night_only": night_only,
+        "continuous": continuous,
+        "interval_minutes": interval_minutes,
+        "target_trials": target_trials,
+        "max_symbols": max_symbols,
+        "full": full,
+    }
     _save_state(state)
 
-    mode = "once" if once else f"every {interval_minutes} minutes"
+    if once:
+        mode = "once"
+    elif night_only and continuous:
+        mode = "night-only continuous (full-day when RTH closed)"
+    elif night_only:
+        mode = f"night-only every {interval_minutes} minutes"
+    elif continuous:
+        mode = "continuous (back-to-back)"
+    else:
+        mode = f"every {interval_minutes} minutes"
+
     _log(f"Backtest loop starting — {mode}")
     _log(f"  Benchmark   → {OUTPUT / 'history' / 'accuracy_benchmark.json'}")
     _log(f"  Learning    → {OUTPUT / 'history' / 'agent_learning.json'}")
     _log(f"  State       → {STATE_FILE}")
     _log(f"  Log         → {LOG_FILE}")
+    _log(f"  Trials/symbols/full → {target_trials:,} / {max_symbols} / {full}")
 
-    cycle_num = state.get("cycles", 0)
+    cycle_num = int(state.get("cycles", 0) or 0)
     failures = 0
+    settle_sec = 5.0 if continuous else max(0.0, float(interval_minutes) * 60.0)
 
     while True:
         if _shutdown_requested:
             _log("Shutdown requested before starting cycle — exiting cleanly.")
             break
+
+        if night_only and is_us_regular_session():
+            if once:
+                _log("Once + night-only: market is open — nothing to run; exit.")
+                break
+            if not _wait_for_night_session():
+                break
+            continue
 
         cycle_num += 1
         _log(f"Cycle {cycle_num} — starting")
@@ -185,18 +274,99 @@ def run_loop(
         if once or _shutdown_requested:
             break
 
-        _log(f"  Sleeping {interval_minutes} minutes until next cycle …")
-        sleep_end = time.monotonic() + interval_minutes * 60
-        while time.monotonic() < sleep_end:
-            if _shutdown_requested:
-                break
-            time.sleep(1)
+        # If market opened mid-cycle, go idle until night again.
+        if night_only and is_us_regular_session():
+            _log("  Market opened during/after cycle — pausing until night.")
+            continue
 
-    _log(f"Backtest loop finished — {cycle_num - failures}/{cycle_num} cycles succeeded")
+        if continuous:
+            _log(f"  Continuous mode — settle {settle_sec:.0f}s then next cycle …")
+        else:
+            _log(f"  Sleeping {interval_minutes} minutes until next cycle …")
+        _sleep_interruptible(settle_sec)
+
+    _log(f"Backtest loop finished — {cycle_num - failures}/{max(cycle_num, 1)} cycles succeeded")
     return 0 if failures == 0 else 1
 
 
+def acquire_service_lock() -> bool:
+    global _service_mutex_handle
+    SERVICE_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            handle = kernel32.CreateMutexW(None, False, SERVICE_MUTEX_NAME)
+            last_error = kernel32.GetLastError()
+            if not handle:
+                return False
+            if last_error == 183:  # ERROR_ALREADY_EXISTS
+                kernel32.CloseHandle(handle)
+                return False
+            _service_mutex_handle = handle
+        except Exception:
+            pass
+    if SERVICE_LOCK.exists():
+        try:
+            age = time.time() - SERVICE_LOCK.stat().st_mtime
+            pid_txt = SERVICE_LOCK.read_text(encoding="utf-8").strip()
+            pid = int(pid_txt) if pid_txt.isdigit() else 0
+            if age < 7200 and pid and pid != __import__("os").getpid():
+                try:
+                    import os
+
+                    os.kill(pid, 0)
+                    return False
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    SERVICE_LOCK.write_text(str(__import__("os").getpid()), encoding="utf-8")
+    return True
+
+
+def release_service_lock() -> None:
+    global _service_mutex_handle
+    try:
+        if SERVICE_LOCK.exists():
+            SERVICE_LOCK.unlink(missing_ok=True)
+    except OSError:
+        pass
+    if _service_mutex_handle and sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.CloseHandle(_service_mutex_handle)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        _service_mutex_handle = None
+
+
+def run_service() -> int:
+    """Night-only continuous full-day backtest service (single instance)."""
+    if not acquire_service_lock():
+        _log("Night backtest service already running — exit.")
+        return 0
+    defaults = full_day_defaults()
+    _log(f"Night backtest service started (pid {__import__('os').getpid()}).")
+    try:
+        return run_loop(
+            interval_minutes=0,
+            target_trials=int(defaults["target_trials"]),
+            max_symbols=int(defaults["max_symbols"]),
+            full=bool(defaults["full"]),
+            once=False,
+            night_only=True,
+            continuous=True,
+        )
+    finally:
+        release_service_lock()
+        _log("Night backtest service stopped.")
+
+
 def main() -> int:
+    defaults = full_day_defaults()
     parser = argparse.ArgumentParser(
         description="Continuously run walk-forward backtests for agent learning"
     )
@@ -205,21 +375,21 @@ def main() -> int:
         type=float,
         default=60.0,
         metavar="N",
-        help="Minutes between backtest cycles (default: 60)",
+        help="Minutes between backtest cycles when not --continuous (default: 60)",
     )
     parser.add_argument(
         "--target-trials",
         type=int,
-        default=1000,
+        default=None,
         metavar="N",
-        help="Target walk-forward trials per cycle (default: 1000)",
+        help=f"Target walk-forward trials (default: {defaults['target_trials']} with --full-day/--service)",
     )
     parser.add_argument(
         "--max-symbols",
         type=int,
-        default=40,
+        default=None,
         metavar="N",
-        help="Symbol universe size per cycle (default: 40)",
+        help=f"Symbol universe size (default: {defaults['max_symbols']} with --full-day/--service)",
     )
     parser.add_argument(
         "--quick",
@@ -227,26 +397,69 @@ def main() -> int:
         help="Use the reduced (quick) horizon/lookback set instead of the full backtest",
     )
     parser.add_argument(
+        "--full-day",
+        action="store_true",
+        help="Use daily calibration size (10k trials / 400 symbols / full horizons)",
+    )
+    parser.add_argument(
+        "--night-only",
+        action="store_true",
+        help="Only run when US regular session is closed (nights + weekends)",
+    )
+    parser.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Start next cycle immediately after the previous finishes",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help="Run a single cycle then exit (useful for testing)",
     )
+    parser.add_argument(
+        "--service",
+        action="store_true",
+        help="Single-instance night-only continuous full-day service",
+    )
     args = parser.parse_args()
-    if args.interval_minutes <= 0:
-        print("--interval-minutes must be > 0", file=sys.stderr)
+
+    if args.service:
+        return run_service()
+
+    use_full_day = args.full_day or args.night_only or args.continuous
+    target = args.target_trials
+    symbols = args.max_symbols
+    if use_full_day:
+        if target is None:
+            target = int(defaults["target_trials"])
+        if symbols is None:
+            symbols = int(defaults["max_symbols"])
+        full = not args.quick
+    else:
+        if target is None:
+            target = 1000
+        if symbols is None:
+            symbols = 40
+        full = not args.quick
+
+    if args.interval_minutes < 0:
+        print("--interval-minutes must be >= 0", file=sys.stderr)
         return 2
-    if args.target_trials < 1:
+    if target < 1:
         print("--target-trials must be >= 1", file=sys.stderr)
         return 2
-    if args.max_symbols < 1:
+    if symbols < 1:
         print("--max-symbols must be >= 1", file=sys.stderr)
         return 2
+
     return run_loop(
-        interval_minutes=args.interval_minutes,
-        target_trials=args.target_trials,
-        max_symbols=args.max_symbols,
-        full=not args.quick,
+        interval_minutes=float(args.interval_minutes),
+        target_trials=int(target),
+        max_symbols=int(symbols),
+        full=full,
         once=args.once,
+        night_only=bool(args.night_only or args.service),
+        continuous=bool(args.continuous or args.service),
     )
 
 
