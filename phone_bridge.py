@@ -2040,6 +2040,161 @@ def build_agents_for_phone() -> dict[str, Any]:
     }
 
 
+def build_orders_for_phone() -> dict[str, Any]:
+    """Best-effort broker orders for the phone Orders window (PC tokens required)."""
+    try:
+        from etrade_api.client import ETradeClient
+        from etrade_api.config import ETradeConfig
+
+        cfg = None
+        if hasattr(ETradeConfig, "load"):
+            try:
+                cfg = ETradeConfig.load(LONG_CONFIG)
+            except Exception:
+                cfg = None
+        if cfg is None:
+            try:
+                from etrade_api.config import load_config
+
+                cfg = load_config(LONG_CONFIG)
+            except Exception:
+                cfg = None
+        if cfg is None:
+            return {
+                "ok": True,
+                "orders": [],
+                "source": "none",
+                "message": "No E*TRADE config on PC",
+            }
+        client = ETradeClient(cfg)
+        key = ""
+        snap = _load_account_snapshot()
+        if isinstance(snap, dict):
+            key = str(snap.get("account_id_key") or "")
+        if not key and hasattr(client, "list_accounts"):
+            try:
+                accounts = client.list_accounts() or []
+                if accounts and isinstance(accounts[0], dict):
+                    key = str(accounts[0].get("account_id_key") or "")
+            except Exception:
+                key = ""
+        if not key:
+            return {
+                "ok": True,
+                "orders": [],
+                "source": "none",
+                "message": "No account id on PC",
+            }
+        raw: list[Any] = []
+        for meth in ("list_orders", "get_orders", "get_order_list"):
+            if hasattr(client, meth):
+                try:
+                    raw = getattr(client, meth)(key) or []
+                    break
+                except Exception as exc:
+                    return {
+                        "ok": True,
+                        "orders": [],
+                        "source": "error",
+                        "message": str(exc),
+                    }
+        if not isinstance(raw, list):
+            raw = []
+        orders: list[dict[str, Any]] = []
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            oid = str(
+                row.get("order_id")
+                or row.get("orderId")
+                or row.get("orderNumber")
+                or ""
+            )
+            sym = str(row.get("symbol") or row.get("Symbol") or "—")
+            action = str(row.get("action") or row.get("orderAction") or "—")
+            status = str(row.get("status") or row.get("orderStatus") or "—")
+            qty = _f(row.get("quantity") or row.get("orderedQuantity"))
+            filled = _f(row.get("filled_quantity") or row.get("filledQuantity"))
+            limit_p = _f(row.get("limit_price") or row.get("limitPrice"))
+            stop_p = _f(row.get("stop_price") or row.get("stopPrice"))
+            avg_p = _f(row.get("average_fill_price") or row.get("averageExecutionPrice"))
+            price_type = row.get("price_type") or row.get("priceType")
+            value = None
+            if qty is not None and (avg_p is not None or limit_p is not None):
+                px = avg_p if avg_p is not None else limit_p
+                value = abs(qty) * float(px) if px is not None else None
+            orders.append(
+                {
+                    "order_id": oid or f"{sym}-{status}",
+                    "symbol": sym,
+                    "action": action,
+                    "status": status,
+                    "quantity": qty,
+                    "filled_quantity": filled,
+                    "price_type": price_type,
+                    "limit_price": limit_p,
+                    "stop_price": stop_p,
+                    "average_fill_price": avg_p,
+                    "order_value": value,
+                    "display": {
+                        "quantity": f"{qty:g}" if qty is not None else "—",
+                        "filled": f"{filled:g}" if filled is not None else "—",
+                        "price": _money(avg_p or limit_p or stop_p)
+                        if (avg_p or limit_p or stop_p) is not None
+                        else "—",
+                        "value": _money(value) if value is not None else "—",
+                        "status": status,
+                        "action": action,
+                        "placed": str(row.get("placed_time") or row.get("placedTime") or "—"),
+                    },
+                }
+            )
+        return {
+            "ok": True,
+            "orders": orders,
+            "count": len(orders),
+            "source": "pc_live" if orders else "pc_empty",
+            "message": f"{len(orders)} orders from PC",
+        }
+    except Exception as exc:
+        return {
+            "ok": True,
+            "orders": [],
+            "source": "error",
+            "message": str(exc),
+        }
+
+
+def build_full_for_phone(force_refresh: bool = True) -> dict[str, Any]:
+    """One-shot full data pack for the phone: dashboard + agents + accounts + orders."""
+    dash = build_dashboard(force_refresh=force_refresh)
+    agents = build_agents_for_phone()
+    accounts = list_accounts_for_phone()
+    orders = build_orders_for_phone()
+    return {
+        "ok": True,
+        "version": BRIDGE_VERSION,
+        "updated_at": time.time(),
+        "force_refresh": bool(force_refresh),
+        "data_pull": dash.get("data_pull") or {},
+        "dashboard": dash,
+        "agents": agents,
+        "accounts": accounts,
+        "orders": orders,
+    }
+
+
+def _wants_force_refresh(query: dict[str, list[str]]) -> bool:
+    """True when phone requests a full/live PC pull (?refresh=1 or ?full=1)."""
+    for key in ("refresh", "full", "force"):
+        vals = query.get(key) or []
+        for v in vals:
+            s = str(v).strip().lower()
+            if s in ("1", "true", "yes", "full", "force"):
+                return True
+    return False
+
+
 class BridgeHandler(BaseHTTPRequestHandler):
     bridge_token: str = ""
 
@@ -2102,7 +2257,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path.rstrip("/") or "/"
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        query = parse_qs(parsed.query or "")
+        force = _wants_force_refresh(query)
         try:
             if path == "/health":
                 ips = lan_ips()
@@ -2119,6 +2277,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         "shared_api": True,
                         "practice_independent": True,
                         "features_path": "/api/features",
+                        "full_path": "/api/full",
+                        "orders_path": "/api/orders",
                     },
                 )
                 return
@@ -2126,7 +2286,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 self._send(401, {"ok": False, "error": "Unauthorized â€” set bridge token in the phone app"})
                 return
             if path == "/api/dashboard":
-                self._send(200, build_dashboard())
+                self._send(200, build_dashboard(force_refresh=force))
+                return
+            if path == "/api/full":
+                # Full data pull pack for phone Refresh (default force live when ?refresh omitted)
+                self._send(200, build_full_for_phone(force_refresh=True if not query else force or True))
+                return
+            if path == "/api/orders":
+                self._send(200, build_orders_for_phone())
                 return
             if path == "/api/features":
                 self._send(200, build_features_for_phone())
