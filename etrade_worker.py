@@ -1072,6 +1072,24 @@ def _run_pipeline(
     state["pipeline_active"] = True
     state["pipeline_progress"] = f"Starting lanes: {', '.join(due_lanes)}"
     state["pipeline_progress_at"] = time.time()
+    # Load night walk-forward learning brief for RTH (agents/fusion consume via learning files).
+    if market_open:
+        try:
+            from agent_learning import load_next_session_brief, write_next_session_brief
+
+            brief = load_next_session_brief()
+            if not brief.get("updated_at"):
+                brief = write_next_session_brief()
+            state["next_session_brief_at"] = brief.get("updated_at")
+            state["learning_boost_agents"] = list(brief.get("boost_agents") or [])[:12]
+            state["learning_cut_agents"] = list(brief.get("cut_agents") or [])[:12]
+            _log(
+                "Loaded next_session_brief — "
+                f"boost={','.join(state['learning_boost_agents'][:5]) or '—'} "
+                f"cut={','.join(state['learning_cut_agents'][:5]) or '—'}"
+            )
+        except Exception as exc:
+            _log(f"next_session_brief load note: {exc}")
     save_worker_state(state)
 
     ok = 0

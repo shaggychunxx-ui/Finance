@@ -15,10 +15,12 @@ ACCURACY_FILE = HISTORY_ROOT / "prediction_accuracy.json"
 BENCHMARK_FILE = HISTORY_ROOT / "accuracy_benchmark.json"
 SIM_FILE = HISTORY_ROOT / "historical_simulation.json"
 PENALTIES_FILE = HISTORY_ROOT / "balance_penalties.json"
+BRIEF_FILE = HISTORY_ROOT / "next_session_brief.json"
+LEARNING_POLICY_FILE = HISTORY_ROOT / "learning_policy.json"
 
 MIN_SYMBOL_SAMPLES = 5
 MIN_AGENT_SAMPLES = 8
-MAX_LESSONS = 3
+MAX_LESSONS = 4
 MAX_SYMBOL_NOTES = 12
 
 
@@ -38,6 +40,12 @@ class AgentLearning:
     bearish_miss_rate: float | None
     blame_score: float
     updated_at: str
+    # Enriched from walk-forward trial journal / benchmark
+    edge_score: float = 0.0
+    sample_trials: int = 0
+    horizon_weights: tuple[tuple[str, float], ...] = ()
+    min_confidence_to_emit: float = 0.35
+    source: str = "mixed"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -54,6 +62,11 @@ class AgentLearning:
             "bullish_miss_rate": self.bullish_miss_rate,
             "bearish_miss_rate": self.bearish_miss_rate,
             "blame_score": round(self.blame_score, 4),
+            "edge_score": round(self.edge_score, 4),
+            "sample_trials": int(self.sample_trials),
+            "horizon_weights": {h: round(w, 4) for h, w in self.horizon_weights},
+            "min_confidence_to_emit": round(self.min_confidence_to_emit, 4),
+            "source": self.source,
             "updated_at": self.updated_at,
         }
 
@@ -98,7 +111,46 @@ def _default_learning(agent_id: str) -> AgentLearning:
         bearish_miss_rate=None,
         blame_score=0.0,
         updated_at=_now_iso(),
+        edge_score=0.0,
+        sample_trials=0,
+        horizon_weights=(),
+        min_confidence_to_emit=0.35,
+        source="default",
     )
+
+
+def _horizon_weights_from_rows(rows: list[dict[str, Any]]) -> tuple[tuple[str, float], ...]:
+    by_h: dict[str, dict[str, int]] = {}
+    for row in rows:
+        h = str(row.get("horizon") or "")
+        if not h:
+            continue
+        bucket = by_h.setdefault(h, {"total": 0, "hits": 0})
+        bucket["total"] += 1
+        bucket["hits"] += 1 if row.get("hit") else 0
+    weights: list[tuple[str, float]] = []
+    for h, bucket in by_h.items():
+        total = bucket["total"]
+        if total < 4:
+            continue
+        acc = bucket["hits"] / total
+        # Map accuracy to a relative weight centered near 0.45 coin-ish baseline.
+        w = _clamp(0.55 + (acc - 0.30) * 1.4, 0.45, 1.35)
+        weights.append((h, w))
+    weights.sort(key=lambda item: item[1], reverse=True)
+    return tuple(weights[:6])
+
+
+def _edge_score(accuracy_pct: float | None, samples: int) -> float:
+    if accuracy_pct is None or samples < MIN_AGENT_SAMPLES:
+        return 0.0
+    # Shrink toward 25% prior until samples grow.
+    prior = 25.0
+    n = min(200, max(0, samples))
+    shrink = n / (n + 40.0)
+    blended = prior * (1.0 - shrink) + float(accuracy_pct) * shrink
+    # Edge vs 30% soft floor used for ranking (not trading guarantee).
+    return round((blended - 30.0) / 20.0, 4)
 
 
 def _learning_store() -> dict[str, Any]:
@@ -214,9 +266,11 @@ def _build_learning(
     accuracy_entry: dict[str, Any] | None,
     scored_rows: list[dict[str, Any]],
     blame: float = 0.0,
+    source: str = "mixed",
 ) -> AgentLearning:
     accuracy_pct = None
     by_horizon: dict[str, Any] | None = None
+    sample_trials = 0
     if isinstance(accuracy_entry, dict):
         accuracy_pct = (
             accuracy_entry.get("combined_accuracy_pct")
@@ -226,8 +280,16 @@ def _build_learning(
         if accuracy_pct is not None:
             accuracy_pct = float(accuracy_pct)
         by_horizon = accuracy_entry.get("by_horizon")
+        sample_trials = int(
+            accuracy_entry.get("total_scored")
+            or accuracy_entry.get("total_trials")
+            or accuracy_entry.get("total")
+            or 0
+        )
 
-    recent = scored_rows[-80:]
+    recent = scored_rows[-200:] if scored_rows else []
+    if not sample_trials:
+        sample_trials = len(scored_rows)
     recent_miss = None
     if recent:
         misses = sum(1 for row in recent if not row.get("hit"))
@@ -253,19 +315,39 @@ def _build_learning(
     if recent_miss is not None:
         fusion_multiplier *= _clamp(1.0 - max(0.0, recent_miss - 0.5) * 0.5, 0.65, 1.0)
     fusion_multiplier *= _clamp(1.0 - blame * 0.4, 0.6, 1.0)
+    edge = _edge_score(accuracy_pct, sample_trials)
+    # Nudge fusion with edge so night walk-forward leaders gain a bit more weight.
+    fusion_multiplier *= _clamp(1.0 + edge * 0.12, 0.85, 1.15)
 
     avoid_symbols, trust_symbols = _symbol_stats(recent)
     preferred_horizon = _best_horizon(by_horizon)
+    # Prefer trial-derived horizon when available
+    hz_weights = _horizon_weights_from_rows(recent)
+    if hz_weights:
+        preferred_horizon = hz_weights[0][0]
     posture = _posture_for(accuracy_pct, recent_miss_rate=recent_miss)
-    lessons = _lessons_for(
-        agent_id,
-        accuracy_pct=accuracy_pct,
-        bull_miss=bull_miss,
-        bear_miss=bear_miss,
-        preferred_horizon=preferred_horizon,
-        avoid_symbols=avoid_symbols,
-        blame=blame,
+    lessons = list(
+        _lessons_for(
+            agent_id,
+            accuracy_pct=accuracy_pct,
+            bull_miss=bull_miss,
+            bear_miss=bear_miss,
+            preferred_horizon=preferred_horizon,
+            avoid_symbols=avoid_symbols,
+            blame=blame,
+        )
     )
+    if edge <= -0.25:
+        lessons.insert(0, "Walk-forward edge weak — require cluster agreement / lower size.")
+    elif edge >= 0.35:
+        lessons.insert(0, "Walk-forward edge positive — eligible for higher fusion weight.")
+    lessons = lessons[:MAX_LESSONS]
+
+    min_conf = 0.35
+    if accuracy_pct is not None and accuracy_pct < 28:
+        min_conf = 0.48
+    elif accuracy_pct is not None and accuracy_pct >= 40:
+        min_conf = 0.30
 
     return AgentLearning(
         agent_id=agent_id,
@@ -275,18 +357,23 @@ def _build_learning(
         fusion_multiplier=fusion_multiplier,
         preferred_horizon=preferred_horizon,
         posture=posture,
-        lessons=lessons,
+        lessons=tuple(lessons),
         avoid_symbols=avoid_symbols,
         trust_symbols=trust_symbols,
         bullish_miss_rate=bull_miss,
         bearish_miss_rate=bear_miss,
         blame_score=round(blame, 4),
         updated_at=_now_iso(),
+        edge_score=edge,
+        sample_trials=sample_trials,
+        horizon_weights=hz_weights,
+        min_confidence_to_emit=min_conf,
+        source=source,
     )
 
 
 def rebuild_agent_learning() -> dict[str, Any]:
-    """Rebuild per-agent learning profiles from accuracy, benchmark, and balance blame."""
+    """Rebuild per-agent learning from live accuracy, walk-forward journal, and blame."""
     from agents.platform_catalog import active_agent_sources
 
     accuracy = _load_json(ACCURACY_FILE) or {}
@@ -294,6 +381,14 @@ def rebuild_agent_learning() -> dict[str, Any]:
     penalties = _load_json(PENALTIES_FILE) or {}
 
     scored_rows = list(accuracy.get("scored") or []) if isinstance(accuracy, dict) else []
+    # Merge durable backtest trials (night continuous full-day loop).
+    try:
+        from backtest_trial_store import load_recent_trials
+
+        trial_rows = load_recent_trials(max_rows=25_000)
+    except Exception:
+        trial_rows = []
+
     accuracy_agents = accuracy.get("agents") if isinstance(accuracy.get("agents"), dict) else {}
     benchmark_agents = benchmark.get("agents") if isinstance(benchmark.get("agents"), dict) else {}
     blame_map = {
@@ -309,6 +404,12 @@ def rebuild_agent_learning() -> dict[str, Any]:
         aid = str(row.get("agent_id") or "")
         if aid:
             by_agent_scored.setdefault(aid, []).append(row)
+    for row in trial_rows:
+        if not isinstance(row, dict):
+            continue
+        aid = str(row.get("agent_id") or "")
+        if aid:
+            by_agent_scored.setdefault(aid, []).append(row)
 
     agents_out: dict[str, Any] = {}
     for src in active_agent_sources(check_remote=False):
@@ -317,35 +418,66 @@ def rebuild_agent_learning() -> dict[str, Any]:
             continue
         from agent_fusion import agent_uses_directional_accuracy
 
+        source = "live"
         entry = accuracy_agents.get(aid) if agent_uses_directional_accuracy(aid) else None
         if not isinstance(entry, dict) and aid in benchmark_agents:
             bench_row = benchmark_agents[aid]
             if isinstance(bench_row, dict):
+                source = "walk_forward"
                 entry = {
                     "combined_accuracy_pct": bench_row.get("accuracy_pct"),
                     "accuracy_pct": bench_row.get("accuracy_pct"),
                     "by_horizon": bench_row.get("by_horizon"),
                     "total_scored": bench_row.get("total_trials"),
+                    "total_trials": bench_row.get("total_trials"),
                 }
+        elif isinstance(entry, dict) and aid in benchmark_agents:
+            # Blend: prefer live entry but fill horizon gaps from benchmark.
+            source = "live+walk_forward"
+            bench_row = benchmark_agents[aid]
+            if isinstance(bench_row, dict):
+                if not entry.get("by_horizon") and bench_row.get("by_horizon"):
+                    entry = dict(entry)
+                    entry["by_horizon"] = bench_row.get("by_horizon")
+                if not entry.get("total_scored") and bench_row.get("total_trials"):
+                    entry = dict(entry)
+                    entry["total_scored"] = bench_row.get("total_trials")
+
+        agent_rows = by_agent_scored.get(aid, [])
         learning = _build_learning(
             aid,
             accuracy_entry=entry if isinstance(entry, dict) else None,
-            scored_rows=by_agent_scored.get(aid, []),
+            scored_rows=agent_rows,
             blame=blame_map.get(aid, 0.0),
+            source=source if agent_rows or entry else "default",
         )
         total = int((entry or {}).get("total_scored") or (entry or {}).get("total") or 0)
-        if total >= MIN_AGENT_SAMPLES or by_agent_scored.get(aid) or aid in benchmark_agents:
+        if total >= MIN_AGENT_SAMPLES or agent_rows or aid in benchmark_agents:
             agents_out[aid] = learning.as_dict()
+
+    try:
+        from backtest_trial_store import load_latest_cycle_meta
+
+        trial_meta = load_latest_cycle_meta()
+    except Exception:
+        trial_meta = {}
 
     payload = {
         "meta": {
-            "description": "Adaptive learning from misses, benchmark accuracy, and account attribution.",
+            "description": (
+                "Adaptive learning from live misses, night walk-forward trials, "
+                "benchmark accuracy, and account attribution."
+            ),
             "updated_at": _now_iso(),
             "agents_tracked": len(agents_out),
+            "trial_journal": trial_meta,
+            "live_scored_rows": len(scored_rows),
+            "backtest_trial_rows_merged": len(trial_rows),
         },
         "agents": agents_out,
     }
     _write_json(LEARNING_FILE, payload)
+    _write_learning_policy(agents_out, trial_meta=trial_meta)
     try:
         from agent_personality import sync_personality_from_learning
 
@@ -355,11 +487,145 @@ def rebuild_agent_learning() -> dict[str, Any]:
     return payload
 
 
+def _write_learning_policy(agents_out: dict[str, Any], *, trial_meta: dict[str, Any]) -> None:
+    """Compact machine-readable policy for fusion / sleeves."""
+    ranked = sorted(
+        (
+            (aid, float(row.get("edge_score") or 0.0), float(row.get("accuracy_pct") or 0.0))
+            for aid, row in agents_out.items()
+            if isinstance(row, dict)
+        ),
+        key=lambda item: (item[1], item[2]),
+        reverse=True,
+    )
+    boost = [aid for aid, edge, _ in ranked[:8] if edge > 0]
+    cut = [aid for aid, edge, _ in ranked if edge <= -0.2][:12]
+    policy = {
+        "updated_at": _now_iso(),
+        "source_cycle": trial_meta.get("cycle_id"),
+        "global": {
+            "min_accuracy_pct": 28.0,
+            "min_trials": MIN_AGENT_SAMPLES,
+            "description": "Derived from latest agent_learning rebuild.",
+        },
+        "boost_agents": boost,
+        "cut_agents": cut,
+        "agents": {
+            aid: {
+                "preferred_horizon": row.get("preferred_horizon"),
+                "fusion_multiplier": row.get("fusion_multiplier"),
+                "edge_score": row.get("edge_score"),
+                "min_confidence_to_emit": row.get("min_confidence_to_emit"),
+                "avoid_symbols": row.get("avoid_symbols") or [],
+                "trust_symbols": row.get("trust_symbols") or [],
+            }
+            for aid, row in agents_out.items()
+            if isinstance(row, dict)
+        },
+    }
+    _write_json(LEARNING_POLICY_FILE, policy)
+
+
+def write_next_session_brief(*, benchmark: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Write a compact brief for the next RTH pipeline open."""
+    store = _learning_store()
+    agents = store.get("agents") if isinstance(store.get("agents"), dict) else {}
+    if not agents:
+        store = rebuild_agent_learning()
+        agents = store.get("agents") if isinstance(store.get("agents"), dict) else {}
+
+    ranked = sorted(
+        (
+            {
+                "agent_id": aid,
+                "accuracy_pct": row.get("accuracy_pct"),
+                "edge_score": row.get("edge_score"),
+                "posture": row.get("posture"),
+                "preferred_horizon": row.get("preferred_horizon"),
+                "fusion_multiplier": row.get("fusion_multiplier"),
+                "lessons": (row.get("lessons") or [])[:2],
+            }
+            for aid, row in agents.items()
+            if isinstance(row, dict)
+        ),
+        key=lambda r: (float(r.get("edge_score") or -9), float(r.get("accuracy_pct") or 0)),
+        reverse=True,
+    )
+    top = ranked[:8]
+    bottom = list(reversed(ranked[-8:])) if len(ranked) > 8 else list(reversed(ranked))
+
+    avoid: set[str] = set()
+    trust: set[str] = set()
+    for row in agents.values():
+        if not isinstance(row, dict):
+            continue
+        for s in row.get("avoid_symbols") or []:
+            avoid.add(str(s).upper())
+        for s in row.get("trust_symbols") or []:
+            trust.add(str(s).upper())
+
+    bench = benchmark if isinstance(benchmark, dict) else (_load_json(BENCHMARK_FILE) or {})
+    bench_meta = (bench.get("meta") or {}) if isinstance(bench, dict) else {}
+    actions = [
+        "Prefer boost_agents in fusion; down-weight cut_agents until edge recovers.",
+        "Respect avoid_symbols on new entries; lean into trust_symbols when clusters agree.",
+        "Use each agent's preferred_horizon when scoring multi-horizon ideas.",
+    ]
+    if top:
+        actions.insert(
+            0,
+            f"Lead walk-forward edge: {top[0]['agent_id']} "
+            f"(edge={top[0].get('edge_score')}, acc={top[0].get('accuracy_pct')}%).",
+        )
+    if bottom:
+        actions.append(
+            f"Weakest: {bottom[0]['agent_id']} — require higher confidence / cluster agreement."
+        )
+
+    try:
+        from backtest_trial_store import load_latest_cycle_meta
+
+        trial_meta = load_latest_cycle_meta()
+    except Exception:
+        trial_meta = {}
+
+    policy = _load_json(LEARNING_POLICY_FILE) if LEARNING_POLICY_FILE.exists() else {}
+    brief = {
+        "updated_at": _now_iso(),
+        "for_session": "next_RTH",
+        "benchmark_summary": bench_meta.get("expert_summary"),
+        "trial_cycle_id": trial_meta.get("cycle_id") or bench_meta.get("trial_cycle_id"),
+        "top_agents": top,
+        "weak_agents": bottom,
+        "boost_agents": (policy or {}).get("boost_agents") if isinstance(policy, dict) else [t["agent_id"] for t in top[:5]],
+        "cut_agents": (policy or {}).get("cut_agents") if isinstance(policy, dict) else [b["agent_id"] for b in bottom[:5]],
+        "avoid_symbols": sorted(avoid)[:40],
+        "trust_symbols": sorted(trust - avoid)[:40],
+        "actions": actions[:8],
+        "notes": [
+            "Generated after walk-forward / learning rebuild.",
+            "Pipeline should load this at first market-hours cycle.",
+        ],
+    }
+    _write_json(BRIEF_FILE, brief)
+    return brief
+
+
+def load_next_session_brief() -> dict[str, Any]:
+    data = _load_json(BRIEF_FILE)
+    return data if isinstance(data, dict) else {}
+
+
 def get_agent_learning(agent_id: str) -> AgentLearning | None:
     store = _learning_store()
     row = (store.get("agents") or {}).get(str(agent_id or ""))
     if not isinstance(row, dict):
         return None
+    hz = row.get("horizon_weights") or {}
+    if isinstance(hz, dict):
+        hz_t = tuple((str(k), float(v)) for k, v in hz.items())
+    else:
+        hz_t = ()
     return AgentLearning(
         agent_id=str(agent_id),
         accuracy_pct=float(row["accuracy_pct"]) if row.get("accuracy_pct") is not None else None,
@@ -375,6 +641,11 @@ def get_agent_learning(agent_id: str) -> AgentLearning | None:
         bearish_miss_rate=row.get("bearish_miss_rate"),
         blame_score=float(row.get("blame_score") or 0.0),
         updated_at=str(row.get("updated_at") or ""),
+        edge_score=float(row.get("edge_score") or 0.0),
+        sample_trials=int(row.get("sample_trials") or 0),
+        horizon_weights=hz_t,
+        min_confidence_to_emit=float(row.get("min_confidence_to_emit") or 0.35),
+        source=str(row.get("source") or "mixed"),
     )
 
 

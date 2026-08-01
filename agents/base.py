@@ -168,6 +168,77 @@ class BaseExpert:
         except Exception:
             return {}
 
+    def learning_profile(self) -> dict[str, Any] | None:
+        """Structured learning from night walk-forward + live accuracy (if available)."""
+        if not self.agent_id:
+            return None
+        try:
+            from agent_learning import get_agent_learning
+
+            row = get_agent_learning(self.agent_id)
+            return row.as_dict() if row is not None else None
+        except Exception:
+            return None
+
+    def apply_learning_to_signal(
+        self,
+        *,
+        direction: str,
+        confidence: float,
+        symbol: str = "",
+    ) -> dict[str, Any]:
+        """Adjust direction/confidence using agent_learning (backtest + live).
+
+        Returns keys: direction, confidence, bias, learning_applied, suppressed.
+        """
+        try:
+            conf = float(confidence)
+        except (TypeError, ValueError):
+            conf = 0.5
+        bias_in = str(direction or "flat").lower()
+        mapped = (
+            "BULLISH"
+            if bias_in in {"up", "bull", "bullish"}
+            else "BEARISH"
+            if bias_in in {"down", "bear", "bearish"}
+            else "NEUTRAL"
+        )
+        learning = None
+        try:
+            from agent_learning import (
+                adjust_bias_with_learning,
+                adjust_confidence_with_learning,
+                get_agent_learning,
+            )
+
+            learning = get_agent_learning(self.agent_id) if self.agent_id else None
+            mapped = adjust_bias_with_learning(mapped, learning, symbol=symbol)
+            conf = adjust_confidence_with_learning(conf, learning, symbol=symbol)
+        except Exception:
+            learning = None
+        conf *= self.pipeline_symbol_confidence_factor(symbol)
+        suppressed = False
+        min_conf = 0.35
+        if learning is not None:
+            min_conf = float(getattr(learning, "min_confidence_to_emit", 0.35) or 0.35)
+            if conf < min_conf and mapped != "NEUTRAL":
+                mapped = "NEUTRAL"
+                suppressed = True
+        out_dir = (
+            "up" if mapped == "BULLISH" else "down" if mapped == "BEARISH" else "flat"
+        )
+        return {
+            "direction": out_dir,
+            "bias": mapped,
+            "confidence": round(max(0.05, min(0.99, conf)), 4),
+            "learning_applied": learning is not None,
+            "suppressed": suppressed,
+            "min_confidence_to_emit": min_conf,
+            "preferred_horizon": (
+                getattr(learning, "preferred_horizon", None) or self.preferred_horizon()
+            ),
+        }
+
     def adjust_signal_confidence(self, symbol: str, bias: str, base_confidence: float) -> float:
         """Apply memory trust/avoid and cross-agent disagreement to a raw confidence."""
         try:
@@ -175,6 +246,16 @@ class BaseExpert:
         except (TypeError, ValueError):
             conf = 0.5
         conf *= self.pipeline_symbol_confidence_factor(symbol)
+        try:
+            from agent_learning import adjust_confidence_with_learning, get_agent_learning
+
+            conf = adjust_confidence_with_learning(
+                conf,
+                get_agent_learning(self.agent_id) if self.agent_id else None,
+                symbol=symbol,
+            )
+        except Exception:
+            pass
         try:
             from agent_disagreement import disagreement_confidence_factor
 

@@ -259,15 +259,37 @@ def memory_bundle_for_agent(agent_id: str) -> dict[str, Any]:
     except Exception:
         pass
 
+    avoid = [str(s).upper() for s in (learning_row.get("avoid_symbols") or [])]
+    trust = [str(s).upper() for s in (learning_row.get("trust_symbols") or [])]
+    brief_actions: list[str] = []
+    try:
+        from agent_learning import load_next_session_brief
+
+        brief = load_next_session_brief()
+        if isinstance(brief, dict):
+            for s in brief.get("avoid_symbols") or []:
+                u = str(s).upper()
+                if u and u not in avoid:
+                    avoid.append(u)
+            for s in brief.get("trust_symbols") or []:
+                u = str(s).upper()
+                if u and u not in trust and u not in avoid:
+                    trust.append(u)
+            brief_actions = [str(a) for a in (brief.get("actions") or [])[:4]]
+    except Exception:
+        pass
+
     return {
         "agent_id": aid,
         "posture": learning_row.get("posture", "neutral"),
-        "lessons": list(learning_row.get("lessons") or []),
-        "avoid_symbols": [str(s).upper() for s in (learning_row.get("avoid_symbols") or [])],
-        "trust_symbols": [str(s).upper() for s in (learning_row.get("trust_symbols") or [])],
+        "lessons": list(learning_row.get("lessons") or []) + brief_actions[:2],
+        "avoid_symbols": avoid,
+        "trust_symbols": trust,
         "bias_drift": float(learning_row.get("bias_drift") or 0.0),
         "fusion_multiplier": float(learning_row.get("fusion_multiplier") or 1.0),
         "preferred_horizon": str(learning_row.get("preferred_horizon") or "24h"),
+        "edge_score": float(learning_row.get("edge_score") or 0.0),
+        "min_confidence_to_emit": float(learning_row.get("min_confidence_to_emit") or 0.35),
         "accuracy_rank": accuracy_rank,
         "prior_runs_count": len(prior_runs),
         "prior_cycle_hint": prior_hint,

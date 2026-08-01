@@ -707,6 +707,28 @@ def run_historical_simulation(
         )
 
     total_trials = len(all_trials)
+    # Persist trials for night-loop learning (bounded sample inside the store).
+    trial_cycle_id = ""
+    try:
+        from backtest_trial_store import append_trials, new_cycle_id
+
+        trial_cycle_id = new_cycle_id()
+        append_trials(
+            all_trials,
+            cycle_id=trial_cycle_id,
+            meta={
+                "lookback_days": lookback_days,
+                "signal_step_bars": signal_step_bars,
+                "horizons": list(horizons),
+                "universe_size": len(universe),
+                "bar_walk_trials": bar_count,
+                "snapshot_trials": snap_count,
+                "total_trials": total_trials,
+            },
+        )
+    except Exception:
+        trial_cycle_id = ""
+
     report = HistoricalSimReport(
         trials=all_trials[-500:],
         agents=agents,
@@ -720,6 +742,23 @@ def run_historical_simulation(
     payload["meta"]["lookback_days"] = lookback_days
     payload["meta"]["signal_step_bars"] = signal_step_bars
     payload["meta"]["horizons"] = list(horizons)
+    if trial_cycle_id:
+        payload["meta"]["trial_cycle_id"] = trial_cycle_id
+    # Keep a compact trial sample on the report for debugging (full journal is JSONL).
+    payload["trial_sample"] = [
+        {
+            "agent_id": t.agent_id,
+            "symbol": t.symbol,
+            "horizon": t.horizon,
+            "predicted_direction": t.predicted_direction,
+            "actual_direction": t.actual_direction,
+            "hit": t.hit,
+            "actual_return_pct": t.actual_return_pct,
+            "source": t.source,
+            "simulated_at": t.simulated_at,
+        }
+        for t in all_trials[-200:]
+    ]
     if write_output:
         out_path = output or SIM_FILE
         _write_json(out_path, payload)
@@ -957,6 +996,23 @@ def run_accuracy_benchmark(
             from agent_fusion import export_walk_forward_weights
 
             export_walk_forward_weights()
+        except Exception:
+            pass
+
+    # Always refresh structured learning + next-session brief from this benchmark.
+    if rebuild_learning:
+        try:
+            from agent_learning import rebuild_agent_learning, write_next_session_brief
+
+            rebuild_agent_learning()
+            write_next_session_brief(benchmark=report)
+        except Exception:
+            pass
+    else:
+        try:
+            from agent_learning import write_next_session_brief
+
+            write_next_session_brief(benchmark=report)
         except Exception:
             pass
 
