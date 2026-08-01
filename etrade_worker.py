@@ -891,6 +891,7 @@ def _run_live_scoring(*, force: bool = False, config_path: Path = CONFIG_PATH) -
         _log(
             "Live scoring — "
             f"{stats.get('scored', 0)} matured, "
+            f"{stats.get('pruned', 0)} pruned, "
             f"{stats.get('pending', 0)} pending, "
             f"{stats.get('live_primary_agents', 0)} agents on live weights, "
             f"{stats.get('blended_agents', 0)} blended."

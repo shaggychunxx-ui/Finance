@@ -26,6 +26,95 @@ PREDICTION_HORIZONS = ("1m", "1h", "24h", "1wk", "1mo", "1yr")
 SYMBOL_RETURN_HINT_WEIGHT = 0.58
 # Keep enrich small so post-fusion finishes under pipeline stall/timeouts.
 ENRICH_PRICE_RETURNS_LIMIT = 25
+# Actionable predictions must clear this confidence (else abstain → flat).
+DEFAULT_ABSTAIN_MIN_CONFIDENCE = 0.52
+DEFAULT_ABSTAIN_MIN_ABS_SCORE = 0.08
+
+
+def _abstain_thresholds() -> tuple[float, float]:
+    """(min_confidence, min_abs_composite) for actionable directional calls."""
+    min_conf = DEFAULT_ABSTAIN_MIN_CONFIDENCE
+    min_score = DEFAULT_ABSTAIN_MIN_ABS_SCORE
+    try:
+        from app_paths import ROOT
+        import json
+
+        raw = json.loads((ROOT / "etrade_config.json").read_text(encoding="utf-8"))
+        strat = raw.get("strategy") if isinstance(raw.get("strategy"), dict) else {}
+        block = strat.get("prediction_abstain") if isinstance(strat.get("prediction_abstain"), dict) else {}
+        if "min_confidence" in block:
+            min_conf = float(block["min_confidence"])
+        if "min_abs_score" in block:
+            min_score = float(block["min_abs_score"])
+    except Exception:
+        pass
+    try:
+        from agent_learning import get_agent_learning
+
+        learn = get_agent_learning("market-predictor")
+        if learn is not None and learn.min_confidence_to_emit:
+            min_conf = max(min_conf, float(learn.min_confidence_to_emit))
+    except Exception:
+        pass
+    return max(0.35, min(0.85, min_conf)), max(0.02, min(0.25, min_score))
+
+
+def _apply_prediction_abstain(
+    predictions: dict[str, list[dict[str, Any]]],
+    *,
+    min_confidence: float,
+    min_abs_score: float,
+) -> dict[str, Any]:
+    """Mark low-confidence rows non-actionable and force flat direction for trading."""
+    stats = {
+        "min_confidence": min_confidence,
+        "min_abs_score": min_abs_score,
+        "total": 0,
+        "actionable": 0,
+        "abstained": 0,
+    }
+    actionable: dict[str, list[dict[str, Any]]] = {}
+    for horizon, rows in predictions.items():
+        kept: list[dict[str, Any]] = []
+        if not isinstance(rows, list):
+            actionable[horizon] = []
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            stats["total"] += 1
+            conf = float(row.get("confidence") or 0.0)
+            score = abs(float(row.get("composite_score") or 0.0))
+            direction = str(row.get("predicted_direction") or "flat").lower()
+            ok = (
+                direction in {"up", "down"}
+                and conf >= min_confidence
+                and score >= min_abs_score
+            )
+            row["actionable"] = bool(ok)
+            if not ok:
+                stats["abstained"] += 1
+                row["abstain_reason"] = (
+                    "low_confidence"
+                    if conf < min_confidence
+                    else "weak_score"
+                    if score < min_abs_score
+                    else "flat_or_neutral"
+                )
+                # Preserve original for analysis; trading paths should use actionable only.
+                row["raw_predicted_direction"] = direction
+                row["predicted_direction"] = "flat"
+            else:
+                stats["actionable"] += 1
+                kept.append(row)
+        # Re-rank actionable book
+        for i, row in enumerate(kept, start=1):
+            row["rank"] = i
+        actionable[horizon] = kept
+    stats["actionable_rate"] = (
+        round(stats["actionable"] / stats["total"], 3) if stats["total"] else 0.0
+    )
+    return {"actionable_predictions": actionable, "abstain_stats": stats}
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -586,6 +675,12 @@ def run_market_predictor_analysis(
         )
         for horizon in PREDICTION_HORIZONS
     }
+    min_conf, min_abs = _abstain_thresholds()
+    abstain_pack = _apply_prediction_abstain(
+        predictions,
+        min_confidence=min_conf,
+        min_abs_score=min_abs,
+    )
 
     sources_used = [src["file"] for src in active_agent_sources() if (output_dir / src["file"]).exists()]
     fusion_meta: dict[str, Any] = {}
@@ -613,6 +708,7 @@ def run_market_predictor_analysis(
         pass
 
     stamp = datetime.now(timezone.utc).isoformat()
+    abs_stats = abstain_pack.get("abstain_stats") or {}
     result = {
         "meta": {
             "agent": "Market Predictor",
@@ -624,11 +720,21 @@ def run_market_predictor_analysis(
             "fusion": fusion_meta,
             "market_context": market_context,
             "pipeline_memory": pipeline_memory,
+            "abstain": abs_stats,
+            "trading_uses_actionable_only": True,
         },
+        # Full book (includes abstained→flat) for analysis / accuracy recording
         "predictions": predictions,
+        # Clean book for portfolio / trading (directional only, conf gated)
+        "actionable_predictions": abstain_pack.get("actionable_predictions") or {},
         "recommendations": [
             f"Fused {len(sources_used)} agent report(s) into ranked mover predictions.",
             "Accuracy-weighted fusion with per-horizon, regime, domain, and cluster caps applied.",
+            (
+                f"Abstain gate: conf≥{min_conf:.2f}, |score|≥{min_abs:.2f} → "
+                f"{abs_stats.get('actionable', 0)}/{abs_stats.get('total', 0)} actionable "
+                f"({float(abs_stats.get('actionable_rate') or 0):.0%})."
+            ),
             (
                 f"Market-context tilt: {market_context.get('label')} "
                 f"({market_context.get('net_tilt', 0):+.2f}) from "

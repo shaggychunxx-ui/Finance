@@ -56,6 +56,11 @@
       "min_cluster_contribution": 0.08,
       "min_net_score": 0.12
     },
+    "prediction_abstain": {
+      "min_confidence": 0.52,
+      "min_abs_score": 0.08,
+      "note": "Market predictor marks below-threshold rows non-actionable (flat for trading)"
+    },
     "accuracy_measurement": {
       "enabled": true,
       "min_preferred_horizon_samples": 8,

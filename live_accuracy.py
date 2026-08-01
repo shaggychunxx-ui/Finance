@@ -16,7 +16,9 @@ DEFAULT_LIVE_ACCURACY = {
     "min_live_samples_full": 25,
     "min_live_samples_blend": 8,
     "prefer_live_for_fusion": True,
-    "accuracy_interval_minutes": 15,
+    # Score matured labels often so live weights track current markets.
+    "accuracy_interval_minutes": 5,
+    "accuracy_off_hours_interval_minutes": 30,
 }
 
 

@@ -183,11 +183,21 @@ def _add_score(
 
 
 def _ingest_predictions(data: dict[str, Any], scores: dict[str, TickerScore]) -> None:
-    preds = data.get("predictions", {})
+    # Prefer actionable book (abstain-gated) for portfolio construction / trading.
+    preds = data.get("actionable_predictions") or data.get("predictions") or {}
+    if not isinstance(preds, dict):
+        preds = {}
     for horizon, weight in HORIZON_WEIGHTS.items():
-        for row in preds.get(horizon, []):
+        for row in preds.get(horizon, []) or []:
+            if not isinstance(row, dict):
+                continue
+            # Skip explicit non-actionable rows if full predictions map was used
+            if row.get("actionable") is False:
+                continue
             symbol = row.get("symbol", "")
             direction = row.get("predicted_direction", "")
+            if str(direction).lower() not in {"up", "down"}:
+                continue
             confidence = float(row.get("confidence", 0.5))
             ret = float(row.get("predicted_return_pct", 0))
             sign = 1.0 if direction == "up" else -1.0 if direction == "down" else 0.0

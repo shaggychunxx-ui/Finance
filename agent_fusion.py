@@ -424,14 +424,32 @@ def fusion_weight(
         ):
             base = float(entry.get("weight_multiplier") or 1.0)
 
+        # Trading always weights on the agent's preferred horizon accuracy.
+        # Research fusion may still blend the caller's horizon.
         fusion_horizon = horizon
-        if entry.get("prefer_preferred_horizon_for_fusion") and entry.get("preferred_horizon"):
-            fusion_horizon = str(entry.get("preferred_horizon"))
+        preferred = str(entry.get("preferred_horizon") or "") or None
+        if not preferred:
+            try:
+                from agent_constraints import agent_preferred_horizon
+
+                preferred = agent_preferred_horizon(aid)
+            except Exception:
+                preferred = None
+        if for_trading and preferred:
+            fusion_horizon = preferred
+            if horizon and preferred and str(horizon) != preferred:
+                # Votes off the agent's natural horizon count little for order sizing.
+                base *= 0.22
+        elif entry.get("prefer_preferred_horizon_for_fusion") and preferred:
+            fusion_horizon = preferred
         by_horizon = entry.get("by_horizon") or {}
         hb = by_horizon.get(fusion_horizon) if isinstance(by_horizon, dict) else None
         if isinstance(hb, dict) and int(hb.get("total", 0)) >= MIN_SAMPLES_HORIZON:
             hacc = float(hb.get("accuracy_pct") or 50.0)
             base *= 0.55 + hacc / 200.0
+        elif for_trading and preferred:
+            # No samples on preferred horizon → do not trust for trading.
+            base *= 0.35
 
         posture = regime_posture or current_regime().get("posture", "neutral")
         by_regime_bucket = entry.get("by_regime_bucket") or {}

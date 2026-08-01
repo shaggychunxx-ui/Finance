@@ -53,6 +53,16 @@ MIN_SAMPLES_FOR_MAGNITUDE = 8
 BENCHMARK_SOURCE = "walk_forward_benchmark"
 DIRECTION_WEIGHT = 0.6
 MAGNITUDE_WEIGHT = 0.4
+# Only track horizons that can feed live fusion on useful timescales.
+LIVE_TRACKING_HORIZONS = frozenset({"1m", "1h", "24h", "1wk"})
+MAX_PENDING_BY_HORIZON = {
+    "1m": 600,
+    "1h": 600,
+    "24h": 1200,
+    "1wk": 800,
+    "1mo": 200,
+    "1yr": 50,
+}
 from agent_fusion import DIRECTIONAL_SCORING_SKIP
 
 SKIP_SOURCES = DIRECTIONAL_SCORING_SKIP
@@ -406,22 +416,46 @@ def record_cycle_predictions(*, cycle_id: str | None = None) -> int:
     predictions_path = OUTPUT / "market_predictions.json"
     fused = _load_json(predictions_path)
     if isinstance(fused, dict):
-        for horizon, rows in (fused.get("predictions") or {}).items():
-            if horizon not in HORIZON_HOURS:
+        # Prefer actionable (abstain-gated) book for live tracking labels.
+        fused_preds = fused.get("actionable_predictions") or fused.get("predictions") or {}
+        if not isinstance(fused_preds, dict):
+            fused_preds = {}
+        for horizon, rows in fused_preds.items():
+            if horizon not in HORIZON_HOURS or horizon not in LIVE_TRACKING_HORIZONS:
                 continue
             for row in rows or []:
                 if not isinstance(row, dict):
                     continue
+                if row.get("actionable") is False:
+                    continue
+                direction = str(row.get("predicted_direction", "flat")).lower()
+                if direction not in {"up", "down"}:
+                    continue
+                conf = float(row.get("confidence", 0.5))
+                if conf < 0.52:
+                    continue
                 sym = str(row.get("symbol", "")).upper()
                 price = row.get("price_at_prediction") or quotes.get(sym)
+                # Attribute each source only when this horizon is their preferred live horizon.
                 for source in row.get("sources") or []:
+                    sid = str(source)
+                    try:
+                        from agent_constraints import agent_preferred_horizon
+
+                        pref = str(agent_preferred_horizon(sid) or "24h")
+                    except Exception:
+                        pref = "24h"
+                    if pref not in LIVE_TRACKING_HORIZONS:
+                        pref = "24h"
+                    if pref != horizon:
+                        continue
                     _append_prediction(
                         pending,
-                        agent_id=str(source),
+                        agent_id=sid,
                         symbol=sym,
                         horizon=horizon,
-                        predicted_direction=str(row.get("predicted_direction", "flat")),
-                        confidence=float(row.get("confidence", 0.5)),
+                        predicted_direction=direction,
+                        confidence=conf,
                         predicted_return_pct=row.get("predicted_return_pct"),
                         price_at_prediction=float(price) if price is not None else None,
                         cycle_id=cycle_id,
@@ -429,16 +463,98 @@ def record_cycle_predictions(*, cycle_id: str | None = None) -> int:
                         regime_posture=posture,
                         event_day=event_day,
                     )
+                # Always track market-predictor aggregate on live horizons
+                _append_prediction(
+                    pending,
+                    agent_id="market-predictor",
+                    symbol=sym,
+                    horizon=horizon,
+                    predicted_direction=direction,
+                    confidence=conf,
+                    predicted_return_pct=row.get("predicted_return_pct"),
+                    price_at_prediction=float(price) if price is not None else None,
+                    cycle_id=cycle_id,
+                    recorded_at=recorded_at,
+                    regime_posture=posture,
+                    event_day=event_day,
+                )
 
+    pending = _cap_pending_by_horizon(pending)
     store["predictions"] = pending[-MAX_PENDING:]
     store["updated_at"] = recorded_at
     _write_json(PENDING_FILE, store)
-    return len(pending) - before
+    return max(0, len(store["predictions"]) - before)
+
+
+def _cap_pending_by_horizon(pending: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep near-term labels; soft-cap long-horizon backlog that starves live scoring."""
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for pred in pending:
+        if not isinstance(pred, dict):
+            continue
+        h = str(pred.get("horizon") or DEFAULT_HORIZON)
+        buckets.setdefault(h, []).append(pred)
+    out: list[dict[str, Any]] = []
+    for h, rows in buckets.items():
+        cap = int(MAX_PENDING_BY_HORIZON.get(h, 400))
+        # Prefer newest
+        rows_sorted = sorted(rows, key=lambda r: str(r.get("recorded_at") or ""), reverse=True)
+        out.extend(rows_sorted[:cap])
+    out.sort(key=lambda r: str(r.get("recorded_at") or ""))
+    return out[-MAX_PENDING:]
+
+
+def prune_unscoreable_pending(*, max_overdue_factor: float = 2.5) -> int:
+    """Drop skip-sources, invalid symbols, long-overdue rows, and rebalance horizon caps."""
+    store = _pending_store()
+    pending: list[dict[str, Any]] = list(store.get("predictions") or [])
+    if not pending:
+        return 0
+    before = len(pending)
+    now = _now()
+    kept: list[dict[str, Any]] = []
+    for pred in pending:
+        if not isinstance(pred, dict):
+            continue
+        aid = str(pred.get("agent_id") or "")
+        if aid in SKIP_SOURCES:
+            continue
+        sym = str(pred.get("symbol") or "").upper().strip()
+        if not sym or len(sym) > 12:
+            continue
+        recorded = _parse_iso(pred.get("recorded_at"))
+        horizon = str(pred.get("horizon") or DEFAULT_HORIZON)
+        # Soft-drop ultra-long horizons when queue is clogged (keep some for later).
+        if horizon in {"1mo", "1yr"} and before > 2500:
+            # Keep only the newest 1mo/1yr slice via later cap.
+            pass
+        maturity = horizon_timedelta(horizon)
+        if recorded and (now - recorded) > maturity * max_overdue_factor:
+            continue
+        # Flat directions never produce useful direction accuracy.
+        if str(pred.get("predicted_direction") or "flat").lower() == "flat":
+            continue
+        kept.append(pred)
+    kept = _cap_pending_by_horizon(kept)
+    pruned = before - len(kept)
+    if pruned:
+        store["predictions"] = kept[-MAX_PENDING:]
+        store["updated_at"] = _now_iso()
+        store["last_pruned"] = {"at": _now_iso(), "removed": pruned, "remaining": len(kept)}
+        _write_json(PENDING_FILE, store)
+        _touch_accuracy_pending_count()
+    return pruned
 
 
 def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
     """Resolve predictions whose horizon has elapsed and update accuracy stats."""
     from price_history import clear_yahoo_cache, record_prices, resolve_price_at
+
+    # Unclog queue before scoring so mature rows aren't buried behind garbage.
+    try:
+        prune_unscoreable_pending()
+    except Exception:
+        pass
 
     store = _pending_store()
     pending: list[dict[str, Any]] = list(store.get("predictions") or [])
@@ -454,8 +570,17 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
     now = _now()
     remaining: list[dict[str, Any]] = []
     newly_scored = 0
+    # Prefer near-term horizons first so live weights move faster.
+    horizon_priority = {"1m": 0, "1h": 1, "24h": 2, "1wk": 3, "1mo": 4, "1yr": 5}
+    pending_sorted = sorted(
+        pending,
+        key=lambda p: (
+            horizon_priority.get(str(p.get("horizon") or DEFAULT_HORIZON), 9),
+            str(p.get("recorded_at") or ""),
+        ),
+    )
 
-    for pred in pending:
+    for pred in pending_sorted:
         aid = str(pred.get("agent_id") or "")
         if aid in SKIP_SOURCES:
             continue
@@ -479,8 +604,19 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
             if latest_quote and latest_quote > 0:
                 start_price = float(latest_quote)
             else:
-                remaining.append(pred)
-                continue
+                # Resolve a start price near recorded_at from local/Yahoo history
+                try:
+                    px, _src = resolve_price_at(sym, recorded, latest_quote=None)
+                    if px and float(px) > 0:
+                        start_price = float(px)
+                except Exception:
+                    pass
+                if not start_price or start_price <= 0:
+                    # Drop if already well past maturity and still no price
+                    if recorded and (now - recorded) > maturity * 1.5:
+                        continue
+                    remaining.append(pred)
+                    continue
 
         end_price, price_source = resolve_price_at(
             sym,
@@ -488,6 +624,8 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
             latest_quote=float(latest_quote) if latest_quote else None,
         )
         if not end_price or end_price <= 0:
+            if recorded and (now - recorded) > maturity * 1.5:
+                continue
             remaining.append(pred)
             continue
 
@@ -989,6 +1127,11 @@ def sync_benchmark_to_accuracy_store(
 
 def run_live_scoring_cycle(*, rebuild_learning: bool = True) -> dict[str, int]:
     """Score matured pending predictions without recording new ones (worker interval task)."""
+    pruned = 0
+    try:
+        pruned = prune_unscoreable_pending()
+    except Exception:
+        pruned = 0
     scored = score_matured_predictions(rebuild_learning=rebuild_learning)
     if scored == 0:
         rebuild_accuracy_index(rebuild_learning=rebuild_learning)
@@ -1001,6 +1144,7 @@ def run_live_scoring_cycle(*, rebuild_learning: bool = True) -> dict[str, int]:
         summary = {"pending": int(accuracy.get("pending_count") or 0)}
     return {
         "scored": scored,
+        "pruned": pruned,
         "pending": int(summary.get("pending") or accuracy.get("pending_count") or 0),
         "live_primary_agents": int(summary.get("live_primary_agents") or 0),
         "blended_agents": int(summary.get("blended_agents") or 0),
