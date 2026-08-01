@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LAN bridge so the phone E*TRADE app mirrors the desktop UI and can complete OAuth.
 
-Runs on the broker PC (AI-CODING). Phone connects over Wi‑Fi / LAN.
+Runs on the broker PC (AI-CODING). Phone connects over Wiâ€‘Fi / LAN.
 
 Endpoints (all JSON; require X-Bridge-Token except /health):
   GET  /health
@@ -48,7 +48,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.0"
+BRIDGE_VERSION = "1.5.1"
 
 # Human rule (PHONE 2026-07-31): all P/L / chart / average calcs start here.
 # Transfer/deposit capital only enters P/L math from each event's date forward.
@@ -95,6 +95,124 @@ def load_bridge_config() -> dict[str, Any]:
         _log(f"Wrote {BRIDGE_CONFIG.name} (new bridge token generated)")
     return raw
 
+
+
+
+def _load_account_snapshot() -> dict[str, Any]:
+    """Broker account snapshot (full positions) written by etrade_worker / live pull."""
+    return _read_json(ROOT / "output" / "account_snapshot.json")
+
+
+def try_refresh_account_snapshot(max_age_sec: float = 300.0) -> dict[str, Any]:
+    """Best-effort live E*TRADE portfolio pull into output/account_snapshot.json.
+
+    Phone "full data pull from PC" needs real lots + qty, not offline TARGET stubs.
+    """
+    snap_path = ROOT / "output" / "account_snapshot.json"
+    prior = _load_account_snapshot()
+    try:
+        fetched = str(prior.get("fetched_at") or "")
+        if fetched and prior.get("positions"):
+            from datetime import datetime, timezone
+
+            ts = fetched.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
+            if 0 <= age < max_age_sec:
+                return prior
+    except Exception:
+        pass
+
+    try:
+        from etrade_api.client import ETradeClient
+        from etrade_api.config import ETradeConfig
+
+        cfg = None
+        if hasattr(ETradeConfig, "load"):
+            try:
+                cfg = ETradeConfig.load(LONG_CONFIG)
+            except Exception:
+                cfg = None
+        if cfg is None:
+            try:
+                from etrade_api.config import load_config
+
+                cfg = load_config(LONG_CONFIG)
+            except Exception:
+                cfg = None
+        if cfg is None:
+            return prior
+        client = ETradeClient(cfg)
+        accounts = []
+        if hasattr(client, "list_accounts"):
+            try:
+                accounts = client.list_accounts() or []
+            except Exception:
+                accounts = []
+        key = ""
+        label = ""
+        if accounts and isinstance(accounts[0], dict):
+            key = str(accounts[0].get("account_id_key") or "")
+            label = str(
+                accounts[0].get("display_label")
+                or accounts[0].get("account_name")
+                or ""
+            )
+        if not key:
+            key = str(prior.get("account_id_key") or "")
+            label = str(prior.get("display_label") or "")
+        if not key:
+            return prior
+        balance = client.get_balance(key) or {}
+        positions = client.get_portfolio(key) or []
+        if not positions and prior.get("positions"):
+            return prior
+        from datetime import datetime, timezone
+
+        snap = {
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "account_id_key": key,
+            "display_label": label or prior.get("display_label"),
+            "balance": {
+                "total_account_value": balance.get("total_account_value"),
+                "cash_buying_power": balance.get("cash_buying_power")
+                or balance.get("buying_power"),
+                "cash": balance.get("cash"),
+            },
+            "positions": positions if isinstance(positions, list) else [],
+            "sandbox": bool(getattr(getattr(client, "config", None), "sandbox", False)),
+            "source": "phone_bridge_live_pull",
+        }
+        _write_json(snap_path, snap)
+        _log(f"account_snapshot refreshed live: {len(snap['positions'])} positions")
+        return snap
+    except Exception as exc:
+        _log(f"live account_snapshot refresh skipped: {exc}")
+        return prior
+
+
+def _publish_dashboard_to_oxygen(payload: dict[str, Any]) -> None:
+    """Write non-secret dashboard JSON for phone GitHub bus (cellular path)."""
+    try:
+        oxygen = (
+            Path.home()
+            / "Documents"
+            / "GitHub"
+            / "Oxygen-OS"
+            / "work"
+            / "phone"
+            / "etrade-dashboard.json"
+        )
+        oxygen.parent.mkdir(parents=True, exist_ok=True)
+        oxygen.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        _log(
+            f"published dashboard -> {oxygen} "
+            f"({len(payload.get('positions') or [])} pos)"
+        )
+    except Exception as exc:
+        _log(f"oxygen dashboard publish failed: {exc}")
 
 
 def phone_ui_info_enabled() -> bool:
@@ -165,7 +283,7 @@ def remember_transfer_deposit_symbols(new_symbols: set[str] | list[str]) -> None
         json.dumps(
             {
                 "symbols": merged,
-                "note": "Auto-learned ACATS/transfer lots — treated as deposits with $0 open P/L",
+                "note": "Auto-learned ACATS/transfer lots â€” treated as deposits with $0 open P/L",
                 "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             },
             indent=2,
@@ -188,7 +306,7 @@ def remember_transfer_deposit_symbols(new_symbols: set[str] | list[str]) -> None
                 row["transfer_as_deposit"] = True
                 row.setdefault(
                     "reason",
-                    "Inbound transfer — deposit capital; zero open P/L at book-in",
+                    "Inbound transfer â€” deposit capital; zero open P/L at book-in",
                 )
                 row["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 ov[sym] = row
@@ -214,7 +332,7 @@ def _mode(dry: bool, auto: bool, paused: bool) -> str:
 
 def _shorten(text: str, n: int) -> str:
     t = str(text or "")
-    return t if len(t) <= n else t[: n - 1] + "…"
+    return t if len(t) <= n else t[: n - 1] + "â€¦"
 
 
 def _f(val: Any, default: float = 0.0) -> float:
@@ -228,13 +346,13 @@ def _f(val: Any, default: float = 0.0) -> float:
 
 def _money(n: float | None) -> str:
     if n is None:
-        return "—"
+        return "â€”"
     return f"${n:,.2f}"
 
 
 def _pct(n: float | None) -> str:
     if n is None:
-        return "—"
+        return "â€”"
     sign = "+" if n > 0 else ""
     return f"{sign}{n:.2f}%"
 
@@ -252,8 +370,8 @@ def build_account_summary() -> dict[str, Any]:
     """Balance + P/L for phone portfolio UI (best-effort from history + plan).
 
     Standing rule: deposits never count toward P/L.
-      total_pl = latest_value − invested_capital
-      invested_capital = opening + deposits − withdrawals
+      total_pl = latest_value âˆ’ invested_capital
+      invested_capital = opening + deposits âˆ’ withdrawals
     """
     out: dict[str, Any] = {
         "balance": None,
@@ -280,7 +398,7 @@ def build_account_summary() -> dict[str, Any]:
 
         st = account_balance_state() or {}
         growth = get_account_growth() or {}
-        # Live recompute (capital-event deposit detection) — do not trust stale growth profit.
+        # Live recompute (capital-event deposit detection) â€” do not trust stale growth profit.
         metrics = profit_metrics_for_account(growth, str(st.get("account_id_key") or ""))
         live_events = list(metrics.get("external_flow_events") or [])
 
@@ -294,7 +412,7 @@ def build_account_summary() -> dict[str, Any]:
         if opening is None:
             opening = st.get("opening_balance")
         deposits_total = _f(metrics.get("net_external_flows"))
-        # Canonical formula — always latest − invested (deposits already in invested).
+        # Canonical formula â€” always latest âˆ’ invested (deposits already in invested).
         total_pl = None
         total_pl_pct = None
         if balance is not None and invested is not None and invested > 0:
@@ -354,7 +472,7 @@ def build_account_summary() -> dict[str, Any]:
             if cash is not None:
                 out["cash"] = _f(cash)
             live_bal = _f(points[-1].get("total_account_value"))
-            # Prefer higher live equity — never let a stale lower figure undercut balance.
+            # Prefer higher live equity â€” never let a stale lower figure undercut balance.
             if live_bal is not None:
                 cur = out.get("balance")
                 if cur is None or live_bal > cur:
@@ -375,6 +493,28 @@ def build_account_summary() -> dict[str, Any]:
         out["account_name"] = plan.get("account_name")
         out["account_id_key"] = plan.get("account_id_key")
 
+    # Offline / empty plan must not leave OFFLINE ids — use broker snapshot for phone.
+    snap = _load_account_snapshot()
+    if snap:
+        key = str(snap.get("account_id_key") or "").strip()
+        label = str(snap.get("display_label") or "").strip()
+        offline = str(out.get("account_id_key") or "").upper() in ("", "OFFLINE", "NONE")
+        if key and offline:
+            out["account_id_key"] = key
+        if label and (
+            offline
+            or not out.get("account_name")
+            or str(out.get("account_name")).lower().startswith("offline")
+        ):
+            out["account_name"] = label
+        bal_block = snap.get("balance") if isinstance(snap.get("balance"), dict) else {}
+        snap_bal = _f(bal_block.get("total_account_value"))
+        if snap_bal is not None and out.get("balance") is None:
+            out["balance"] = snap_bal
+        snap_cash = _f(bal_block.get("cash_buying_power") or bal_block.get("cash"))
+        if out.get("cash") is None and snap_cash is not None:
+            out["cash"] = snap_cash
+
     # Re-apply formula after balance merges (stale plan must not invent P/L).
     bal = out.get("balance")
     invested = out.get("invested_capital")
@@ -389,14 +529,14 @@ def build_account_summary() -> dict[str, Any]:
     total_pl_pct = out.get("total_pl_pct")
     dep = out.get("deposits_total")
     out["display"] = {
-        "balance": _money(bal) if bal is not None else "—",
-        "cash": _money(out.get("cash")) if out.get("cash") is not None else "—",
-        "day_pl": _money(day_pl) if day_pl is not None else "—",
-        "day_pl_pct": _pct(day_pl_pct) if day_pl_pct is not None else "—",
-        "total_pl": _money(total_pl) if total_pl is not None else "—",
-        "total_pl_pct": _pct(total_pl_pct) if total_pl_pct is not None else "—",
-        "invested": _money(invested) if invested is not None else "—",
-        "deposits": _money(dep) if dep is not None else "—",
+        "balance": _money(bal) if bal is not None else "â€”",
+        "cash": _money(out.get("cash")) if out.get("cash") is not None else "â€”",
+        "day_pl": _money(day_pl) if day_pl is not None else "â€”",
+        "day_pl_pct": _pct(day_pl_pct) if day_pl_pct is not None else "â€”",
+        "total_pl": _money(total_pl) if total_pl is not None else "â€”",
+        "total_pl_pct": _pct(total_pl_pct) if total_pl_pct is not None else "â€”",
+        "invested": _money(invested) if invested is not None else "â€”",
+        "deposits": _money(dep) if dep is not None else "â€”",
     }
     return out
 
@@ -450,7 +590,7 @@ def _format_why_chosen(
     if order_type:
         ot = str(order_type).strip()
         otr = str(order_type_reason or "").strip()
-        parts.append(f"Order style: {ot}" + (f" — {otr}" if otr else ""))
+        parts.append(f"Order style: {ot}" + (f" â€” {otr}" if otr else ""))
     if sources:
         if isinstance(sources, (list, tuple)):
             src = ", ".join(str(s) for s in sources if s)
@@ -478,7 +618,7 @@ def _format_why_chosen(
 
 
 def _index_proposed_actions(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Map symbol → proposed action from strategy_plan orders / target holdings."""
+    """Map symbol â†’ proposed action from strategy_plan orders / target holdings."""
     out: dict[str, dict[str, Any]] = {}
     for row in plan.get("orders") or []:
         if not isinstance(row, dict):
@@ -509,7 +649,7 @@ def _index_proposed_actions(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "status": row.get("status"),
             "rationale": row.get("rationale") or row.get("reason") or row.get("message"),
         }
-    # Target holdings without an open order → HOLD signal when currently held
+    # Target holdings without an open order â†’ HOLD signal when currently held
     for row in plan.get("target_holdings") or []:
         if not isinstance(row, dict):
             continue
@@ -524,7 +664,7 @@ def _index_proposed_actions(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "target_weight_pct": row.get("weight_pct") or row.get("target_weight_pct"),
             "target_value_usd": row.get("allocation_usd") or row.get("target_value_usd"),
             "status": "target",
-            "rationale": row.get("rationale") or "In target portfolio — no trade proposed",
+            "rationale": row.get("rationale") or "In target portfolio â€” no trade proposed",
         }
     return out
 
@@ -562,6 +702,23 @@ def build_positions() -> list[dict[str, Any]]:
 
     positions: list[dict[str, Any]] = []
     live = plan.get("current_positions") or []
+    # Full broker lots: plan may be "offline rebuild" with empty current_positions.
+    # Prefer account_snapshot (worker / live pull) so phone gets real qty + transfer lots
+    # instead of TARGET portfolio idea stubs.
+    live_has_qty = any(
+        isinstance(r, dict) and (_f(r.get("quantity")) or 0) != 0
+        for r in (live if isinstance(live, list) else [])
+    )
+    if not live_has_qty:
+        try_refresh_account_snapshot(max_age_sec=600.0)
+        snap = _load_account_snapshot()
+        snap_pos = snap.get("positions") if isinstance(snap, dict) else None
+        if isinstance(snap_pos, list) and snap_pos:
+            live = snap_pos
+            _log(
+                f"positions: full PC pull from account_snapshot "
+                f"({len(live)} lots) — plan current_positions empty/offline"
+            )
     total_mv = 0.0
     for row in live:
         if not isinstance(row, dict):
@@ -638,7 +795,7 @@ def build_positions() -> list[dict[str, Any]]:
             if not rationale or "transfer" not in str(rationale).lower():
                 rationale = (
                     "Inbound transfer from an outside account (ACATS/broker). "
-                    "Cost treated as deposit capital — deposits do not count toward P/L. "
+                    "Cost treated as deposit capital â€” deposits do not count toward P/L. "
                     "Position remains tradeable."
                 )
             unreal = 0.0
@@ -654,9 +811,9 @@ def build_positions() -> list[dict[str, Any]]:
                 "target_value_usd": None,
                 "status": "deposit" if is_xfer else "no_order",
                 "rationale": (
-                    "Transfer/deposit lot — capital for P/L; tradeable when plan has orders"
+                    "Transfer/deposit lot â€” capital for P/L; tradeable when plan has orders"
                     if is_xfer
-                    else "No open order in latest strategy plan — hold current lot"
+                    else "No open order in latest strategy plan â€” hold current lot"
                 ),
             }
         prop_action = str(prop.get("action") or "HOLD").upper()
@@ -677,15 +834,15 @@ def build_positions() -> list[dict[str, Any]]:
         elif is_trade:
             prop_display = prop_action
         elif is_xfer:
-            prop_display = "HOLD · deposit"
+            prop_display = "HOLD Â· deposit"
         else:
             prop_display = prop_action
         if is_xfer:
             pl_display = "Deposit"
-            pl_pct_display = "—"
+            pl_pct_display = "â€”"
         else:
-            pl_display = _money(unreal) if unreal is not None else "—"
-            pl_pct_display = _pct(unreal_pct) if unreal_pct is not None else "—"
+            pl_display = _money(unreal) if unreal is not None else "â€”"
+            pl_pct_display = _pct(unreal_pct) if unreal_pct is not None else "â€”"
 
         positions.append(
             {
@@ -721,13 +878,13 @@ def build_positions() -> list[dict[str, Any]]:
                 "proposed_target_weight_pct": prop.get("target_weight_pct"),
                 "proposed_target_value_usd": prop.get("target_value_usd"),
                 "display": {
-                    "price": _money(price) if price else "—",
-                    "market_value": _money(market_value) if market_value is not None else "—",
-                    "cost_basis": _money(cost_basis) if cost_basis else "—",
-                    "cost_total": _money(cost_total) if cost_total is not None else "—",
+                    "price": _money(price) if price else "â€”",
+                    "market_value": _money(market_value) if market_value is not None else "â€”",
+                    "cost_basis": _money(cost_basis) if cost_basis else "â€”",
+                    "cost_total": _money(cost_total) if cost_total is not None else "â€”",
                     "unrealized_pl": pl_display,
                     "unrealized_pl_pct": pl_pct_display,
-                    "quantity": f"{qty:g}" if qty else "—",
+                    "quantity": f"{qty:g}" if qty else "â€”",
                     "proposed_action": prop_display,
                 },
             }
@@ -766,14 +923,14 @@ def build_positions() -> list[dict[str, Any]]:
                     "order_type": row.get("order_type"),
                     "allocation_usd": alloc,
                     "display": {
-                        "price": _money(price) if price else "—",
-                        "market_value": _money(alloc) if alloc else "—",
-                        "cost_basis": "—",
-                        "unrealized_pl": "—",
+                        "price": _money(price) if price else "â€”",
+                        "market_value": _money(alloc) if alloc else "â€”",
+                        "cost_basis": "â€”",
+                        "unrealized_pl": "â€”",
                         "unrealized_pl_pct": _pct(_f(row.get("projected_return_pct")))
                         if row.get("projected_return_pct") is not None
-                        else "—",
-                        "quantity": "—",
+                        else "â€”",
+                        "quantity": "â€”",
                     },
                 }
             )
@@ -890,8 +1047,8 @@ def build_dashboard() -> dict[str, Any]:
     env_l = env_disp
     env_s = env_disp
 
-    long_pct: Any = "—"
-    short_pct: Any = "—"
+    long_pct: Any = "â€”"
+    short_pct: Any = "â€”"
     joint = 0.0
     exp_long = 0.0
     exp_short = 0.0
@@ -909,8 +1066,8 @@ def build_dashboard() -> dict[str, Any]:
         coord = coordinate_sleeves()
         deploy = coord.get("deploy") or {}
         exp = coord.get("expected_profit") or {}
-        long_pct = deploy.get("long_max_deploy_pct", "—")
-        short_pct = deploy.get("short_max_deploy_pct", "—")
+        long_pct = deploy.get("long_max_deploy_pct", "â€”")
+        short_pct = deploy.get("short_max_deploy_pct", "â€”")
         joint = float(exp.get("expected_profit_usd_joint") or 0)
         exp_long = float(exp.get("expected_profit_usd_long") or 0)
         exp_short = float(exp.get("expected_profit_usd_short") or 0)
@@ -993,7 +1150,7 @@ def build_dashboard() -> dict[str, Any]:
             if sym:
                 learned.add(sym)
             cost = _f(p.get("cost_total"))
-            # Cost basis only — never book transfer deposits at market value.
+            # Cost basis only â€” never book transfer deposits at market value.
             if cost is not None and cost > 0:
                 transfer_deposit += abs(cost)
             p["open_pl_for_total"] = 0.0  # transfer book-in is capital, not P/L
@@ -1006,13 +1163,13 @@ def build_dashboard() -> dict[str, Any]:
             disp = p.get("display") if isinstance(p.get("display"), dict) else {}
             disp = dict(disp)
             disp["unrealized_pl"] = "Deposit"
-            disp["unrealized_pl_pct"] = "—"
+            disp["unrealized_pl_pct"] = "â€”"
             prop_a = str(p.get("proposed_action") or "HOLD").upper()
             is_trade = prop_a in ("BUY", "SELL", "SELL_SHORT", "BUY_TO_COVER")
             if not is_trade:
                 # No plan trade — keep deposit HOLD label
                 if not disp.get("proposed_action") or "HOLD" in str(disp.get("proposed_action") or "").upper():
-                    disp["proposed_action"] = "HOLD · deposit"
+                    disp["proposed_action"] = "HOLD Â· deposit"
                 if not p.get("proposed_status"):
                     p["proposed_status"] = "deposit"
             # else: leave proposed_action / display from build_positions (plan trade)
@@ -1061,7 +1218,7 @@ def build_dashboard() -> dict[str, Any]:
     dep = _f(account.get("deposits_total"))
     dep_note = ""
     if dep is not None and abs(dep) >= 0.01:
-        dep_note = f" · P/L excludes deposits · deposits {_money(dep)} not in P/L"
+        dep_note = f" Â· P/L excludes deposits Â· deposits {_money(dep)} not in P/L"
     status = f"Connected to E*TRADE{dep_note}" if not guidance.startswith("Could not") else guidance
     if guidance and "Could not" not in guidance and guidance != "Dashboard ready.":
         status = f"{guidance}{dep_note}"
@@ -1106,11 +1263,11 @@ def build_dashboard() -> dict[str, Any]:
         # Rebuild snapshot without idea-count noise
         for row in snapshot:
             if isinstance(row, dict) and row.get("item") in ("Top idea", "# ideas", "Exp. profit $"):
-                row["long"] = "—"
-                row["short"] = "—"
-        status = f"{status} · phone UI info OFF" if status else "phone UI info OFF"
+                row["long"] = "â€”"
+                row["short"] = "â€”"
+        status = f"{status} Â· phone UI info OFF" if status else "phone UI info OFF"
 
-    return {
+    payload = {
         "ok": True,
         "version": BRIDGE_VERSION,
         "phone_ui_info_enabled": ui_info,
@@ -1183,6 +1340,11 @@ def build_dashboard() -> dict[str, Any]:
         },
         "snapshot": snapshot,
     }
+    try:
+        _publish_dashboard_to_oxygen(payload)
+    except Exception as exc:
+        _log(f"publish dashboard note: {exc}")
+    return payload
 
 
 def build_performance_series(account_id_key: str = "") -> dict[str, Any]:
@@ -1445,7 +1607,7 @@ def list_accounts_for_phone() -> dict[str, Any]:
                 )
             live_ok = True
         else:
-            live_error = "PC E*TRADE session missing or expired — showing saved accounts"
+            live_error = "PC E*TRADE session missing or expired â€” showing saved accounts"
     except Exception as exc:
         live_error = str(exc)
 
@@ -1458,7 +1620,7 @@ def list_accounts_for_phone() -> dict[str, Any]:
                 continue
             key = entry["account_id_key"]
             if key in seen:
-                # Same account on long+short — keep one row, mark dual role
+                # Same account on long+short â€” keep one row, mark dual role
                 for a in accounts:
                     if a["account_id_key"] == key:
                         a["role"] = "long+short"
@@ -1773,14 +1935,14 @@ def build_agents_for_phone() -> dict[str, Any]:
                 return data
         except (OSError, json.JSONDecodeError) as exc:
             _log(f"agents snapshot read failed: {exc}")
-    # Minimal empty payload — phone can still show empty state
+    # Minimal empty payload â€” phone can still show empty state
     return {
         "ok": True,
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "agent_count": 0,
         "agents": [],
         "source": "empty",
-        "message": "No agent snapshot yet — run agents on PC / publish etrade-agents.json",
+        "message": "No agent snapshot yet â€” run agents on PC / publish etrade-agents.json",
     }
 
 
@@ -1867,7 +2029,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 )
                 return
             if not self._authorized():
-                self._send(401, {"ok": False, "error": "Unauthorized — set bridge token in the phone app"})
+                self._send(401, {"ok": False, "error": "Unauthorized â€” set bridge token in the phone app"})
                 return
             if path == "/api/dashboard":
                 self._send(200, build_dashboard())
@@ -1897,7 +2059,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         404,
                         {
                             "ok": False,
-                            "error": "APK not found on PC — build etrade-app/dist/ETradeTrader.apk first",
+                            "error": "APK not found on PC â€” build etrade-app/dist/ETradeTrader.apk first",
                         },
                     )
                     return
@@ -1917,7 +2079,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip("/") or "/"
         try:
             if not self._authorized():
-                self._send(401, {"ok": False, "error": "Unauthorized — set bridge token in the phone app"})
+                self._send(401, {"ok": False, "error": "Unauthorized â€” set bridge token in the phone app"})
                 return
             body = self._read_body()
             if path == "/api/oauth/start":
