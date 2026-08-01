@@ -17,7 +17,13 @@ DEFAULT_ACCOUNT_GOALS: dict[str, Any] = {
     "weekly_gain_pct": 12.0,
     "monthly_gain_pct": 48.0,
     "agent_goal_bonus": True,
-    "notes": "Account targets: +2% day / +12% week / +48% month.",
+    # Award group-appropriate points for each full 1.0% total (and daily) P/L
+    "pl_points_enabled": True,
+    "notes": (
+        "Primary goal: increase daily and total average P/L. "
+        "Targets +2% day / +12% week / +48% month. "
+        "Groups earn role-scaled points per full 1.0% total P/L (and half-weight per daily 1%)."
+    ),
 }
 
 # Horizon windows used for progress measurement
@@ -49,6 +55,7 @@ def load_account_goals(config_path: Path | None = None) -> dict[str, Any]:
             "weekly_gain_pct",
             "monthly_gain_pct",
             "agent_goal_bonus",
+            "pl_points_enabled",
             "notes",
         ):
             if key in user:
@@ -62,6 +69,7 @@ def load_account_goals(config_path: Path | None = None) -> dict[str, Any]:
         pass
     goals["enabled"] = bool(goals.get("enabled", True))
     goals["agent_goal_bonus"] = bool(goals.get("agent_goal_bonus", True))
+    goals["pl_points_enabled"] = bool(goals.get("pl_points_enabled", True))
     return goals
 
 
@@ -236,7 +244,8 @@ def goal_progress(config_path: Path | None = None) -> dict[str, Any]:
     except Exception:
         growth = {}
 
-    # Prefer profit_metrics (already deposit-aware) for events + opening
+    # Prefer profit_metrics (already deposit-aware) for events + opening + total P/L
+    metrics: dict[str, Any] = {}
     try:
         from account_profit import detect_external_flow_events, profit_metrics_for_account
 
@@ -305,14 +314,40 @@ def goal_progress(config_path: Path | None = None) -> dict[str, Any]:
         except Exception:
             pass
 
+    # Lifetime / total trading P/L % (deposit-aware) + simple average of daily & total
+    total_pl_pct: float | None = None
+    total_pl_amount: float | None = None
+    try:
+        if metrics.get("profit_pct") is not None:
+            total_pl_pct = float(metrics["profit_pct"])
+        if metrics.get("profit_amount") is not None:
+            total_pl_amount = float(metrics["profit_amount"])
+    except (TypeError, ValueError):
+        pass
+
+    # "Total average" = mean of daily actual and total P/L when both known
+    avg_components: list[float] = []
+    if daily_actual is not None:
+        avg_components.append(float(daily_actual))
+    if total_pl_pct is not None:
+        avg_components.append(float(total_pl_pct))
+    total_avg_pl_pct = (
+        round(sum(avg_components) / len(avg_components), 4) if avg_components else None
+    )
+
     result = {
         "enabled": bool(goals.get("enabled", True)),
         "agent_goal_bonus": bool(goals.get("agent_goal_bonus", True)),
+        "pl_points_enabled": bool(goals.get("pl_points_enabled", True)),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "exclude_deposits": True,
+        "primary_goal": "increase_daily_and_total_average_pl",
         "daily": _progress(daily_actual, daily_target),
         "weekly": _progress(weekly_actual, weekly_target),
         "monthly": _progress(monthly_actual, monthly_target),
+        "total_pl_pct": round(total_pl_pct, 4) if total_pl_pct is not None else None,
+        "total_pl_amount": total_pl_amount,
+        "total_avg_pl_pct": total_avg_pl_pct,
         "notes": goals.get("notes"),
         "baseline_value": growth.get("baseline_value") if isinstance(growth, dict) else None,
         "latest_value": growth.get("latest_value") if isinstance(growth, dict) else None,
@@ -357,22 +392,39 @@ def agent_goal_bonus_score(
     progress: dict[str, Any] | None = None,
     *,
     goals: dict[str, Any] | None = None,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     """Bonus points for agents whose bullish picks sit in the book while goals progress.
 
     Returns a small additive multiplier boost (0..~0.30) and per-horizon credits.
     Only positive account progress counts — agents are not rewarded for losses.
+
+    When ``agent_id`` is set and pl_points_enabled, also awards group-appropriate
+    points for each full 1.0% of total P/L (and half-weight for daily %).
     """
     goals = goals or load_account_goals()
     progress = progress or goal_progress()
     if not goals.get("enabled", True) or not goals.get("agent_goal_bonus", True):
-        return {"bonus": 0.0, "points": 0.0, "horizons": {}, "eligible": False}
+        return {
+            "bonus": 0.0,
+            "points": 0.0,
+            "pl_points": 0.0,
+            "horizons": {},
+            "eligible": False,
+        }
     attr = max(0.0, float(normalized_attribution or 0.0))
     if attr <= 0:
-        return {"bonus": 0.0, "points": 0.0, "horizons": {}, "eligible": False}
+        return {
+            "bonus": 0.0,
+            "points": 0.0,
+            "pl_points": 0.0,
+            "horizons": {},
+            "eligible": False,
+        }
 
     # Weights for how much each horizon contributes to the bonus
-    horizon_weights = {"daily": 0.40, "weekly": 0.35, "monthly": 0.25}
+    # Tilt toward daily so daily average P/L is the primary lever
+    horizon_weights = {"daily": 0.50, "weekly": 0.30, "monthly": 0.20}
     horizons: dict[str, Any] = {}
     raw = 0.0
     for key, w in horizon_weights.items():
@@ -405,17 +457,93 @@ def agent_goal_bonus_score(
             "ratio": round(ratio, 4),
         }
 
-    # raw roughly 0..~1.5 → bonus multiplier add-on 0..0.30
+    # Extra credit when total P/L is positive (lifetime trading profit %)
+    total_pl = progress.get("total_pl_pct")
+    total_pl_credit = 0.0
+    if total_pl is not None:
+        try:
+            tp = float(total_pl)
+            if tp > 0:
+                # Soft credit: 1% total PL → ~0.05 raw at full attribution
+                total_pl_credit = round(min(0.5, tp / 20.0) * attr * 0.25, 4)
+                raw += total_pl_credit
+        except (TypeError, ValueError):
+            pass
+
+    # raw roughly 0..~2 → bonus multiplier add-on 0..0.30
     bonus = round(min(0.30, raw * 0.20), 4)
-    # Leaderboard-style points 0..100
+    # Leaderboard-style points 0..100 from horizon bonus path
     points = round(min(100.0, bonus / 0.30 * 100.0), 2)
+
+    # Group-appropriate P/L points (each full 1.0% total + half daily)
+    pl_detail: dict[str, Any] = {}
+    pl_points = 0.0
+    if goals.get("pl_points_enabled", True) and agent_id:
+        try:
+            from agent_groups import pl_points_for_total_gain
+
+            daily_actual = None
+            daily_block = progress.get("daily") if isinstance(progress.get("daily"), dict) else {}
+            if daily_block.get("actual_pct") is not None:
+                daily_actual = float(daily_block["actual_pct"])
+            pl_detail = pl_points_for_total_gain(
+                agent_id,
+                float(total_pl) if total_pl is not None else None,
+                attribution=attr,
+                daily_pl_pct=daily_actual,
+            )
+            pl_points = float(pl_detail.get("points") or 0.0)
+            # Fold a capped share of PL points into the leaderboard points
+            points = round(min(100.0, points + min(40.0, pl_points * 0.5)), 2)
+            # Small multiplier bump from PL points (max +0.10)
+            if pl_points > 0:
+                bonus = round(min(0.35, bonus + min(0.10, pl_points * 0.005)), 4)
+        except Exception:
+            pl_detail = {}
+            pl_points = 0.0
+
     return {
         "bonus": bonus,
         "points": points,
+        "pl_points": round(pl_points, 2),
+        "pl_detail": pl_detail,
+        "total_pl_credit": total_pl_credit,
         "horizons": horizons,
         "eligible": True,
         "attribution": round(attr, 4),
     }
+
+
+def group_pl_leaderboard(
+    progress: dict[str, Any] | None = None,
+    *,
+    goals: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Per-group points for current total/daily P/L (full attribution, catalog view)."""
+    goals = goals or load_account_goals()
+    if not goals.get("enabled", True) or not goals.get("pl_points_enabled", True):
+        return []
+    progress = progress or goal_progress()
+    total_pl = progress.get("total_pl_pct")
+    daily_block = progress.get("daily") if isinstance(progress.get("daily"), dict) else {}
+    daily_actual = daily_block.get("actual_pct")
+    try:
+        from agent_groups import AGENT_GROUPS, pl_points_for_total_gain
+
+        rows: list[dict[str, Any]] = []
+        for gid in AGENT_GROUPS:
+            row = pl_points_for_total_gain(
+                gid,
+                float(total_pl) if total_pl is not None else None,
+                attribution=1.0,
+                daily_pl_pct=float(daily_actual) if daily_actual is not None else None,
+                is_group_id=True,
+            )
+            rows.append(row)
+        rows.sort(key=lambda r: (-float(r.get("points") or 0), str(r.get("group_id") or "")))
+        return rows
+    except Exception:
+        return []
 
 
 def write_goals_status(path: Path | None = None) -> dict[str, Any]:

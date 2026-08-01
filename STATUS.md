@@ -1,20 +1,25 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-01
-**Updated by:** PHONE
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** BOXONE
 
 ## Current goal
 
-Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch → headless Grok on AI-CODING. **Dropshipping business info** is canonical under `dropshipping/`.
+Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch → headless Grok on AI-CODING. **Dropshipping business info** is canonical under `dropshipping/`. **Primary trading goal:** increase daily and total average P/L; groups earn role-scaled points per full 1.0% total P/L.
 
 ## NOTIFY
 
-- (none — prior group-scoring NOTIFY seen/ack path closed)
+- **NOTIFY BOXONE:** AI-CODING finished PHONE goal (daily + total avg P/L; group points per 1% total P/L). Task `tasks/done/040-group-pl-points-daily-total.md`. Rates: intraday 12, alpha 10, sector/alloc 9, regime/fusion 8, risk 5–6, exec 4, platform 2. Wired into `account_goals` + `balance_penalties` (`pl_points`, `group_pl_points`). Ack once, set Act on: none — no ping-pong.
 
 ## Done
 
+- [x] **AI-CODING (PHONE):** goal increase daily and total average P/L; give group appropriate points for each 1.0% increase in total P/L — **done**.
+  - Primary goal flag + `total_pl_pct` / `total_avg_pl_pct` on goal progress.
+  - Role-scaled `pl_points_per_pct` on every group; `pl_points_for_total_gain` (full 1% units; daily at 0.5×).
+  - Agent bonuses + balance_penalties carry `pl_points`; group leaderboard export.
+  - Task: `tasks/done/040-group-pl-points-daily-total.md`.
 - [x] **AI-CODING (PHONE via gsw):** all dropshipping info in Finance — **done**. Canonical tree `dropshipping/` (README, STORE-STATUS, MISSION, product-research, marketing-plan, shopify-setup-plan, DROPSHIP-STACK, margins/, reports/, notes/). Ops code remains ShopifyDS. See task on grok-shared-workspace `tasks/done/058-dropshipping-info-to-finance-AI-CODING.md`.
 - [x] **AI-CODING (PHONE):** agent groups — each group gets a scoring system based on function — **done**.
   - 15 groups each have `scoring` (mode, primary_metric, weighted KPIs, dir/mag blend, score_horizon).
@@ -34,8 +39,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## Next
 
-- (none — dropshipping info now under `dropshipping/`; ShopifyDS remains ops)
-- [ ] **AI-CODING** goal: increase daily and total average  p/l.    give group appropriate points for each 1.0% increase in total p/l.
+- (none)
 
 ## Blockers
 
@@ -43,6 +47,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## Notes
 
+- **PL points (2026-08-01):** Groups earn points per full 1.0% total trading P/L (deposit-aware). Intraday 12, alpha 10, platform 2. Daily half-weight. See `agent_groups.ROLE_PL_POINTS_PER_PCT` and task **040**.
 - **Dropshipping (2026-08-01):** PHONE asked that all dropshipping info live in Finance. Canonical path: `dropshipping/README.md`. ShopifyDS keeps automation/scripts; gsw `work/dropshipping-store/` is a legacy mirror only.
 - **Phone bus (2026-07-31):** Finance previously accepted GitStatus writes but had **no watcher** — agents never woke on `Act on: AI-CODING`. Fixed: install `FinanceWorkspaceWatch` (every ~2 min). See `RULES.md` / `AGENTS.md`.
 - Runtime trading stack may be `C:\Users\Box One\Finance` (local); this clone is `Documents\GitHub\Finance` (git + phone bus). Do not commit secrets from runtime.
@@ -52,5 +57,3 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
 - **Pipeline 0/0 hint:** string from last `record_pipeline_run` / memory bundle; `0/0` = empty agent count that cycle, not mass agent failure.
 - **Group scoring:** each agent group graded by function (alpha vs calibration vs risk vs platform/execution, etc.). Source: `agent_groups.py` `scoring` + `all_scoring_systems()`.
-- PHONE: goal: increase daily and total average  p/l.    give group appropriate points for each 1.0% increase in total p/l. → Act on AI-CODING
-

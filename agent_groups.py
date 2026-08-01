@@ -1215,16 +1215,155 @@ def uses_directional_scoring(agent_id: str) -> bool:
     return bool(agent_group(agent_id).get("directional", True))
 
 
+# ---------------------------------------------------------------------------
+# Total P/L points — per full 1.0% increase, weighted by group function
+# ---------------------------------------------------------------------------
+#
+# Goal: raise daily and total average P/L. When total account profit_pct rises,
+# each completed 1.0% awards points scaled by how directly the group drives P/L.
+# Alpha / intraday get the most; platform / execution get support-level credit.
+#
+ROLE_PL_POINTS_PER_PCT: dict[str, float] = {
+    "alpha": 10.0,
+    "intraday": 12.0,  # daily P/L focus
+    "short_alpha": 10.0,
+    "sector_specialist": 9.0,
+    "allocator": 9.0,
+    "regime": 8.0,
+    "fusion": 8.0,
+    "risk_overlay": 6.0,
+    "risk_gate": 5.0,
+    "execution": 4.0,
+    "platform": 2.0,
+}
+
+DEFAULT_PL_POINTS_PER_PCT = 6.0
+
+
+def pl_points_per_pct_for_role(trading_role: str | None) -> float:
+    """Points awarded to a role for each full 1.0% of total account P/L."""
+    role = str(trading_role or "alpha").strip().lower()
+    if role in ROLE_PL_POINTS_PER_PCT:
+        return float(ROLE_PL_POINTS_PER_PCT[role])
+    return float(DEFAULT_PL_POINTS_PER_PCT)
+
+
+def group_pl_points_per_pct(group_id: str) -> float:
+    """Points-per-1%-total-P/L for a group id (from trading_role)."""
+    g = AGENT_GROUPS.get(group_id) or {}
+    # Optional explicit override on group meta
+    if g.get("pl_points_per_pct") is not None:
+        try:
+            return max(0.0, float(g["pl_points_per_pct"]))
+        except (TypeError, ValueError):
+            pass
+    return pl_points_per_pct_for_role(str(g.get("trading_role") or "alpha"))
+
+
+def agent_pl_points_per_pct(agent_id: str) -> float:
+    """Points-per-1%-total-P/L for an agent's group."""
+    return group_pl_points_per_pct(agent_group_id(agent_id))
+
+
+def pl_points_for_total_gain(
+    agent_or_group_id: str,
+    total_pl_pct: float | None,
+    *,
+    attribution: float = 1.0,
+    daily_pl_pct: float | None = None,
+    is_group_id: bool = False,
+) -> dict[str, Any]:
+    """Award group-appropriate points for total (and optional daily) P/L gains.
+
+    - **Total:** each full 1.0% of total account profit_pct → ``pl_points_per_pct``
+      points (role-scaled). Fractional % below a full unit does not count.
+    - **Daily:** when daily_pl_pct > 0, award the same per-1% schedule at 0.5×
+      weight so daily average P/L is incentivized without double-counting total.
+    - Only **positive** gains score. Losses → 0 points (no negative points here).
+    - ``attribution`` (0..1) scales agent share when picks sit in the book.
+    """
+    if is_group_id:
+        gid = agent_or_group_id if agent_or_group_id in AGENT_GROUPS else agent_group_id(agent_or_group_id)
+        role = str((AGENT_GROUPS.get(gid) or {}).get("trading_role") or "alpha")
+        per_pct = group_pl_points_per_pct(gid)
+        aid = None
+    else:
+        aid = normalize_agent_id(agent_or_group_id)
+        gid = agent_group_id(aid)
+        role = agent_trading_role(aid)
+        per_pct = agent_pl_points_per_pct(aid)
+
+    attr = max(0.0, min(1.0, float(attribution if attribution is not None else 1.0)))
+    total_units = 0
+    daily_units = 0
+    try:
+        tp = float(total_pl_pct) if total_pl_pct is not None else None
+    except (TypeError, ValueError):
+        tp = None
+    try:
+        dp = float(daily_pl_pct) if daily_pl_pct is not None else None
+    except (TypeError, ValueError):
+        dp = None
+
+    if tp is not None and tp > 0:
+        total_units = int(tp)  # full 1.0% steps only
+    if dp is not None and dp > 0:
+        daily_units = int(dp)
+
+    total_points = round(total_units * per_pct * attr, 2)
+    # Daily half-weight: each full 1% daily gain adds 0.5 × role points
+    daily_points = round(daily_units * per_pct * 0.5 * attr, 2)
+    points = round(total_points + daily_points, 2)
+
+    return {
+        "agent_id": aid,
+        "group_id": gid,
+        "trading_role": role,
+        "pl_points_per_pct": per_pct,
+        "total_pl_pct": round(tp, 4) if tp is not None else None,
+        "daily_pl_pct": round(dp, 4) if dp is not None else None,
+        "total_pct_units": total_units,
+        "daily_pct_units": daily_units,
+        "total_points": total_points,
+        "daily_points": daily_points,
+        "points": points,
+        "attribution": round(attr, 4),
+        "eligible": attr > 0 and points > 0,
+    }
+
+
+def all_group_pl_point_rates() -> list[dict[str, Any]]:
+    """Catalog: each group’s points awarded per 1.0% total P/L."""
+    rows: list[dict[str, Any]] = []
+    for gid, meta in AGENT_GROUPS.items():
+        role = str(meta.get("trading_role") or "alpha")
+        rows.append(
+            {
+                "group_id": gid,
+                "group_label": meta.get("label"),
+                "trading_role": role,
+                "pl_points_per_pct": group_pl_points_per_pct(gid),
+                "member_count": len(agents_in_group(gid)),
+            }
+        )
+    rows.sort(key=lambda r: (-float(r["pl_points_per_pct"]), str(r.get("group_label") or "")))
+    return rows
+
+
 def group_scoring_for(group_id: str) -> dict[str, Any]:
     """Return the scoring system for a group id (copy; never empty for known groups)."""
     g = AGENT_GROUPS.get(group_id) or AGENT_GROUPS["markets_core"]
     scoring = g.get("scoring")
+    resolved_gid = group_id if group_id in AGENT_GROUPS else "markets_core"
+    role = g.get("trading_role")
+    pl_pts = group_pl_points_per_pct(resolved_gid)
     if isinstance(scoring, dict) and scoring:
         out = dict(scoring)
-        out["group_id"] = group_id if group_id in AGENT_GROUPS else "markets_core"
+        out["group_id"] = resolved_gid
         out["group_label"] = g.get("label")
         out["directional"] = bool(g.get("directional", True))
-        out["trading_role"] = g.get("trading_role")
+        out["trading_role"] = role
+        out["pl_points_per_pct"] = pl_pts
         return out
     # Fallback for any group missing an explicit system
     return _scoring(
@@ -1233,10 +1372,11 @@ def group_scoring_for(group_id: str) -> dict[str, Any]:
         summary="Default directional scoring.",
         metrics=[{"id": "direction_hit", "weight": 1.0, "label": "Direction hit rate"}],
     ) | {
-        "group_id": group_id if group_id in AGENT_GROUPS else "markets_core",
+        "group_id": resolved_gid,
         "group_label": g.get("label"),
         "directional": bool(g.get("directional", True)),
-        "trading_role": g.get("trading_role"),
+        "trading_role": role,
+        "pl_points_per_pct": pl_pts,
     }
 
 
@@ -1357,6 +1497,7 @@ def all_scoring_systems() -> list[dict[str, Any]]:
                 "magnitude_weight": s.get("magnitude_weight"),
                 "directional": s.get("directional"),
                 "trading_role": s.get("trading_role"),
+                "pl_points_per_pct": s.get("pl_points_per_pct"),
                 "summary": s.get("summary"),
                 "success_criteria": s.get("success_criteria"),
                 "metrics": s.get("metrics"),
@@ -1442,6 +1583,7 @@ def apply_group_conduct_to_report(data: dict[str, Any], agent_id: str) -> dict[s
     meta["primary_metric"] = scoring.get("primary_metric")
     meta["scoring_summary"] = scoring.get("summary")
     meta["score_horizon"] = scoring.get("score_horizon")
+    meta["pl_points_per_pct"] = scoring.get("pl_points_per_pct")
     data["meta"] = meta
 
     posture = str(g.get("posture") or "neutral")

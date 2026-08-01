@@ -417,6 +417,9 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
             multiplier += benchmark_credit
 
         # Bonus when this agent's picks help progress toward account goals
+        # + group-appropriate points per full 1.0% total (and daily) P/L
+        pl_points = 0.0
+        pl_detail: dict[str, Any] = {}
         if attr > 0 and goals_cfg.get("agent_goal_bonus", True) and goals_progress:
             try:
                 from account_goals import agent_goal_bonus_score
@@ -425,12 +428,19 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
                     normalized,
                     goals_progress,
                     goals=goals_cfg,
+                    agent_id=aid,
                 )
                 goal_bonus = float(gb.get("bonus") or 0.0)
                 goal_points = float(gb.get("points") or 0.0)
+                pl_points = float(gb.get("pl_points") or 0.0)
+                pl_detail = gb.get("pl_detail") if isinstance(gb.get("pl_detail"), dict) else {}
                 goal_detail = {
                     "horizons": gb.get("horizons") or {},
                     "eligible": bool(gb.get("eligible")),
+                    "pl_points": pl_points,
+                    "pl_points_per_pct": pl_detail.get("pl_points_per_pct"),
+                    "total_pct_units": pl_detail.get("total_pct_units"),
+                    "daily_pct_units": pl_detail.get("daily_pct_units"),
                 }
                 if goal_bonus > 0:
                     multiplier += goal_bonus
@@ -447,10 +457,22 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
             "benchmark_reward_score": benchmark_credit,
             "goal_bonus": round(goal_bonus, 4),
             "goal_points": round(goal_points, 2),
+            "pl_points": round(pl_points, 2),
+            "pl_detail": pl_detail,
             "goal_detail": goal_detail,
             "benchmark_tiers_hit": tiers_hit,
             "held_overlap": bool(held),
         }
+
+    # Group-level P/L point leaderboard (full attribution catalog)
+    group_pl_board: list[dict[str, Any]] = []
+    try:
+        from account_goals import group_pl_leaderboard
+
+        if goals_cfg.get("pl_points_enabled", True):
+            group_pl_board = group_pl_leaderboard(goals_progress, goals=goals_cfg)
+    except Exception:
+        group_pl_board = []
 
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -459,6 +481,8 @@ def rebuild_balance_penalties(*, lookback: int = ATTRIBUTION_LOOKBACK) -> dict[s
         "lookback_points": lookback,
         "daily_benchmarks_pct": list(DAILY_GROWTH_BENCHMARKS_PCT),
         "account_goals": goals_progress,
+        "group_pl_points": group_pl_board,
+        "primary_goal": "increase_daily_and_total_average_pl",
         "trend": trend,
         "is_declining": is_declining,
         "is_rising": is_rising,
@@ -492,6 +516,12 @@ def penalty_label(agent_id: str) -> str:
         gp = float(entry.get("goal_points") or 0.0)
         if gp > 0.5:
             parts.append(f"goal +{gp:.0f}pts")
+    except (TypeError, ValueError):
+        pass
+    try:
+        pp = float(entry.get("pl_points") or 0.0)
+        if pp > 0.5:
+            parts.append(f"PL +{pp:.0f}pts")
     except (TypeError, ValueError):
         pass
     mult = entry.get("multiplier")

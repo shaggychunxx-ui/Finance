@@ -148,3 +148,64 @@ def test_accuracy_measurement_uses_group_weights() -> None:
     )
     assert entry.get("scoring_mode") == "calibration"
     assert entry.get("primary_metric") == "probability_calibration"
+
+
+def test_group_pl_points_per_pct_by_role() -> None:
+    """Each group gets appropriate points for each 1.0% total P/L increase."""
+    from agent_groups import (
+        ROLE_PL_POINTS_PER_PCT,
+        agent_pl_points_per_pct,
+        all_group_pl_point_rates,
+        group_pl_points_per_pct,
+        group_scoring_for,
+        pl_points_for_total_gain,
+    )
+
+    # Intraday > alpha > platform (function-appropriate)
+    assert group_pl_points_per_pct("day_trading") == ROLE_PL_POINTS_PER_PCT["intraday"]
+    assert agent_pl_points_per_pct("markets") == ROLE_PL_POINTS_PER_PCT["alpha"]
+    assert agent_pl_points_per_pct("data-steward") == ROLE_PL_POINTS_PER_PCT["platform"]
+    assert agent_pl_points_per_pct("day-trading-microstructure") > agent_pl_points_per_pct(
+        "data-steward"
+    )
+
+    # Scoring export includes rate
+    s = group_scoring_for("markets_core")
+    assert s.get("pl_points_per_pct") == ROLE_PL_POINTS_PER_PCT["alpha"]
+
+    # 3.7% total → 3 full units × 10 pts = 30 for alpha at full attribution
+    row = pl_points_for_total_gain("markets", 3.7, attribution=1.0)
+    assert row["total_pct_units"] == 3
+    assert row["points"] == 30.0
+    assert row["pl_points_per_pct"] == 10.0
+
+    # Daily half-weight: +2% day → 2 × 12 × 0.5 = 12 for intraday (total 0)
+    day = pl_points_for_total_gain(
+        "day-trading-microstructure",
+        0.0,
+        attribution=1.0,
+        daily_pl_pct=2.4,
+    )
+    assert day["daily_pct_units"] == 2
+    assert day["daily_points"] == 12.0
+    assert day["points"] == 12.0
+
+    # Negative / flat → zero
+    zero = pl_points_for_total_gain("markets", -1.5, attribution=1.0)
+    assert zero["points"] == 0.0
+    assert zero["eligible"] is False
+
+    # Attribution scales
+    half = pl_points_for_total_gain("markets", 2.0, attribution=0.5)
+    assert half["points"] == 10.0  # 2 units × 10 × 0.5
+
+    rates = all_group_pl_point_rates()
+    assert len(rates) >= 10
+    assert rates[0]["pl_points_per_pct"] >= rates[-1]["pl_points_per_pct"]
+
+
+def test_report_meta_stamps_pl_points_rate() -> None:
+    from agent_groups import apply_group_conduct_to_report
+
+    data = apply_group_conduct_to_report({"market_signals": []}, "markets")
+    assert data["meta"].get("pl_points_per_pct") == 10.0
