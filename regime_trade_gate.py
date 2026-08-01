@@ -102,12 +102,13 @@ def evaluate_regime_trade_gate(
 
     max_minority = float(gate.get("max_minority_weight", 0.42))
     hard_contested = [c for c in contested if float(c.get("disagreement") or 0) >= max_minority]
-    if hard_contested and len(hard_contested) >= 5:
-        reasons.append(f"broad_cluster_disagreement n={len(hard_contested)}")
+    if hard_contested:
+        reasons.append(f"contested_symbols n={len(hard_contested)}")
 
-    # Global block only for event / extreme regime / broad war; per-symbol still listed
+    # Global block only for event day / extreme regime — contested names are
+    # blocked per-symbol so the book can still trade non-contested ideas.
     global_block = any(
-        r.startswith("high_impact") or r.startswith("extreme_") or r.startswith("broad_cluster")
+        r.startswith("high_impact") or r.startswith("extreme_")
         for r in reasons
     )
 
