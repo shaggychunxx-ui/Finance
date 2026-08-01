@@ -222,19 +222,36 @@ def fetch_daily_bars(
     *,
     days: int = 400,
     use_cache: bool = True,
+    start: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch daily close bars from Yahoo and cache under output/history/bars/."""
+    """Fetch daily close bars from Yahoo and cache under output/history/bars/.
+
+    *days* is the lookback window ending now. When *start* is set, *period1*
+    uses that calendar date instead (for full history from e.g. 2000-01-01).
+    """
     sym = str(symbol or "").strip().upper()
     if not sym:
         return []
 
+    days = max(1, int(days))
+    # Enough bars for the request: ~trading days ≈ calendar * 0.7; keep a floor.
+    min_cached = max(40, min(days // 2, 2500)) if start is None else max(40, min(days // 3, 4000))
+
     cache_path = BAR_CACHE_DIR / f"{sym}.json"
     if use_cache and _bar_cache_fresh(cache_path):
         cached = load_daily_bars(sym)
-        if len(cached) >= min(days // 2, 60):
-            return cached
+        if len(cached) >= min_cached:
+            if start is None:
+                return cached
+            # For long history, also require first bar not much later than start.
+            first = _parse_iso(cached[0].get("at") if cached else None)
+            if first is not None and first <= start + timedelta(days=400):
+                return cached
 
-    period1 = int((datetime.now(timezone.utc) - timedelta(days=days + 30)).timestamp())
+    if start is not None:
+        period1 = int(start.replace(tzinfo=timezone.utc).timestamp()) if start.tzinfo is None else int(start.timestamp())
+    else:
+        period1 = int((datetime.now(timezone.utc) - timedelta(days=days + 30)).timestamp())
     period2 = int(datetime.now(timezone.utc).timestamp())
     bars: list[dict[str, Any]] = []
     try:
@@ -242,15 +259,15 @@ def fetch_daily_bars(
             CHART_API.format(symbol=sym),
             params={"period1": period1, "period2": period2, "interval": "1d"},
             headers=HEADERS,
-            timeout=25,
+            timeout=45,
         )
         if resp.status_code == 429:
-            time.sleep(2)
+            time.sleep(3)
             resp = requests.get(
                 CHART_API.format(symbol=sym),
                 params={"period1": period1, "period2": period2, "interval": "1d"},
                 headers=HEADERS,
-                timeout=25,
+                timeout=45,
             )
         resp.raise_for_status()
         result = (resp.json().get("chart") or {}).get("result") or []

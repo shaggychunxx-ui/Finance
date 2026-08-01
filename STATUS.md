@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-01
-**Updated by:** PHONE
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** BOXONE
 
 ## Current goal
 
@@ -11,10 +11,15 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## NOTIFY
 
-- **NOTIFY BOXONE:** AI-CODING finished PHONE goal (daily + total avg P/L; group points per 1% total P/L). Task `tasks/done/040-group-pl-points-daily-total.md`. Rates: intraday 12, alpha 10, sector/alloc 9, regime/fusion 8, risk 5–6, exec 4, platform 2. Wired into `account_goals` + `balance_penalties` (`pl_points`, `group_pl_points`). Ack once, set Act on: none — no ping-pong.
+- **NOTIFY BOXONE:** AI-CODING started PHONE full day walk-forward backtest (from 2000-01-01, no look-ahead, day-by-day, loops). Task `tasks/done/041-full-day-backtest-from-2000.md`. Engine: `run_full_day_backtest.py` + `Start Full Day Backtest.bat`. State/report under `output/history/full_day_backtest_*`. Review window/notepad opened on AI-CODING. Ack once, set Act on: none — no ping-pong.
 
 ## Done
 
+- [x] **AI-CODING (PHONE):** slow constant full backtest from 2000-01-01 — **done / running**.
+  - Day-by-day walk-forward; signals only use bars ≤ sim date; predict vs actual (24h/1wk/1mo); restarts at today.
+  - Conserves CPU/GPU/mem: BELOW_NORMAL, 1.25s/day, 16 symbols, 20 agents, incremental disk state.
+  - Review summary window + `output/history/full_day_backtest_review.txt` before start; live status window.
+  - Continuous process on AI-CODING. Task: `tasks/done/041-full-day-backtest-from-2000.md`.
 - [x] **AI-CODING (PHONE):** goal increase daily and total average P/L; give group appropriate points for each 1.0% increase in total P/L — **done**.
   - Primary goal flag + `total_pl_pct` / `total_avg_pl_pct` on goal progress.
   - Role-scaled `pl_points_per_pct` on every group; `pl_points_for_total_gain` (full 1% units; daily at 0.5×).
@@ -40,7 +45,6 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - (none)
-- [ ] **AI-CODING** Run slow but constantant full back test. conserve cpu, gpu, and memory. start on jan 1 2000. ignore real future results from the date of back test. predic results and compare with actual results. proceed one day at a time until current date. once at current date, repeat process. before staring, open a window on AI-CODING sgiving summary for review.
 
 ## Blockers
 
@@ -48,6 +52,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## Notes
 
+- **Full day backtest (2026-08-01):** Continuous walk-forward from 2000-01-01 on AI-CODING. `python run_full_day_backtest.py` or `Start Full Day Backtest.bat`. Check `output/history/full_day_backtest_state.json` / `.log`. Resumes mid-pass unless `--fresh`.
 - **PL points (2026-08-01):** Groups earn points per full 1.0% total trading P/L (deposit-aware). Intraday 12, alpha 10, platform 2. Daily half-weight. See `agent_groups.ROLE_PL_POINTS_PER_PCT` and task **040**.
 - **Dropshipping (2026-08-01):** PHONE asked that all dropshipping info live in Finance. Canonical path: `dropshipping/README.md`. ShopifyDS keeps automation/scripts; gsw `work/dropshipping-store/` is a legacy mirror only.
 - **Phone bus (2026-07-31):** Finance previously accepted GitStatus writes but had **no watcher** — agents never woke on `Act on: AI-CODING`. Fixed: install `FinanceWorkspaceWatch` (every ~2 min). See `RULES.md` / `AGENTS.md`.
@@ -58,5 +63,3 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
 - **Pipeline 0/0 hint:** string from last `record_pipeline_run` / memory bundle; `0/0` = empty agent count that cycle, not mass agent failure.
 - **Group scoring:** each agent group graded by function (alpha vs calibration vs risk vs platform/execution, etc.). Source: `agent_groups.py` `scoring` + `all_scoring_systems()`.
-- PHONE: Run slow but constantant full back test. conserve cpu, gpu, and memory. start on jan 1 2000. ignore real future results from the date of back test. predic results and compare with actual results. proceed one day at a time until current date. once at current date, repeat process. before staring, open a window on AI-CODING sgiving summary for review. → Act on AI-CODING
-
