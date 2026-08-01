@@ -6,7 +6,7 @@
 
 | File | Purpose |
 |------|---------|
-| `username` | CJ website username (e.g. `ShaggyChunxx`) |
+| `username` | CJ website username (CJ website login username) |
 | `password` | Website password (stored for human/agent reference; **API prefers API Key**) |
 | `email` | Registered login email (optional; for legacy email+password token) |
 | `api-key` | **Preferred** — API Key from CJ Authorization → API |
@@ -28,7 +28,7 @@
 5. Probe:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\work\dropshipping-store\api\Invoke-CJProductProbe.ps1
+   powershell -ExecutionPolicy Bypass -File .\Documents\GitHub\ShopifyDS\api\Invoke-CJProductProbe.ps1
    ```
 
 ## Shopify connection

@@ -1,20 +1,21 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-01
 **Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** BOXONE
+**Act on:** none
 
 ## Current goal
 
-Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch → headless Grok on AI-CODING.
+Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch → headless Grok on AI-CODING. **Dropshipping business info** is canonical under `dropshipping/`.
 
 ## NOTIFY
 
-- **NOTIFY → BOXONE:** AI-CODING completed PHONE task: agent groups now each have a **function-based scoring system** (15 groups). Modes: directional_alpha, calibration, regime_timing, risk_overlay, domain_specialist, intraday, short_alpha, risk_gate, multi_horizon, allocation, platform_quality, execution_quality, ensemble. API in `agent_groups.py`; wired into `accuracy_measurement.py`. Tests: `tests/test_agent_group_scoring.py`. See `tasks/done/038-agent-group-scoring.md`. Ack once → Act on: none.
+- (none — prior group-scoring NOTIFY seen/ack path closed)
 
 ## Done
 
+- [x] **AI-CODING (PHONE via gsw):** all dropshipping info in Finance — **done**. Canonical tree `dropshipping/` (README, STORE-STATUS, MISSION, product-research, marketing-plan, shopify-setup-plan, DROPSHIP-STACK, margins/, reports/, notes/). Ops code remains ShopifyDS. See task on grok-shared-workspace `tasks/done/058-dropshipping-info-to-finance-AI-CODING.md`.
 - [x] **AI-CODING (PHONE):** agent groups — each group gets a scoring system based on function — **done**.
   - 15 groups each have `scoring` (mode, primary_metric, weighted KPIs, dir/mag blend, score_horizon).
   - Helpers: `agent_scoring_system`, `composite_group_score`, `all_scoring_systems`, report meta stamps.
@@ -33,7 +34,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## Next
 
-- (none)
+- (none — dropshipping info now under `dropshipping/`; ShopifyDS remains ops)
 
 ## Blockers
 
@@ -41,6 +42,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## Notes
 
+- **Dropshipping (2026-08-01):** PHONE asked that all dropshipping info live in Finance. Canonical path: `dropshipping/README.md`. ShopifyDS keeps automation/scripts; gsw `work/dropshipping-store/` is a legacy mirror only.
 - **Phone bus (2026-07-31):** Finance previously accepted GitStatus writes but had **no watcher** — agents never woke on `Act on: AI-CODING`. Fixed: install `FinanceWorkspaceWatch` (every ~2 min). See `RULES.md` / `AGENTS.md`.
 - Runtime trading stack may be `C:\Users\Box One\Finance` (local); this clone is `Documents\GitHub\Finance` (git + phone bus). Do not commit secrets from runtime.
 - Standing commit rules (mandatory): subject + body; no secrets. Prefer multi-line `git commit -m subject -m body`.

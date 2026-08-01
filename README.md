@@ -2,6 +2,16 @@
 
 Intelligence agents for financial market analysis and a client-side world events tracker. Each agent pulls live public data and produces expert summaries with sector signals.
 
+## Dropshipping business (canonical)
+
+**All dropshipping store info** (mission, research, marketing plan, margins, stack, import reports) lives under **[dropshipping/](dropshipping/)** — start at [dropshipping/README.md](dropshipping/README.md).
+
+| | |
+|--|--|
+| Store | Basecamp & Backwoods · `basecampandbackwoods.myshopify.com` |
+| Ops code | Private [ShopifyDS](https://github.com/shaggychunxx-ui/ShopifyDS) (automation scripts/agents) |
+| Policy | No secrets in git; no automated purchases |
+
 ## Agents
 
 | Agent | Command | Data source |
