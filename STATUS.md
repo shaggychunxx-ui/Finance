@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-01
-**Updated by:** AI-CODING
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** BOXONE
+**Act on:** AI-CODING
 
 ## Current goal
 
@@ -40,6 +40,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 ## Next
 
 - (none)
+- [ ] **AI-CODING** Run slow but constantant full back test. conserve cpu, gpu, and memory. start on jan 1 2000. ignore real future results from the date of back test. predic results and compare with actual results. proceed one day at a time until current date. once at current date, repeat process. before staring, open a window on AI-CODING sgiving summary for review.
 
 ## Blockers
 
@@ -57,3 +58,5 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 - Phone reword during rebase said “desktop UI”; task **036** was phone etrader UI info gate (agents/analysis). PC trading workers left running.
 - **Pipeline 0/0 hint:** string from last `record_pipeline_run` / memory bundle; `0/0` = empty agent count that cycle, not mass agent failure.
 - **Group scoring:** each agent group graded by function (alpha vs calibration vs risk vs platform/execution, etc.). Source: `agent_groups.py` `scoring` + `all_scoring_systems()`.
+- PHONE: Run slow but constantant full back test. conserve cpu, gpu, and memory. start on jan 1 2000. ignore real future results from the date of back test. predic results and compare with actual results. proceed one day at a time until current date. once at current date, repeat process. before staring, open a window on AI-CODING sgiving summary for review. → Act on AI-CODING
+
