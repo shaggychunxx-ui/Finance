@@ -1098,8 +1098,13 @@ def build_features_for_phone() -> dict[str, Any]:
     }
 
 
-def build_dashboard(force_refresh: bool = False) -> dict[str, Any]:
-    """Build phone dashboard. force_refresh=True → live full PC portfolio pull."""
+def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dict[str, Any]:
+    """Build phone dashboard. force_refresh=True → live full PC portfolio pull.
+
+    publish=False skips writing Oxygen-OS work/phone/etrade-dashboard.json
+    (used by the desktop unified GUI so an empty PC session cannot clobber
+    the last good phone pack).
+    """
     _pull_ctx.meta = {
         "force_refresh": bool(force_refresh),
         "live": False,
@@ -1434,10 +1439,11 @@ def build_dashboard(force_refresh: bool = False) -> dict[str, Any]:
         },
         "snapshot": snapshot,
     }
-    try:
-        _publish_dashboard_to_oxygen(payload)
-    except Exception as exc:
-        _log(f"publish dashboard note: {exc}")
+    if publish:
+        try:
+            _publish_dashboard_to_oxygen(payload)
+        except Exception as exc:
+            _log(f"publish dashboard note: {exc}")
     return payload
 
 
