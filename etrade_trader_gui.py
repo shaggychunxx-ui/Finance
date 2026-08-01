@@ -3497,25 +3497,25 @@ class ETradeTraderApp(tk.Frame):
 
     def _bootstrap_config(self) -> None:
         self._load_settings_form()
-        if not self.CONFIG_PATH.exists():
+        if not self.API_CONFIG_PATH.exists():
             self._env_badge.configure(text="  Setup required  ", fg=WARN, bg="#3d3200")
             self._set_status("Open Settings to enter your API keys", WARN)
             self._show_setup_tab()
             self._update_setup_progress()
             return
         try:
-            if not _config_keys_valid(_read_config_file(self.CONFIG_PATH)):
+            if not _config_keys_valid(_read_config_file(self.API_CONFIG_PATH)):
                 self._env_badge.configure(text="  Keys needed  ", fg=WARN, bg="#3d3200")
                 self._set_status("Enter API keys in Settings and click Save Settings", WARN)
                 self._show_setup_tab()
                 self._update_setup_progress()
                 return
-            self._config = load_config(self.CONFIG_PATH)
+            self._config = load_config(self.API_CONFIG_PATH)
             self._load_trading_settings_from_config()
             self._sync_trade_flags()
             self._update_automation_control_ui()
             self._update_env_badge(self._config.sandbox)
-            persisted = get_selected_account(self.CONFIG_PATH)
+            persisted = get_selected_account(self.API_CONFIG_PATH)
             if persisted:
                 self._persisted_account_key = persisted.get("account_id_key")
                 saved_label = (persisted.get("display_label") or "").strip()
@@ -4158,7 +4158,7 @@ class ETradeTraderApp(tk.Frame):
             sanitize_credential(self._key_var.get(), KEY_PLACEHOLDER)
             and sanitize_credential(self._secret_var.get(), SECRET_PLACEHOLDER)
         )
-        if not _config_keys_valid(_read_config_file(self.CONFIG_PATH)) and not form_has_keys:
+        if not _config_keys_valid(_read_config_file(self.API_CONFIG_PATH)) and not form_has_keys:
             messagebox.showinfo(
                 "Setup Required",
                 "Enter your Consumer Key and Secret in the Setup tab,\n"
@@ -4241,7 +4241,7 @@ class ETradeTraderApp(tk.Frame):
     def _connect_thread(self, config: ETradeConfig | None = None, epoch: int = 0) -> None:
         dialog_scheduled = False
         try:
-            self._config = config or load_config(self.CONFIG_PATH)
+            self._config = config or load_config(self.API_CONFIG_PATH)
             if self._config.use_oob:
                 pending = self._run_network_task(start_authorization, self._config)
                 if epoch != self._connect_epoch:
@@ -4391,7 +4391,7 @@ class ETradeTraderApp(tk.Frame):
                     keys.append(key)
         if self._persisted_account_key and self._persisted_account_key not in keys:
             keys.append(self._persisted_account_key)
-        persisted = get_selected_account(self.CONFIG_PATH)
+        persisted = get_selected_account(self.API_CONFIG_PATH)
         if persisted:
             key = persisted.get("account_id_key")
             if key and key not in keys:
@@ -4424,13 +4424,19 @@ class ETradeTraderApp(tk.Frame):
                     self._confirmed_account_idx = i + 1
                     self._set_account_combo_index(i + 1)
                     self._log_line(f"Restored trading account: {labels[i]}")
-                    if not get_selected_account(self.CONFIG_PATH):
+                    if not get_selected_account(self.API_CONFIG_PATH):
                         try:
                             save_selected_account(
                                 acct["account_id_key"],
                                 display_label=labels[i],
-                                path=self.CONFIG_PATH,
+                                path=self.API_CONFIG_PATH,
                             )
+                            try:
+                                from shared_etrade_api import mirror_shared_api_into_short
+
+                                mirror_shared_api_into_short()
+                            except Exception:
+                                pass
                             self._persisted_account_key = acct["account_id_key"]
                             self._log_line("Saved restored account for background worker and restarts.")
                         except OSError as exc:
