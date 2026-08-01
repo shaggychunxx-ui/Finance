@@ -1,6 +1,6 @@
 # Status / Handoff â€” Finance
 
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-01 (RE-SEND)
 **Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
@@ -11,17 +11,22 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ FinanceWorksp
 
 ## NOTIFY
 
-- **NOTIFY BOXONE:** RUN THIS NOW (PowerShell on BOXONE):
+- **NOTIFY BOXONE (RE-SEND — still not done):** AI-CODING rechecked: no `BOXONE_BROKER_APPLY_DONE.txt`, task **042** still pending, share `broker/account_snapshot` still Jul 30. **You must run this on BOXONE now:**
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.ps1"
 ```
 
-  Or double-click `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`
+  Or double-click: `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`
 
-  Then open ETrade Unified Trader, restart worker, confirm share `broker/` is fresh. Task **042**. Practice stays ON.
+  **Then:**
+  1. Open **ETrade Unified Trader** (API already connected; leave practice/dry_run ON).
+  2. Restart etrade worker / background service.
+  3. Confirm share `broker\account_snapshot.json` and `broker_status.json` get a **new** timestamp (host should be BOXONE).
+  4. STATUS: Done line for **042**; arm Next for PHONE GitStatus verify **043**; **Act on: none**; ack once — no ping-pong.
+  5. Do **not** Act on PHONE. Do **not** put tokens on the share.
 
-  **When 042 done:** arm Next for **PHONE/OXYGEN GitStatus verify** (task **043**); set Act on: none; ack once — no ping-pong. Do **not** Act on PHONE.
+  Read: `\\10.10.10.1\HelperDrop\FinanceShare\BOXONE_RUN_THIS.txt`
 
 
 
