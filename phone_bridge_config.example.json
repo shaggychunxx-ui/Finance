@@ -3,5 +3,6 @@
   "port": 8787,
   "bridge_token": "GENERATE_ON_FIRST_RUN",
   "phone_ui_info_enabled": true,
-  "phone_ui_info_note": "Set false to stop outbound phone UI info (/api/agents + idea rows). OAuth/controls/balances still work. Restart phone_bridge after change."
+  "phone_ui_info_note": "Set false to stop outbound phone UI info (/api/agents + idea rows). OAuth/controls/balances still work. Restart phone_bridge after change.",
+  "features_note": "phone_bridge v1.5+ exposes GET /api/features and dashboard.shared_api so the E*TRADE phone app stays aligned: one shared API (keys/sandbox/tokens/account), independent practice mode per sleeve."
 }
