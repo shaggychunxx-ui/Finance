@@ -678,6 +678,22 @@ def generate_portfolio(
     except Exception:
         pass
 
+    # Regime / contested-symbol gate
+    try:
+        from regime_trade_gate import evaluate_regime_trade_gate
+
+        gate = evaluate_regime_trade_gate(symbols=list(scores.keys()))
+        if gate.get("block_new_entries"):
+            scores.clear()
+            sources_used.append("regime_no_trade")
+        else:
+            for sym in list(gate.get("block_symbols") or []):
+                scores.pop(str(sym).upper(), None)
+            if gate.get("block_symbols"):
+                sources_used.append("regime_block_symbols")
+    except Exception:
+        pass
+
     # Joint sleeve coordination: boost long-assigned names, soft-penalize short-only ideas
     try:
         from sleeve_coordinator import coordinate_sleeves, preferred_sleeve_for_symbol

@@ -61,6 +61,13 @@
       "min_abs_score": 0.08,
       "note": "Market predictor marks below-threshold rows non-actionable (flat for trading)"
     },
+    "regime_trade_gate": {
+      "enabled": true,
+      "max_minority_weight": 0.42,
+      "block_on_event_day": true,
+      "block_extreme_risk_off": true,
+      "risk_off_score_max": 0.28
+    },
     "accuracy_measurement": {
       "enabled": true,
       "min_preferred_horizon_samples": 8,
@@ -149,6 +156,7 @@
     "accuracy_interval_minutes": 5,
     "accuracy_off_hours_interval_minutes": 30,
     "pipeline_market_hours_only": true,
+    "pre_open_research_enabled": true,
     "live_accuracy": {
       "enabled": true,
       "min_live_samples_full": 25,

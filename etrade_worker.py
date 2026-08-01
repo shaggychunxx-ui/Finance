@@ -56,6 +56,7 @@ DEFAULT_WORKER = {
     "accuracy_interval_minutes": 15,
     "accuracy_off_hours_interval_minutes": 60,
     "pipeline_market_hours_only": True,
+    "pre_open_research_enabled": True,
     "plan_interval_minutes": 20,
     "execute_min_interval_minutes": 15,
     "day_trading_interval_minutes": 5,
@@ -700,6 +701,27 @@ def _interval_due(last_at: Any, interval_minutes: int, *, force: bool = False) -
     return (time.time() - float(last_at)) >= interval
 
 
+def is_pre_open_research_window(now: datetime | None = None) -> bool:
+    """Mon–Fri 06:30–09:30 America/New_York — warm pipeline before the open.
+
+    Controlled by background_worker.pre_open_research_enabled (default True).
+    """
+    settings = worker_settings()
+    if not bool(settings.get("pre_open_research_enabled", True)):
+        return False
+    et = ZoneInfo("America/New_York")
+    now = now or datetime.now(et)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=et)
+    else:
+        now = now.astimezone(et)
+    if now.weekday() >= 5:
+        return False
+    start = now.replace(hour=6, minute=30, second=0, microsecond=0)
+    end = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    return start <= now < end
+
+
 def is_us_market_open(now: datetime | None = None) -> bool:
     """US equity regular session (Mon-Fri 9:30-16:00 Eastern)."""
     now = now or datetime.now(ZoneInfo("America/New_York"))
@@ -987,25 +1009,27 @@ def _run_pipeline(
 
     calibration_due = _daily_calibration_due(state, config_path=config_path)
     market_open = is_us_market_open()
+    pre_open = is_pre_open_research_window()
+    research_session = bool(market_open or pre_open)
     off_hours_ok = _pipeline_runs_off_hours(settings)
     # When pipeline_market_hours_only is on, never run agent lanes overnight —
-    # including the 6am calibration flag (it fires on the first RTH cycle instead).
-    if not force and not market_open and not off_hours_ok:
+    # except pre-open warm window (06:30–09:30 ET) and true RTH.
+    if not force and not research_session and not off_hours_ok:
         if calibration_due:
             _log(
-                "Daily calibration deferred — market closed "
-                "(pipeline_market_hours_only); will run after open."
+                "Daily calibration deferred — outside RTH/pre-open "
+                "(pipeline_market_hours_only); will run in pre-open or after open."
             )
         else:
             _log("Pipeline skipped - US market closed (off-hours pipeline disabled).")
         return False
 
-    session = "market" if market_open else "off_hours"
+    session = "market" if market_open else ("pre_open" if pre_open else "off_hours")
     due_lanes = _lanes_due(
         state,
         settings,
-        market_open=bool(market_open),
-        force=force or (calibration_due and market_open),
+        market_open=bool(research_session),
+        force=force or (calibration_due and research_session),
     )
     if only_lanes is not None:
         wanted = {str(x).strip().lower() for x in only_lanes}

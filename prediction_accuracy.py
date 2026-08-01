@@ -128,6 +128,24 @@ def _prediction_hit(predicted: str, actual: str) -> bool:
     return predicted == actual
 
 
+def _cost_aware_hit(
+    *,
+    predicted: str,
+    actual: str,
+    actual_return_pct: float,
+    horizon: str,
+    cost_bps: float = 8.0,
+) -> bool:
+    """Direction hit only counts if move clears a simple cost/slippage floor."""
+    if not _prediction_hit(predicted, actual):
+        return False
+    if str(predicted).lower() == "flat":
+        return True
+    # Require absolute move > cost (bps) and horizon move threshold fraction
+    min_move = max(cost_bps / 100.0, float(HORIZON_MOVE_PCT.get(horizon, 0.5)) * 0.35)
+    return abs(float(actual_return_pct)) >= min_move
+
+
 def _predicted_return_value(value: Any) -> float | None:
     if value is None:
         return None
@@ -632,7 +650,15 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
         return_pct = (end_price - start_price) / start_price * 100.0
         actual = _actual_direction(return_pct, horizon=horizon)
         predicted = str(pred.get("predicted_direction", "flat")).lower()
-        hit = _prediction_hit(predicted, actual)
+        pure_hit = _prediction_hit(predicted, actual)
+        cost_hit = _cost_aware_hit(
+            predicted=predicted,
+            actual=actual,
+            actual_return_pct=return_pct,
+            horizon=horizon,
+        )
+        # Primary label for fusion learning: cost-aware (usable edge)
+        hit = cost_hit
         conf = float(pred.get("confidence", 0.5))
         return_source = str(pred.get("return_source") or "estimated")
         predicted_return_pct = (
@@ -676,6 +702,8 @@ def score_matured_predictions(*, rebuild_learning: bool = True) -> int:
                 "start_price": round(start_price, 4),
                 "end_price": round(end_price, 4),
                 "hit": hit,
+                "pure_direction_hit": pure_hit,
+                "cost_aware_hit": cost_hit,
                 "confidence": conf,
                 "brier_term": round((conf - outcome) ** 2, 4),
                 "regime_posture": pred.get("regime_posture", "neutral"),
@@ -1135,6 +1163,12 @@ def run_live_scoring_cycle(*, rebuild_learning: bool = True) -> dict[str, int]:
     scored = score_matured_predictions(rebuild_learning=rebuild_learning)
     if scored == 0:
         rebuild_accuracy_index(rebuild_learning=rebuild_learning)
+    try:
+        from prediction_meta import rebuild_prediction_meta
+
+        rebuild_prediction_meta()
+    except Exception:
+        pass
     accuracy = _accuracy_store()
     try:
         from live_accuracy import live_scoring_summary

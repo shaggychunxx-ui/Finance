@@ -270,6 +270,14 @@ def is_event_day(*, recorded_at: str | None = None) -> bool:
     """True when high-impact macro/earnings-style events are active today."""
     when = recorded_at or datetime.now(timezone.utc).isoformat()
     day = when[:10]
+    try:
+        from event_calendar import event_flags
+
+        flags = event_flags(when=when)
+        if flags.get("fomc_window") or flags.get("nfp_window"):
+            return True
+    except Exception:
+        pass
 
     def _scan_event_rows(rows: list[Any] | None) -> bool:
         for row in rows or []:

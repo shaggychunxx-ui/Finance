@@ -48,6 +48,19 @@ def _abstain_thresholds() -> tuple[float, float]:
             min_score = float(block["min_abs_score"])
     except Exception:
         pass
+    # Adaptive thresholds from meta-calibrator (night/live trial buckets)
+    try:
+        from prediction_meta import load_adaptive_abstain, rebuild_prediction_meta
+
+        try:
+            rebuild_prediction_meta()
+        except Exception:
+            pass
+        a_conf, a_score = load_adaptive_abstain()
+        min_conf = max(min_conf, a_conf)
+        min_score = max(min_score, a_score)
+    except Exception:
+        pass
     try:
         from agent_learning import get_agent_learning
 
@@ -56,7 +69,71 @@ def _abstain_thresholds() -> tuple[float, float]:
             min_conf = max(min_conf, float(learn.min_confidence_to_emit))
     except Exception:
         pass
+    # Tighten on high-impact event days
+    try:
+        from event_calendar import event_flags
+
+        if event_flags().get("high_impact"):
+            min_conf = min(0.75, min_conf + 0.06)
+            min_score = min(0.2, min_score + 0.02)
+    except Exception:
+        pass
     return max(0.35, min(0.85, min_conf)), max(0.02, min(0.25, min_score))
+
+
+def _enrich_day_book_intraday(actionable: dict[str, list[dict[str, Any]]]) -> None:
+    """Pull short-horizon momentum from Yahoo for day-book symbols (best effort)."""
+    import urllib.request
+
+    day_horizons = ("1m", "1h", "24h")
+    symbols: list[str] = []
+    for h in day_horizons:
+        for row in actionable.get(h) or []:
+            if isinstance(row, dict) and row.get("symbol"):
+                symbols.append(str(row["symbol"]).upper())
+    symbols = list(dict.fromkeys(symbols))[:12]
+    mom: dict[str, float] = {}
+    for sym in symbols:
+        try:
+            url = (
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+                f"?range=5d&interval=1h"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": "FinanceDayBook/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                payload = json.loads(resp.read().decode())
+            result = ((payload.get("chart") or {}).get("result") or [None])[0]
+            if not result:
+                continue
+            closes = ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+            vals = [float(c) for c in closes if c is not None]
+            if len(vals) < 4:
+                continue
+            ret = (vals[-1] / vals[-4] - 1.0) * 100.0
+            mom[sym] = ret
+        except Exception:
+            continue
+    if not mom:
+        return
+    for h in day_horizons:
+        for row in actionable.get(h) or []:
+            if not isinstance(row, dict):
+                continue
+            sym = str(row.get("symbol") or "").upper()
+            if sym not in mom:
+                continue
+            r = mom[sym]
+            row["intraday_momentum_3h_pct"] = round(r, 3)
+            direction = str(row.get("predicted_direction") or "").lower()
+            # Soft veto: strong adverse 3h momentum knocks day calls out
+            if direction == "up" and r < -1.25:
+                row["actionable"] = False
+                row["predicted_direction"] = "flat"
+                row["abstain_reason"] = "adverse_intraday_momentum"
+            elif direction == "down" and r > 1.25:
+                row["actionable"] = False
+                row["predicted_direction"] = "flat"
+                row["abstain_reason"] = "adverse_intraday_momentum"
 
 
 def _apply_prediction_abstain(
@@ -563,6 +640,16 @@ def _build_horizon_rows(
         )
 
         confidence = min(0.95, max(0.35, float(row["confidence"] or 0.45) + min(0.25, abs(score) * 0.15)))
+        try:
+            from prediction_meta import calibrate_confidence
+
+            confidence = calibrate_confidence(
+                confidence,
+                horizon=horizon,
+                composite_score=score,
+            )
+        except Exception:
+            pass
         entry: dict[str, Any] = {
             "rank": rank,
             "symbol": symbol,
@@ -682,6 +769,60 @@ def run_market_predictor_analysis(
         min_abs_score=min_abs,
     )
 
+    # Regime / disagreement / event gate — may wipe actionable book (no-trade)
+    regime_gate: dict[str, Any] = {}
+    try:
+        from regime_trade_gate import evaluate_regime_trade_gate
+
+        regime_gate = evaluate_regime_trade_gate()
+        block_syms = set(regime_gate.get("block_symbols") or [])
+        if regime_gate.get("block_new_entries"):
+            for h, rows in (abstain_pack.get("actionable_predictions") or {}).items():
+                for row in rows or []:
+                    if isinstance(row, dict):
+                        if not row.get("raw_predicted_direction"):
+                            row["raw_predicted_direction"] = row.get("predicted_direction")
+                        row["actionable"] = False
+                        row["predicted_direction"] = "flat"
+                        row["abstain_reason"] = "regime_no_trade"
+                abstain_pack["actionable_predictions"][h] = []
+            stats = abstain_pack.setdefault("abstain_stats", {})
+            stats["regime_no_trade"] = True
+            stats["regime_reasons"] = list(regime_gate.get("reasons") or [])
+            stats["actionable"] = 0
+            stats["actionable_rate"] = 0.0
+        elif block_syms:
+            for h, rows in list((abstain_pack.get("actionable_predictions") or {}).items()):
+                kept = []
+                for row in rows or []:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("symbol") or "").upper() in block_syms:
+                        if not row.get("raw_predicted_direction"):
+                            row["raw_predicted_direction"] = row.get("predicted_direction")
+                        row["actionable"] = False
+                        row["predicted_direction"] = "flat"
+                        row["abstain_reason"] = "contested_symbol"
+                        continue
+                    kept.append(row)
+                for i, row in enumerate(kept, start=1):
+                    row["rank"] = i
+                abstain_pack["actionable_predictions"][h] = kept
+    except Exception:
+        regime_gate = {}
+
+    # Light intraday enrichment for day horizons (1m/1h/24h) on top actionable names
+    try:
+        _enrich_day_book_intraday(abstain_pack.get("actionable_predictions") or {})
+        # Drop rows killed by intraday veto
+        for h, rows in list((abstain_pack.get("actionable_predictions") or {}).items()):
+            kept = [r for r in (rows or []) if isinstance(r, dict) and r.get("actionable") is not False]
+            for i, row in enumerate(kept, start=1):
+                row["rank"] = i
+            abstain_pack["actionable_predictions"][h] = kept
+    except Exception:
+        pass
+
     sources_used = [src["file"] for src in active_agent_sources() if (output_dir / src["file"]).exists()]
     fusion_meta: dict[str, Any] = {}
     try:
@@ -721,6 +862,12 @@ def run_market_predictor_analysis(
             "market_context": market_context,
             "pipeline_memory": pipeline_memory,
             "abstain": abs_stats,
+            "regime_trade_gate": {
+                "block_new_entries": bool(regime_gate.get("block_new_entries")),
+                "reasons": list(regime_gate.get("reasons") or []),
+                "event_day": bool(regime_gate.get("event_day")),
+                "regime": regime_gate.get("regime") or {},
+            },
             "trading_uses_actionable_only": True,
         },
         # Full book (includes abstained→flat) for analysis / accuracy recording

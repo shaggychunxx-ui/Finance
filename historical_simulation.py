@@ -1008,6 +1008,12 @@ def run_accuracy_benchmark(
             write_next_session_brief(benchmark=report)
         except Exception:
             pass
+        try:
+            from prediction_meta import rebuild_prediction_meta
+
+            rebuild_prediction_meta()
+        except Exception:
+            pass
     else:
         try:
             from agent_learning import write_next_session_brief
