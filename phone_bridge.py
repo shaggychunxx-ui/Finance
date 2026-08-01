@@ -2289,8 +2289,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 self._send(200, build_dashboard(force_refresh=force))
                 return
             if path == "/api/full":
-                # Full data pull pack for phone Refresh (default force live when ?refresh omitted)
-                self._send(200, build_full_for_phone(force_refresh=True if not query else force or True))
+                # Full data pack for phone Refresh — always attempt live PC portfolio pull
+                self._send(200, build_full_for_phone(force_refresh=True))
                 return
             if path == "/api/orders":
                 self._send(200, build_orders_for_phone())
