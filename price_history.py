@@ -204,14 +204,36 @@ def clear_yahoo_cache() -> None:
     _yahoo_cache.clear()
 
 
+def last_bar_fetch_source() -> str:
+    """Source of the most recent fetch_daily_bars call (for throttle decisions)."""
+    return _last_bar_fetch_source
+
+
 def _bar_cache_fresh(path: Path, *, max_age_hours: int = BAR_CACHE_MAX_AGE_HOURS) -> bool:
+    """Legacy file-mtime freshness (kept for callers / tests). Prefer tip-based checks."""
     if not path.exists():
         return False
     try:
-        age_h = (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
+        age_h = (
+            datetime.now(timezone.utc)
+            - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        ).total_seconds() / 3600
         return age_h <= max_age_hours
     except OSError:
         return False
+
+
+def _write_bar_cache(path: Path, symbol: str, bars: list[dict[str, Any]]) -> None:
+    """Compact JSON write — multi-decade series are large; indent slows load/save."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "symbol": symbol,
+        "bars": bars,
+        "interval": "1d",
+        "fetched_at": _now_iso(),
+        "bar_count": len(bars),
+    }
+    path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
 
 
 def load_daily_bars(symbol: str) -> list[dict[str, Any]]:
@@ -222,6 +244,132 @@ def load_daily_bars(symbol: str) -> list[dict[str, Any]]:
         return []
     bars = data.get("bars") or []
     return [row for row in bars if isinstance(row, dict)]
+
+
+def _bar_day_key(row: dict[str, Any]) -> str | None:
+    at = _parse_iso(row.get("at"))
+    if at is None:
+        return None
+    return at.date().isoformat()
+
+
+def merge_daily_bars(
+    existing: list[dict[str, Any]],
+    newer: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge bar lists by calendar day; *newer* overwrites same-day closes."""
+    by_day: dict[str, dict[str, Any]] = {}
+    for row in existing:
+        key = _bar_day_key(row)
+        if key is not None:
+            by_day[key] = row
+    for row in newer:
+        key = _bar_day_key(row)
+        if key is not None:
+            by_day[key] = row
+    return [by_day[k] for k in sorted(by_day)]
+
+
+def _last_bar_datetime(bars: list[dict[str, Any]]) -> datetime | None:
+    for row in reversed(bars):
+        at = _parse_iso(row.get("at"))
+        if at is not None:
+            return at
+    return None
+
+
+def _first_bar_datetime(bars: list[dict[str, Any]]) -> datetime | None:
+    for row in bars:
+        at = _parse_iso(row.get("at"))
+        if at is not None:
+            return at
+    return None
+
+
+def bar_tip_is_fresh(
+    bars: list[dict[str, Any]],
+    *,
+    now: datetime | None = None,
+    max_age_days: int = BAR_CACHE_TIP_MAX_AGE_DAYS,
+) -> bool:
+    """True when the last cached bar is recent enough (covers weekends/holidays)."""
+    last = _last_bar_datetime(bars)
+    if last is None:
+        return False
+    now = now or datetime.now(timezone.utc)
+    # Compare on UTC calendar dates so "Friday bar on Monday" is age 3, not hours.
+    age_days = (now.date() - last.date()).days
+    return 0 <= age_days <= max(0, int(max_age_days))
+
+
+def _min_cached_bars(*, days: int, start: datetime | None) -> int:
+    # Enough bars for the request: ~trading days ≈ calendar * 0.7; keep a floor.
+    if start is None:
+        return max(40, min(days // 2, 2500))
+    return max(40, min(days // 3, 4000))
+
+
+def _cache_covers_request(
+    cached: list[dict[str, Any]],
+    *,
+    days: int,
+    start: datetime | None,
+    min_cached: int,
+) -> bool:
+    if len(cached) < min_cached:
+        return False
+    if start is None:
+        return True
+    first = _first_bar_datetime(cached)
+    if first is None:
+        return False
+    # Allow listing delay / IPO lag; reject caches that start far after requested history.
+    return first <= start + timedelta(days=400)
+
+
+def _yahoo_daily_bars(symbol: str, period1: int, period2: int) -> list[dict[str, Any]]:
+    """Download daily closes from Yahoo for [period1, period2] unix range."""
+    bars: list[dict[str, Any]] = []
+    resp = requests.get(
+        CHART_API.format(symbol=symbol),
+        params={"period1": period1, "period2": period2, "interval": "1d"},
+        headers=HEADERS,
+        timeout=45,
+    )
+    if resp.status_code == 429:
+        time.sleep(3)
+        resp = requests.get(
+            CHART_API.format(symbol=symbol),
+            params={"period1": period1, "period2": period2, "interval": "1d"},
+            headers=HEADERS,
+            timeout=45,
+        )
+    resp.raise_for_status()
+    result = (resp.json().get("chart") or {}).get("result") or []
+    if not result:
+        return bars
+    timestamps = result[0].get("timestamp") or []
+    closes = ((result[0].get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    for ts, close in zip(timestamps, closes):
+        if close is None or ts is None:
+            continue
+        try:
+            px = float(close)
+        except (TypeError, ValueError):
+            continue
+        if px <= 0:
+            continue
+        at = datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
+        bars.append({"at": at, "close": round(px, 6)})
+    return bars
+
+
+def _period1_for_request(*, days: int, start: datetime | None) -> int:
+    if start is not None:
+        if start.tzinfo is None:
+            return int(start.replace(tzinfo=timezone.utc).timestamp())
+        return int(start.timestamp())
+    return int((datetime.now(timezone.utc) - timedelta(days=days + 30)).timestamp())
 
 
 def fetch_daily_bars(
@@ -235,77 +383,79 @@ def fetch_daily_bars(
 
     *days* is the lookback window ending now. When *start* is set, *period1*
     uses that calendar date instead (for full history from e.g. 2000-01-01).
+
+    Cache strategy (walk-forward-safe — only bars change, not signal logic):
+      1. Pure disk hit when history coverage is enough and last bar is recent.
+      2. Incremental tip refresh: keep long history, re-download ~2 weeks and merge.
+      3. Full network download only when cache is missing/too short/starts too late.
     """
+    global _last_bar_fetch_source
+
     sym = str(symbol or "").strip().upper()
     if not sym:
+        _last_bar_fetch_source = "cache"
         return []
 
     days = max(1, int(days))
-    # Enough bars for the request: ~trading days ≈ calendar * 0.7; keep a floor.
-    min_cached = max(40, min(days // 2, 2500)) if start is None else max(40, min(days // 3, 4000))
-
+    min_cached = _min_cached_bars(days=days, start=start)
     cache_path = BAR_CACHE_DIR / f"{sym}.json"
-    if use_cache and _bar_cache_fresh(cache_path):
-        cached = load_daily_bars(sym)
-        if len(cached) >= min_cached:
-            if start is None:
-                return cached
-            # For long history, also require first bar not much later than start.
-            first = _parse_iso(cached[0].get("at") if cached else None)
-            if first is not None and first <= start + timedelta(days=400):
-                return cached
+    cached = load_daily_bars(sym) if use_cache else []
 
-    if start is not None:
-        period1 = int(start.replace(tzinfo=timezone.utc).timestamp()) if start.tzinfo is None else int(start.timestamp())
-    else:
-        period1 = int((datetime.now(timezone.utc) - timedelta(days=days + 30)).timestamp())
-    period2 = int(datetime.now(timezone.utc).timestamp())
-    bars: list[dict[str, Any]] = []
-    try:
-        resp = requests.get(
-            CHART_API.format(symbol=sym),
-            params={"period1": period1, "period2": period2, "interval": "1d"},
-            headers=HEADERS,
-            timeout=45,
-        )
-        if resp.status_code == 429:
-            time.sleep(3)
-            resp = requests.get(
-                CHART_API.format(symbol=sym),
-                params={"period1": period1, "period2": period2, "interval": "1d"},
-                headers=HEADERS,
-                timeout=45,
+    if use_cache and _cache_covers_request(
+        cached, days=days, start=start, min_cached=min_cached
+    ):
+        if bar_tip_is_fresh(cached):
+            _last_bar_fetch_source = "cache"
+            return cached
+
+        # History is good; only the tip is stale — append recent bars.
+        last = _last_bar_datetime(cached)
+        if last is not None:
+            tip_start = last - timedelta(days=BAR_CACHE_INCREMENTAL_LOOKBACK_DAYS)
+            if start is not None and tip_start < start:
+                tip_start = start
+            period1 = int(tip_start.timestamp()) if tip_start.tzinfo else int(
+                tip_start.replace(tzinfo=timezone.utc).timestamp()
             )
-        resp.raise_for_status()
-        result = (resp.json().get("chart") or {}).get("result") or []
-        if not result:
-            return load_daily_bars(sym)
-        timestamps = result[0].get("timestamp") or []
-        closes = ((result[0].get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
-        for ts, close in zip(timestamps, closes):
-            if close is None or ts is None:
-                continue
+            period2 = int(datetime.now(timezone.utc).timestamp())
             try:
-                px = float(close)
-            except (TypeError, ValueError):
-                continue
-            if px <= 0:
-                continue
-            at = datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
-            bars.append({"at": at, "close": round(px, 6)})
-    except Exception:
-        return load_daily_bars(sym)
+                tip = _yahoo_daily_bars(sym, period1, period2)
+                if tip:
+                    merged = merge_daily_bars(cached, tip)
+                    _write_bar_cache(cache_path, sym, merged)
+                    _last_bar_fetch_source = "incremental"
+                    return merged
+            except Exception:
+                # Prefer serving slightly stale history over failing the whole run.
+                if cached:
+                    _last_bar_fetch_source = "cache_fallback"
+                    return cached
 
-    if bars:
-        _write_json(
-            cache_path,
-            {
-                "symbol": sym,
-                "bars": bars,
-                "interval": "1d",
-                "fetched_at": _now_iso(),
-            },
-        )
+    period1 = _period1_for_request(days=days, start=start)
+    period2 = int(datetime.now(timezone.utc).timestamp())
+    try:
+        bars = _yahoo_daily_bars(sym, period1, period2)
+    except Exception:
+        if cached:
+            _last_bar_fetch_source = "cache_fallback"
+            return cached
+        _last_bar_fetch_source = "network"
+        return []
+
+    if not bars:
+        if cached:
+            _last_bar_fetch_source = "cache_fallback"
+            return cached
+        _last_bar_fetch_source = "network"
+        return []
+
+    # If we had partial history that covers *start* better than a short full fetch
+    # (rare), merge so we never shrink long-history cache accidentally.
+    if cached and len(cached) > len(bars):
+        bars = merge_daily_bars(cached, bars)
+
+    _write_bar_cache(cache_path, sym, bars)
+    _last_bar_fetch_source = "network"
     return bars
 
 
