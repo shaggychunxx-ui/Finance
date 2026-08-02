@@ -57,6 +57,8 @@ _pull_ctx = threading.local()
 
 # Human rule (PHONE 2026-07-31): all P/L / chart / average calcs start here.
 # Transfer/deposit capital only enters P/L math from each event's date forward.
+# Human rule (PHONE): cash deposits + transferred positions ARE usable capital
+# (equity, BP, sizing, sellable). They are not trading profit at book-in.
 CALCULATION_START_ISO = "2026-07-24"
 
 # Snapshot quality: never clobber a fuller book with a thin live pull / publish.
@@ -554,7 +556,10 @@ def remember_transfer_deposit_symbols(new_symbols: set[str] | list[str]) -> None
         json.dumps(
             {
                 "symbols": merged,
-                "note": "Auto-learned ACATS/transfer lots â€” treated as deposits with $0 open P/L",
+                "note": (
+                    "Auto-learned ACATS/transfer lots — deposit capital at book-in "
+                    "($0 open P/L). Still usable capital (equity/BP/sellable)."
+                ),
                 "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             },
             indent=2,
@@ -575,9 +580,10 @@ def remember_transfer_deposit_symbols(new_symbols: set[str] | list[str]) -> None
             if not row.get("transfer_as_deposit"):
                 row = dict(row)
                 row["transfer_as_deposit"] = True
+                row["usable_as_capital"] = True
                 row.setdefault(
                     "reason",
-                    "Inbound transfer â€” deposit capital; zero open P/L at book-in",
+                    "Inbound transfer — deposit capital (usable); zero open P/L at book-in",
                 )
                 row["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 ov[sym] = row
@@ -640,9 +646,12 @@ def _is_plausible_day_pl(day_pl: float | None, account_value: float | None) -> b
 def build_account_summary() -> dict[str, Any]:
     """Balance + P/L for phone portfolio UI (best-effort from history + plan).
 
-    Standing rule: deposits never count toward P/L.
-      total_pl = latest_value âˆ’ invested_capital
-      invested_capital = opening + deposits âˆ’ withdrawals
+    Standing rules:
+      • Deposits and transferred positions **are usable capital** (equity / BP / sizing).
+      • They never count as trading **P/L** at book-in.
+      total_pl = latest_value − invested_capital
+      invested_capital = opening + deposits − withdrawals
+      usable_capital = latest_value (full book)
     """
     out: dict[str, Any] = {
         "balance": None,
@@ -653,8 +662,11 @@ def build_account_summary() -> dict[str, Any]:
         "total_pl": None,
         "total_pl_pct": None,
         "invested_capital": None,
+        "usable_capital": None,
         "opening_balance": None,
         "deposits_total": None,
+        "deposits_are_capital": True,
+        "transfer_positions_are_capital": True,
         "pl_excludes_deposits": True,
         "pl_excludes_transfer_mtm": True,
         "transfer_open_mtm": None,
@@ -683,7 +695,10 @@ def build_account_summary() -> dict[str, Any]:
         if opening is None:
             opening = st.get("opening_balance")
         deposits_total = _f(metrics.get("net_external_flows"))
-        # Canonical formula â€” always latest âˆ’ invested (deposits already in invested).
+        usable = _f(metrics.get("usable_capital"))
+        if usable is None:
+            usable = balance
+        # Canonical formula — always latest − invested (deposits already in invested capital).
         total_pl = None
         total_pl_pct = None
         if balance is not None and invested is not None and invested > 0:
@@ -833,8 +848,9 @@ def _format_why_chosen(
     rat_s = str(rationale or "").strip()
     if transfer_as_deposit or "transfer" in role_s.lower() or "deposit" in role_s.lower():
         parts.append(
-            f"{symbol} is treated as an inbound transfer / deposit lot. "
-            "Cost basis is capital in (not trading P/L). Price moves after book-in still affect equity."
+            f"{symbol} is an inbound transfer / deposit lot — **usable capital** "
+            "(counts in equity, may be sold/rebalanced). Cost basis is capital in "
+            "(not trading P/L at book-in). Price moves after book-in still affect equity."
         )
     if role_s and "transfer" not in role_s.lower():
         parts.append(f"Role: {role_s}")
@@ -1075,14 +1091,14 @@ def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
             transfer_as_deposit=is_xfer,
             weight_pct=w_pct,
         )
-        # Transfer/deposit lots: $0 open P/L (capital), but plan SELL/BUY still applies
+        # Transfer/deposit lots: $0 open P/L at book-in (capital), fully usable + tradeable
         if is_xfer:
             role = role or "transfer/deposit"
             if not rationale or "transfer" not in str(rationale).lower():
                 rationale = (
                     "Inbound transfer from an outside account (ACATS/broker). "
-                    "Cost treated as deposit capital â€” deposits do not count toward P/L. "
-                    "Position remains tradeable."
+                    "Cost is deposit capital — usable for sizing/equity; not trading P/L at book-in. "
+                    "Position is tradeable (SELL/rebalance allowed)."
                 )
             unreal = 0.0
             unreal_pct = 0.0
@@ -1097,9 +1113,9 @@ def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
                 "target_value_usd": None,
                 "status": "deposit" if is_xfer else "no_order",
                 "rationale": (
-                    "Transfer/deposit lot â€” capital for P/L; tradeable when plan has orders"
+                    "Transfer/deposit lot — usable capital; tradeable when plan has orders"
                     if is_xfer
-                    else "No open order in latest strategy plan â€” hold current lot"
+                    else "No open order in latest strategy plan — hold current lot"
                 ),
             }
         prop_action = str(prop.get("action") or "HOLD").upper()
@@ -1120,15 +1136,15 @@ def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
         elif is_trade:
             prop_display = prop_action
         elif is_xfer:
-            prop_display = "HOLD Â· deposit"
+            prop_display = "HOLD · capital"
         else:
             prop_display = prop_action
         if is_xfer:
-            pl_display = "Deposit"
-            pl_pct_display = "â€”"
+            pl_display = "Capital"
+            pl_pct_display = "—"
         else:
-            pl_display = _money(unreal) if unreal is not None else "â€”"
-            pl_pct_display = _pct(unreal_pct) if unreal_pct is not None else "â€”"
+            pl_display = _money(unreal) if unreal is not None else "—"
+            pl_pct_display = _pct(unreal_pct) if unreal_pct is not None else "—"
 
         positions.append(
             {
@@ -1155,6 +1171,8 @@ def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
                 "trading_gate": extra.get("trading_gate"),
                 "allocation_usd": extra.get("allocation_usd"),
                 "transfer_as_deposit": is_xfer,
+                # Deposits / ACATS lots count toward capital (equity, BP, sellable).
+                "usable_as_capital": True,
                 "proposed_action": prop_action,
                 "proposed_quantity": prop_qty,
                 "proposed_price": prop_px,

@@ -1,13 +1,21 @@
 """Detect external transfers/deposits and compute profit excluding them.
 
-Profit must never include deposits (or other external capital). Formula:
+Capital vs P/L (standing rule):
+  • Cash deposits and transferred (ACATS) positions **are usable capital**.
+    They raise account equity, buying power, and sizing budgets.
+  • They are **not** trading profit at book-in.
 
-    profit = latest_balance − opening_balance − net_external_flows
+Profit formula (deposits excluded from P/L, included in capital base):
+
+    invested_capital = opening_balance + net_external_flows
+    usable_capital   = latest_balance   # full equity: cash + all positions
+    profit           = latest_balance − invested_capital
 
 Deposits are inferred from cash-matched balance jumps, large jumps without cash
-data, and any material gap between a recorded opening balance and the first
-tracked snapshot (common when tracking starts after a deposit, or early history
-rolls off the retention window).
+data, ACATS/in-kind transfers (equity up, cash flat), capital-events (≥50% jump),
+and any material gap between a recorded opening balance and the first tracked
+snapshot (common when tracking starts after a deposit, or early history rolls
+off the retention window).
 """
 
 from __future__ import annotations
@@ -391,7 +399,11 @@ def profit_metrics_for_account(
     growth: dict[str, Any],
     account_id_key: str = "",
 ) -> dict[str, Any]:
-    """Profit = latest balance − opening − net external deposits/withdrawals."""
+    """Profit = latest − invested; invested includes deposits/transfers as capital.
+
+    Deposits and transferred lots raise ``invested_capital`` and ``usable_capital``
+    (full equity). Only the *gain above* that capital base is profit.
+    """
     from account_growth_chart import points_for_account, resolve_opening_balance_for_account
 
     key = str(account_id_key or "").strip()
@@ -411,7 +423,10 @@ def profit_metrics_for_account(
     net_flows = net_external_flow_amount(events)
 
     opening_f = _float(opening)
+    # Capital base for P/L: opening equity + every deposit/ACATS − withdrawals.
     invested = round(opening_f + net_flows, 2) if opening_f is not None else None
+    # Full account equity — deposits and transferred positions are usable capital.
+    usable = round(latest, 2) if latest is not None else None
 
     profit_amt: float | None = None
     profit_pct: float | None = None
@@ -425,6 +440,10 @@ def profit_metrics_for_account(
         "latest_value": latest,
         "net_external_flows": net_flows,
         "invested_capital": invested,
+        # Alias: deposits/transfers count toward capital that may be deployed.
+        "usable_capital": usable,
+        "deposits_are_capital": True,
+        "transfer_positions_are_capital": True,
         "profit_amount": profit_amt,
         "profit_pct": profit_pct,
         "external_flow_events": events,
