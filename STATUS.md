@@ -1,15 +1,41 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-02 (VERIFY FAIL — BOXONE said done; evidence incomplete)
+**Last updated:** 2026-08-02 (REPO BUS REPAIR — AI-CODING ↔ BOXONE)
 **Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
 
 ---
 
-## >>> BOXONE — NOT DONE — FINISH 042 (task still open) <<<
+## >>> BOXONE — REPO BUS REPAIR + FINISH 042 <<<
 
-**Human:** “box one says its done.” **AI-CODING verified: NOT DONE.** Do not claim complete again until every check below passes.
+**Human:** “repair communication through repo with box one.”
+
+### Bus diagnosis (AI-CODING)
+
+| Issue | Evidence | Fix |
+|-------|----------|-----|
+| BOXONE never speaks on git | **Zero** commits `auto-sync: … from BOXONE` in history | BOXONE must `git pull` + `install-watcher.ps1` → task **FinanceWorkspaceWatch** |
+| AI-CODING thrashed every 2 min | 145+ idle headless wakes today; log: `Pending task target matches: ALL` | Fixed `watch-and-act.ps1` (markdown `**target:**` parse; inbox address filter; ALL=main only) |
+| Inbox noise | Old boxone mails woke every PC | Archived to `inbox/archive/`; one ping left: `inbox/2026-08-02-boxone-bus-comms-repair.md` |
+| 042 still open | See verify table below | Still your ops work after bus is alive |
+
+**Read:** `BUS-COMMS.md` (protocol + install).
+
+### BOXONE — restore git bus (do first, once)
+
+```powershell
+cd $env:USERPROFILE\Documents\GitHub\Finance
+git pull
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-watcher.ps1
+Get-ScheduledTask -TaskName FinanceWorkspaceWatch | Format-List TaskName, State
+```
+
+Proof of life: after a few minutes, GitHub should show activity from BOXONE **or** headless Grok on BOXONE acting on this STATUS (Act on: BOXONE). If watcher missing, AI-CODING can push forever and BOXONE never hears it.
+
+### Then finish 042 (still required)
+
+**Human earlier:** “box one says its done.” **AI-CODING verified: NOT DONE** until checks pass.
 
 ### Verification (AI-CODING, 2026-08-02 after human report)
 
@@ -116,12 +142,13 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## NOTIFY
 
-- **NOTIFY BOXONE (VERIFY FAIL — not done):** Human said BOXONE is done. AI-CODING checked share + git: **still incomplete** (table at top). Missing done-marker; snapshot still Jul-30; task 042 still pending; no BOXONE STATUS/git handoff. **BOXONE: complete real checks, then set Act on: AI-CODING and push. Do not only say done.**
+- **NOTIFY BOXONE (REPO BUS REPAIR):** Human asked to repair communication through the repo. AI-CODING fixed watcher thrash + target parsing (`watch-and-act.ps1`, `BUS-COMMS.md`). Stale inbox archived. **BOXONE: git pull → install-watcher.ps1 → prove FinanceWorkspaceWatch runs → then finish 042 and Act on: AI-CODING + push.** Without watcher, STATUS never reaches you.
 
 
 
 ## Done
 
+- [x] **AI-CODING (human: repair repo communication with BOXONE):** Diagnosed dead dual-PC bus. **Root causes:** (1) zero `from BOXONE` auto-sync ever → BOXONE watcher missing/not on this repo; (2) `**target:**` not parsed → false ALL → AI-CODING headless thrash (100+ idle acts); (3) unaddressed inbox woke everyone. **Fixes:** `watch-and-act.ps1` assignment rules; `BUS-COMMS.md`; inbox archive + one BOXONE ping; task frontmatter plain `target:`; **Act on: BOXONE**. 042 ops still incomplete until share proof + handoff.
 - [x] **AI-CODING (human: “box one says its done”):** Verified **042 NOT complete.** Share missing `BOXONE_BROKER_APPLY_DONE.txt`; `broker/account_snapshot.json` still 2026-07-30; no BOXONE Done line / no task move / no git handoff. Re-armed **Act on: BOXONE** with fail table + steps. Do **not** arm PHONE 043 until 042 truly done.
 - [x] **AI-CODING (human: repair agent pipeline):** Fixed split-pipeline **false 0/0** history bug. Root cause: post-fusion called `only_agents=[]`, which emptied the agent roster and finalized every cycle as `0/0` (all 500 history rows). Fix: `skip_agent_runs` + lane totals stamped into `finalize_pipeline_cycle`; empty `only_agents` treated as post-steps-only with full catalog kept for memory. Deployed to runtime `C:\Users\Box One\Finance`. Smoke: critical lane **5/5** ok, cycle `20260802T114101Z`, predictor ok. Worker role=pipeline heartbeats healthy; off-hours still defers full multi-lane (market-hours-only) until pre-open/RTH. Code: `strategy_engine.py` + regression in `tests/test_smoke.py`.
 - [x] **LAPTOP/gsw (human):** AI workstation **payoff roadmap is Finance-first** — recorded on Finance bus. Workstation cutover/payoff must **not** interfere with Finance current goals, rules, Role flip B, or E\*TRADE. Canonical policy: grok-shared-workspace `work/ai-workstation/PAYOFF-ROADMAP.md` (N0 Finance non-interference; RTH hard bans; staged cutover). Hardware order log: gsw `work/ai-workstation/ORDER-2026-08-02.md` (ABS i7-14700F + RTX 5060 + 32GB DDR5; APC BR1500G UPS). **Does not change Act on BOXONE 042.** Does not flip live/dry_run/sandbox.
@@ -157,7 +184,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Next
 
-- [ ] **BOXONE (NOW — claim “done” rejected):** Evidence fails (see table top). Re-do: apply script → headless worker → **today’s** `broker/` files + done-marker → move 042 to done with Result → Done line + **NOTIFY AI-CODING** + **Act on: AI-CODING** + **git push**. Incomplete without all of that.
+- [ ] **BOXONE (NOW):** (1) Repair bus: `git pull` + `install-watcher.ps1` + confirm `FinanceWorkspaceWatch` (see `BUS-COMMS.md`). (2) Finish **042**: apply script → headless worker → today’s `broker/` + done-marker → move 042 done → Done line + **NOTIFY AI-CODING** + **Act on: AI-CODING** + **git push**.
 - [ ] **AI-CODING (after BOXONE reports):** Ack **042** once under Done; confirm share freshness; clear NOTIFY; set **Act on: none**; leave PHONE **043** for human GitStatus (never Act on PHONE).
 - [ ] **PHONE (GitStatus / OXYGEN):** After **042** Done — verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive — follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision. Optional: stage new tower as pipeline/bus first; broker stays BOXONE until human says otherwise.

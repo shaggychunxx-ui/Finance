@@ -1,7 +1,7 @@
-# 043 — OXYGEN GitStatus verify data connection (after role flip B)
+﻿# 043 â€” OXYGEN GitStatus verify data connection (after role flip B)
 
 **status:** pending  
-**target:** PHONE (human OXYGEN via GitStatus)  
+target: PHONE (human OXYGEN via GitStatus)  
 **kind:** verify  
 **depends_on:** 042 (BOXONE broker apply)  
 **handoff_count:** 0  
@@ -19,8 +19,8 @@ Only after task **042** is Done (BOXONE broker applied, share `broker/` fresh).
 
 ## Checklist (GitStatus app)
 
-1. Open **GitStatus** → **Finance** repo.
-2. Refresh STATUS — read Act on / Next / Notes / role flip B.
+1. Open **GitStatus** â†’ **Finance** repo.
+2. Refresh STATUS â€” read Act on / Next / Notes / role flip B.
 3. Confirm BOXONE Done line for **042** is visible.
 4. **Send** probe message: `gitstatus-data-probe-verify-role-B`
 5. Wait for AI-CODING **RECEIPT** under Done (watcher).

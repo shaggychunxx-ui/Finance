@@ -86,6 +86,23 @@ function Get-StatusActOn {
     return "none"
 }
 
+function Normalize-TargetLabel([string]$raw) {
+    if ([string]::IsNullOrWhiteSpace($raw)) { return "none" }
+    $t = $raw.Trim()
+    # Strip markdown bold / trailing punctuation from STATUS/task lines
+    $t = $t -replace '^\*+', '' -replace '\*+$', ''
+    $t = $t.Trim().TrimEnd('.').Trim()
+    # "BOXONE (NOW — ...)" → BOXONE; "PHONE (human...)" → PHONE
+    if ($t -match '^(?i)(AI-CODING|BOXONE|PHONE|OXYGEN|ALL|either|none)\b') {
+        return $Matches[1].ToUpper()
+    }
+    # COMPUTERNAME style
+    if ($t -match '^[A-Za-z0-9_-]+') {
+        return $Matches[0]
+    }
+    return $t
+}
+
 function Get-PendingTaskTargets {
     $pending = Join-Path $repo "tasks\pending"
     $targets = @()
@@ -93,43 +110,112 @@ function Get-PendingTaskTargets {
     Get-ChildItem $pending -Filter "*.md" -File -ErrorAction SilentlyContinue | ForEach-Object {
         if ($_.Name -eq "_TEMPLATE.md") { return }
         $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-        if ($content -match '(?im)^\s*target:\s*(.+?)\s*$') {
-            $targets += $Matches[1].Trim()
+        if ([string]::IsNullOrWhiteSpace($content)) { return }
+        # Accept: target: X | **target:** X | target: **X**
+        if ($content -match '(?im)^\s*\*{0,2}target\*{0,2}\s*:\s*\*{0,2}\s*(.+?)\s*\*{0,2}\s*$') {
+            $targets += (Normalize-TargetLabel $Matches[1])
         } else {
-            $targets += "ALL"
+            # Unknown target → main only (never thrash helpers as ALL)
+            $targets += "AI-CODING"
         }
     }
     return $targets
 }
 
+function Test-IsPhoneTarget([string]$target) {
+    $t = Normalize-TargetLabel $target
+    return ($t -match '^(?i)(PHONE|OXYGEN|PHONE-OXYGEN|OXYGEN-PHONE)$')
+}
+
+function Test-IsMainMachine {
+    # AI-CODING is main; tolerate hostname variants
+    return ($machine -match '^(?i)AI-CODING$')
+}
+
 function Test-TargetMatches([string]$target) {
     if ([string]::IsNullOrWhiteSpace($target)) { return $false }
-    $t = $target.Trim()
-    if ($t -eq "none" -or $t -eq "None" -or $t -eq "NONE") { return $false }
-    if ($t -eq "ALL" -or $t -eq "all" -or $t -eq "either" -or $t -eq "EITHER") { return $true }
+    $t = Normalize-TargetLabel $target
+    if ($t -eq "none" -or $t -eq "NONE") { return $false }
+    # Never wake a PC for human/phone targets
+    if (Test-IsPhoneTarget $t) { return $false }
+    # ALL / either → MAIN only (BOXONE must not invent work)
+    if ($t -eq "ALL" -or $t -eq "EITHER") {
+        return (Test-IsMainMachine)
+    }
     if ($t -ieq $machine) { return $true }
+    return $false
+}
+
+function Test-InboxAddressedToMe([System.IO.FileInfo]$file) {
+    # Filename hints: 2026-08-02-boxone-....md or -ai-coding-
+    $name = $file.Name.ToLowerInvariant()
+    $me = $machine.ToLowerInvariant()
+    if ($name -match [regex]::Escape($me.ToLowerInvariant())) { return $true }
+    if ($me -eq "boxone" -and $name -match 'boxone|box-one|box_one') { return $true }
+    if ($me -eq "ai-coding" -and $name -match 'ai-coding|aicoding|ai_coding') { return $true }
+
+    $raw = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
+    if ([string]::IsNullOrWhiteSpace($raw)) { return $false }
+    # Explicit To: / target: headers
+    if ($raw -match '(?im)^\s*\**\s*To\s*:\s*\**\s*(.+?)\s*\**\s*$') {
+        return (Test-TargetMatches (Normalize-TargetLabel $Matches[1]))
+    }
+    if ($raw -match '(?im)^\s*\**\s*target\s*:\s*\**\s*(.+?)\s*\**\s*$') {
+        return (Test-TargetMatches (Normalize-TargetLabel $Matches[1]))
+    }
+    # Body mentions "To: BOXONE" style
+    if ($raw -match "(?i)\bTo:\s*$([regex]::Escape($machine))\b") { return $true }
+    if ($me -eq "boxone" -and $raw -match '(?i)\bTo:\s*BOXONE\b') { return $true }
+    if ($me -eq "ai-coding" -and $raw -match '(?i)\bTo:\s*AI-CODING\b') { return $true }
     return $false
 }
 
 function Test-ShouldAct {
     $actOn = Get-StatusActOn
+    $actNorm = Normalize-TargetLabel $actOn
+
+    # Explicit Act on this machine → wake
     if (Test-TargetMatches $actOn) {
-        Write-Log "STATUS Act on matches: $actOn"
+        Write-Log "STATUS Act on matches: $actOn (norm=$actNorm)"
         return $true
     }
+
+    # Explicit Act on a *different* PC → do not thrash on inbox/stale tasks
+    # (phone/none/ALL handled separately). Helper must only wake when Act on them
+    # or a pending task targets them.
+    $actIsOtherPc = $false
+    if ($actNorm -ne "none" -and -not (Test-IsPhoneTarget $actNorm) -and $actNorm -ne "ALL" -and $actNorm -ne "EITHER") {
+        if ($actNorm -ine $machine) {
+            $actIsOtherPc = $true
+        }
+    }
+
     $targets = Get-PendingTaskTargets
     foreach ($t in $targets) {
         if (Test-TargetMatches $t) {
+            # If STATUS clearly assigns another PC, only wake for *exact* pending
+            # match to this machine (not ALL/main default).
+            $tn = Normalize-TargetLabel $t
+            if ($actIsOtherPc -and $tn -ine $machine) {
+                Write-Log "Skip pending target $t (Act on=$actOn is other PC)"
+                continue
+            }
             Write-Log "Pending task target matches: $t"
             return $true
         }
     }
+
     $inbox = Join-Path $repo "inbox"
     if (Test-Path $inbox) {
-        $files = Get-ChildItem $inbox -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne ".gitkeep" }
-        if ($files) {
-            Write-Log "Inbox has files; will act"
+        $files = @(Get-ChildItem $inbox -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne ".gitkeep" -and $_.Name -notmatch '^_' })
+        $mine = @($files | Where-Object { Test-InboxAddressedToMe $_ })
+        if ($mine.Count -gt 0) {
+            Write-Log "Inbox addressed to this machine: $($mine[0].Name)"
             return $true
+        }
+        if ($files.Count -gt 0) {
+            Write-Log "Inbox has $($files.Count) file(s) but none addressed to $machine - skip"
         }
     }
     return $false
