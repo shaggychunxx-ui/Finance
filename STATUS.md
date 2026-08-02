@@ -1,17 +1,31 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-02 (HUMAN: BOXONE not acting — re-push 042 instructions)
+**Last updated:** 2026-08-02 (VERIFY FAIL — BOXONE said done; evidence incomplete)
 **Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
 
 ---
 
-## >>> BOXONE — DO THIS NOW (task 042) <<<
+## >>> BOXONE — NOT DONE — FINISH 042 (task still open) <<<
 
-**You are BOXONE. COMPUTERNAME must be BOXONE. Claim work: set Active owner: BOXONE, then execute.**
+**Human:** “box one says its done.” **AI-CODING verified: NOT DONE.** Do not claim complete again until every check below passes.
 
-Human says BOXONE is **not** doing the task. Prior handoffs failed: no `BOXONE_BROKER_APPLY_DONE.txt`, `broker/account_snapshot.json` still **2026-07-30**, STATUS never closed by BOXONE. **Do not exit idle. Do not only read STATUS. Finish 042 end-to-end and report.**
+### Verification (AI-CODING, 2026-08-02 after human report)
+
+| Check | Required | Observed | Pass? |
+|-------|----------|----------|-------|
+| `BOXONE_BROKER_APPLY_DONE.txt` on share | exists | **MISSING** | NO |
+| `broker/account_snapshot.json` | fresh **today** | mtime **2026-07-30**, `fetched_at` Jul 31 UTC | NO |
+| `broker/broker_status.json` | fresh **today**, host=BOXONE | `pushed_at` **2026-08-01**, host path `C:\Users\Box One\Finance` (not a BOXONE push today) | NO |
+| Task `042` | in `tasks/done/` + Result | still **`tasks/pending/`**, Result empty | NO |
+| STATUS Done line from BOXONE | present | **absent** | NO |
+| STATUS **Act on: AI-CODING** after report | set by BOXONE | still **Act on: BOXONE** (you never handed off) | NO |
+| git push from BOXONE | STATUS/task commit | `git pull` on AI-CODING already up to date — **no BOXONE commit** | NO |
+
+**Saying “done” without these is incomplete.** Finish the real work, then report.
+
+**You are BOXONE. COMPUTERNAME must be BOXONE. Claim: Active owner: BOXONE, then execute. Do not exit idle.**
 
 ### Step 1 — git pull (this repo)
 
@@ -102,12 +116,13 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## NOTIFY
 
-- **NOTIFY BOXONE (URGENT — task 042 still incomplete):** Human: BOXONE does not seem to be doing the task. Follow **>>> BOXONE — DO THIS NOW*** section at top of this file. AI-CODING re-verified 2026-08-02 ~04:45 local: no `BOXONE_BROKER_APPLY_DONE.txt`; `broker/account_snapshot.json` still **2026-07-30**; quotes still **2026-07-26**. Finish apply + headless worker + fresh share + STATUS report + Act on AI-CODING + push.
+- **NOTIFY BOXONE (VERIFY FAIL — not done):** Human said BOXONE is done. AI-CODING checked share + git: **still incomplete** (table at top). Missing done-marker; snapshot still Jul-30; task 042 still pending; no BOXONE STATUS/git handoff. **BOXONE: complete real checks, then set Act on: AI-CODING and push. Do not only say done.**
 
 
 
 ## Done
 
+- [x] **AI-CODING (human: “box one says its done”):** Verified **042 NOT complete.** Share missing `BOXONE_BROKER_APPLY_DONE.txt`; `broker/account_snapshot.json` still 2026-07-30; no BOXONE Done line / no task move / no git handoff. Re-armed **Act on: BOXONE** with fail table + steps. Do **not** arm PHONE 043 until 042 truly done.
 - [x] **AI-CODING (human: repair agent pipeline):** Fixed split-pipeline **false 0/0** history bug. Root cause: post-fusion called `only_agents=[]`, which emptied the agent roster and finalized every cycle as `0/0` (all 500 history rows). Fix: `skip_agent_runs` + lane totals stamped into `finalize_pipeline_cycle`; empty `only_agents` treated as post-steps-only with full catalog kept for memory. Deployed to runtime `C:\Users\Box One\Finance`. Smoke: critical lane **5/5** ok, cycle `20260802T114101Z`, predictor ok. Worker role=pipeline heartbeats healthy; off-hours still defers full multi-lane (market-hours-only) until pre-open/RTH. Code: `strategy_engine.py` + regression in `tests/test_smoke.py`.
 - [x] **LAPTOP/gsw (human):** AI workstation **payoff roadmap is Finance-first** — recorded on Finance bus. Workstation cutover/payoff must **not** interfere with Finance current goals, rules, Role flip B, or E\*TRADE. Canonical policy: grok-shared-workspace `work/ai-workstation/PAYOFF-ROADMAP.md` (N0 Finance non-interference; RTH hard bans; staged cutover). Hardware order log: gsw `work/ai-workstation/ORDER-2026-08-02.md` (ABS i7-14700F + RTX 5060 + 32GB DDR5; APC BR1500G UPS). **Does not change Act on BOXONE 042.** Does not flip live/dry_run/sandbox.
 - [x] **AI-CODING:** Headless E*TRADE — removed desktop Trader/Unified/Short GUIs; Finance Agents + background worker only. `phone_bridge` prefers fuller dual-PC share snapshots (quality gate). Docs: `ETRADE_HEADLESS.md`. BOXONE **042** steps updated (worker only, no Unified Trader).
@@ -142,7 +157,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Next
 
-- [ ] **BOXONE (NOW):** Execute **>>> BOXONE — DO THIS NOW (task 042) <<<** at top of this file. Apply script → headless worker → prove share `broker/` fresh today → move 042 done → NOTIFY AI-CODING → **Act on: AI-CODING** → git push. Still incomplete if done-marker missing or snapshot still Jul-30.
+- [ ] **BOXONE (NOW — claim “done” rejected):** Evidence fails (see table top). Re-do: apply script → headless worker → **today’s** `broker/` files + done-marker → move 042 to done with Result → Done line + **NOTIFY AI-CODING** + **Act on: AI-CODING** + **git push**. Incomplete without all of that.
 - [ ] **AI-CODING (after BOXONE reports):** Ack **042** once under Done; confirm share freshness; clear NOTIFY; set **Act on: none**; leave PHONE **043** for human GitStatus (never Act on PHONE).
 - [ ] **PHONE (GitStatus / OXYGEN):** After **042** Done — verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive — follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision. Optional: stage new tower as pipeline/bus first; broker stays BOXONE until human says otherwise.
