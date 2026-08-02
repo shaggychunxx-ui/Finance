@@ -49,6 +49,44 @@ def test_record_pipeline_run_upsert() -> None:
             PIPELINE_RUNS_FILE.write_text(backup, encoding="utf-8")
 
 
+def test_split_post_fusion_only_agents_empty_not_zero_zero() -> None:
+    """only_agents=[] was finalizing every split cycle as 0/0 — must keep sources + lane totals."""
+    from unittest.mock import patch
+
+    import strategy_engine as se
+
+    captured: dict = {}
+
+    def fake_body(**kwargs):
+        captured["skip"] = kwargs.get("skip_agent_runs")
+        captured["ok"] = kwargs.get("recorded_agents_ok")
+        captured["total"] = kwargs.get("recorded_agents_total")
+        captured["sources_len"] = len(kwargs.get("sources") or [])
+        return 0 if kwargs.get("skip_agent_runs") else 3
+
+    sources = [
+        {"id": "risk-guardrail", "label": "RG", "file": "risk_guardrail.json", "category": "x"},
+        {"id": "markets", "label": "M", "file": "markets.json", "category": "x"},
+        {"id": "options-flow", "label": "O", "file": "options_flow.json", "category": "x"},
+    ]
+    with patch.object(se, "_run_agent_pipeline_body", side_effect=fake_body):
+        with patch("agents.platform_catalog.active_agent_sources", return_value=sources):
+            with patch("agents.platform_catalog.log_catalog_changes"):
+                n = se.run_agent_pipeline(
+                    runners={},
+                    check_remote=False,
+                    reload_runners=False,
+                    only_agents=[],
+                    recorded_agents_ok=12,
+                    recorded_agents_total=51,
+                )
+    assert n == 0
+    assert captured.get("skip") is True
+    assert captured.get("sources_len", 0) >= 3
+    assert captured.get("ok") == 12
+    assert captured.get("total") == 51
+
+
 def test_prediction_hit_logic() -> None:
     from prediction_accuracy import _prediction_hit
 

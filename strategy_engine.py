@@ -1809,8 +1809,7 @@ def _run_agent_pipeline_body(
                 if agent_failures or not predictor_ok:
                     on_progress(
                         f"Pipeline finished with issues — agents "
-                        f"{finalize_ok if 'finalize_ok' in dir() else ok}/"
-                        f"{finalize_total if 'finalize_total' in dir() else len(sources)}, "
+                        f"{finalize_ok}/{finalize_total}, "
                         f"predictor {'ok' if predictor_ok else 'failed'}"
                     )
     except Exception:
@@ -1821,6 +1820,9 @@ def _run_agent_pipeline_body(
         end_pipeline_memory_session()
     except Exception:
         pass
+    # skip_agent_runs: agents already counted in lane returns; do not double-count.
+    if skip_agent_runs:
+        return 0
     return ok
 
 
@@ -1904,11 +1906,25 @@ def run_split_pipelines(
         _say("Skipping proactive E*TRADE quotes (research-only cycle).")
 
     total_ok = 0
+    total_agents = 0
     os.environ["FINANCE_AGENT_SUBPROCESS"] = "0"
 
-    def _run_lane_inprocess(pid: str) -> tuple[str, int]:
+    # Expected agent counts per lane (for history stamps after post-fusion).
+    try:
+        from agents.platform_catalog import active_agent_sources
+        from agent_pipelines import agents_for_pipeline
+
+        _all_ids = [str(s.get("id") or "") for s in active_agent_sources(check_remote=False)]
+        lane_expected = {
+            pid: len(list(agents_for_pipeline(pid, _all_ids))) for pid in wanted
+        }
+    except Exception:
+        lane_expected = {pid: 0 for pid in wanted}
+
+    def _run_lane_inprocess(pid: str) -> tuple[str, int, int]:
         spec = pipeline_spec(pid)
-        _say(f"> Lane {pid} - {spec['label']}")
+        expected = int(lane_expected.get(pid) or 0)
+        _say(f"> Lane {pid} - {spec['label']} ({expected} agent(s))")
 
         def _lane_prog(msg: str) -> None:
             text = str(msg or "")
@@ -1926,13 +1942,14 @@ def run_split_pipelines(
             agents_only=True,
             agent_timeout_sec=int(spec["agent_timeout_sec"]),
         )
-        return pid, int(n or 0)
+        return pid, int(n or 0), expected
 
     # --- Phase 1: critical (serial, if selected) ---
     if "critical" in wanted:
-        _, n_crit = _run_lane_inprocess("critical")
+        _, n_crit, n_tot = _run_lane_inprocess("critical")
         total_ok += n_crit
-        _say(f"Lane critical complete - {n_crit} agent(s) ok")
+        total_agents += n_tot
+        _say(f"Lane critical complete - {n_crit}/{n_tot} agent(s) ok")
 
     # --- Phase 2: quant / flow / research (parallel among selected) ---
     parallel_ids = [p for p in ordered_pipeline_ids(parallel_phase=True) if p in wanted]
@@ -1943,36 +1960,46 @@ def run_split_pipelines(
                 for fut in as_completed(futures):
                     pid = futures[fut]
                     try:
-                        lane_id, n = fut.result()
+                        lane_id, n, n_tot = fut.result()
                     except Exception as exc:
                         _say(f"Lane {pid} crashed: {exc}")
+                        total_agents += int(lane_expected.get(pid) or 0)
                         continue
                     total_ok += n
-                    _say(f"Lane {lane_id} complete - {n} agent(s) ok")
+                    total_agents += n_tot
+                    _say(f"Lane {lane_id} complete - {n}/{n_tot} agent(s) ok")
         else:
             for pid in parallel_ids:
-                lane_id, n = _run_lane_inprocess(pid)
+                lane_id, n, n_tot = _run_lane_inprocess(pid)
                 total_ok += n
-                _say(f"Lane {lane_id} complete - {n} agent(s) ok")
+                total_agents += n_tot
+                _say(f"Lane {lane_id} complete - {n}/{n_tot} agent(s) ok")
 
     # --- Phase 3: post-fusion when trading data was refreshed ---
     do_post = run_post if run_post is not None else bool(wanted & {"critical", "quant", "flow"})
-    post_ok = 0
     if do_post:
-        _say("> Post-fusion - E*TRADE enhance, predictor, accuracy")
-        post_ok = run_agent_pipeline(
+        _say(
+            f"> Post-fusion - E*TRADE enhance, predictor, accuracy "
+            f"(lane totals {total_ok}/{total_agents})"
+        )
+        run_agent_pipeline(
             on_progress=on_progress,
             check_remote=False,
             reload_runners=False,
             benchmark_profile=benchmark_profile,
-            only_agents=[],
+            skip_agent_runs=True,
+            recorded_agents_ok=total_ok,
+            recorded_agents_total=total_agents if total_agents > 0 else None,
             agents_only=False,
         )
     else:
         _say("Skipping post-fusion (research-only cycle — predictor keeps prior outputs).")
 
-    _say(f"Split pipelines finished - lane agents ok~{total_ok}, post={'yes' if do_post else 'no'}")
-    return total_ok + int(post_ok or 0)
+    _say(
+        f"Split pipelines finished - lane agents ok {total_ok}/{total_agents}, "
+        f"post={'yes' if do_post else 'no'}"
+    )
+    return total_ok
 
 
 def _parse_pipeline_ok(result: dict[str, Any]) -> int:
