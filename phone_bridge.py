@@ -668,7 +668,7 @@ def build_account_summary() -> dict[str, Any]:
         "deposits_are_capital": True,
         "transfer_positions_are_capital": True,
         "pl_excludes_deposits": True,
-        "pl_excludes_transfer_mtm": True,
+        "pl_excludes_transfer_mtm": False,
         "transfer_open_mtm": None,
         "trend": None,
         "currency": "USD",
@@ -1499,14 +1499,18 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
     if learned:
         remember_transfer_deposit_symbols(learned)
 
-    # Portfolio open P/L = trading lots only (never transfer MTM / open_pl_for_total leak)
+    # Portfolio open P/L = trading lots only (transfer lots display $0 book-in open)
     pos_pl = sum(
         _f(p.get("unrealized_pl"))
         for p in positions
         if not p.get("transfer_as_deposit") and p.get("unrealized_pl") is not None
     )
 
-    # Transfer lot MTM (mv-cost) even when display open is $0 — exclude from total/avg P/L
+    # Transfer MTM (mv − cost) for diagnostics only. Do NOT subtract from total P/L:
+    # invested_capital already includes deposit/ACATS at book-in, and latest equity
+    # already marks those lots to market — so capital_pl = latest − invested is the
+    # true deposit-aware total. Subtracting transfer_open_mtm when it is negative
+    # *adds back* transfer losses as fake profit (~+$1.1k bug).
     transfer_open_mtm = 0.0
     for p in positions:
         if not p.get("transfer_as_deposit"):
@@ -1518,16 +1522,16 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
     bal_pl = _f(account.get("balance"))
     inv_pl = _f(account.get("invested_capital"))
     if bal_pl is not None and inv_pl is not None and inv_pl > 0:
-        capital_pl = bal_pl - inv_pl
-        total_pl_ex = round(capital_pl - transfer_open_mtm, 2)
-        account["total_pl"] = total_pl_ex
-        account["total_pl_pct"] = round(total_pl_ex / inv_pl * 100.0, 2)
-        account["trend"] = "up" if total_pl_ex >= 0 else "down"
+        capital_pl = round(bal_pl - inv_pl, 2)
+        account["total_pl"] = capital_pl
+        account["total_pl_pct"] = round(capital_pl / inv_pl * 100.0, 2)
+        account["trend"] = "up" if capital_pl >= 0 else "down"
         account["transfer_open_mtm"] = round(transfer_open_mtm, 4)
-        account["pl_excludes_transfer_mtm"] = True
+        # Total P/L includes post-book-in MTM on transfer lots (real equity change).
+        account["pl_excludes_transfer_mtm"] = False
         adisp = account.get("display") if isinstance(account.get("display"), dict) else {}
         adisp = dict(adisp)
-        adisp["total_pl"] = _money(total_pl_ex)
+        adisp["total_pl"] = _money(capital_pl)
         adisp["total_pl_pct"] = _pct(account["total_pl_pct"])
         account["display"] = adisp
 
@@ -1626,7 +1630,7 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
             },
         },
         "pl_excludes_deposits": True,
-        "pl_excludes_transfer_mtm": True,
+        "pl_excludes_transfer_mtm": False,
         "deposits_are_capital": True,
         "transfer_positions_are_capital": True,
         "pl_from_calculation_start": True,
@@ -1695,7 +1699,8 @@ def build_performance_series(account_id_key: str = "") -> dict[str, Any]:
       • deposits/transfers book capital only from their event timestamps
         (profit_at_point uses net flows before each point)
       • all series clipped + rebased to CALCULATION_START_ISO (P/L at start = 0)
-      • transfer open MTM stripped only after transfer capital lands
+      • post-book-in MTM on transfer lots stays in P/L (real equity change);
+        never subtract transfer_open_mtm from profit (that flipped losses into profit)
     """
     from datetime import datetime, timedelta, timezone
 
@@ -1765,7 +1770,7 @@ def build_performance_series(account_id_key: str = "") -> dict[str, Any]:
         except ValueError:
             return None
 
-    # --- Transfer MTM from transfer-land date only ---
+    # Transfer MTM diagnostic only (not subtracted from series).
     transfer_open_mtm = 0.0
     try:
         positions = build_positions()
@@ -1778,27 +1783,6 @@ def build_performance_series(account_id_key: str = "") -> dict[str, Any]:
                 transfer_open_mtm += mv - cost
     except Exception:
         transfer_open_mtm = 0.0
-
-    # First performance index where bulk transfer capital is visible
-    post_xfer_floor = 1500.0
-    land_idx = next(
-        (i for i, p in enumerate(points) if float(p.get("value") or 0) >= post_xfer_floor),
-        len(points),
-    )
-    if abs(transfer_open_mtm) >= 0.005:
-        for i, p in enumerate(points):
-            if i < land_idx:
-                continue
-            pl = _f(p.get("profit_amount"))
-            if pl is None:
-                continue
-            p["profit_amount"] = round(pl - transfer_open_mtm, 2)
-            inv = _f(metrics.get("invested_capital"))
-            val = _f(p.get("value"))
-            if inv and inv > 0:
-                p["profit_pct"] = round(p["profit_amount"] / inv * 100.0, 2)
-            elif val and val > 0:
-                p["profit_pct"] = round(p["profit_amount"] / val * 100.0, 2)
 
     # --- Clip + rebase to calculation start (P/L at start = 0) ---
     start_day = CALCULATION_START_ISO
@@ -1866,7 +1850,7 @@ def build_performance_series(account_id_key: str = "") -> dict[str, Any]:
         "points": points,
         "ranges": ranges,
         "pl_excludes_deposits": True,
-        "pl_excludes_transfer_mtm": True,
+        "pl_excludes_transfer_mtm": False,
         "pl_from_calculation_start": True,
         "calculation_start": CALCULATION_START_ISO,
         "transfer_deposit": round(transfer_deposit, 2),
