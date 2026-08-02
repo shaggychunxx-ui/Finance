@@ -2,8 +2,9 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-echo Finance Agents is now a tab inside E*TRADE Trader.
-echo Refreshing shortcuts to open the Agents tab...
+echo Installing Finance Agents (standalone agents UI)...
+echo E*TRADE desktop trader UIs have been removed; pipeline/API/workers remain.
+echo.
 
 if not exist ".venv\Scripts\python.exe" (
     echo Creating Python environment...
@@ -21,15 +22,17 @@ set "SHORTCUT=%DESKTOP%\Finance Agents.lnk"
 set "TARGET=%~dp0Launch Finance Agents.vbs"
 
 echo.
-echo Desktop shortcut created: %SHORTCUT%
+echo Desktop shortcut: %SHORTCUT%
 echo Launcher: %TARGET%
 echo.
-echo Double-click "Finance Agents" on your desktop to open E*TRADE Trader on the Agents tab.
+echo Double-click "Finance Agents" to open the agents report UI.
+echo Headless trading: Install ETrade Background.bat / Start Silent Worker Only.vbs
 pause
 exit /b 0
 
 :fail
 echo.
-echo Install failed.
+echo Install failed. Need Python 3.10+ on PATH with tcl/tk.
+echo Download: https://www.python.org/downloads/
 pause
 exit /b 1

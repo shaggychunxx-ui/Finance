@@ -2,9 +2,6 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $iconDir = Join-Path $env:ProgramData "FinanceETrade"
 $iconStable = Join-Path $iconDir "etrade_trader.ico"
 $serviceLauncher = Join-Path $root "Start ETrade Background Service.vbs"
-$guiExe = Join-Path $root "ETrade Trader.exe"
-$guiLauncher = Join-Path $root ".venv\Scripts\pythonw.exe"
-$guiArgs = Join-Path $root "launch_etrade_trader.py"
 $scheduledLauncher = Join-Path $root "Scheduled ETrade Worker Run.vbs"
 $liveTradingLauncher = Join-Path $root "Scheduled ETrade Live Trading.vbs"
 $dayTradingLauncher = Join-Path $root "Scheduled ETrade Day Trading.vbs"
@@ -17,7 +14,7 @@ $liveTradingTask = "Finance ETrade Live Trading"
 $dayTradingTask = "Finance ETrade Day Trading"
 $startup = [Environment]::GetFolderPath("Startup")
 $serviceStartupLink = Join-Path $startup "ETrade Background Service.lnk"
-$guiStartupLink = Join-Path $startup "ETrade Trader.lnk"
+# Desktop trader GUIs removed — do not install GUI autostart shortcuts.
 
 if (-not (Test-Path $serviceLauncher)) {
     Write-Error "Missing $serviceLauncher"
@@ -100,18 +97,15 @@ try {
 Install-StartupShortcut -LinkPath $serviceStartupLink -TargetPath $serviceLauncher `
     -Description "Finance E*TRADE background trading worker"
 
-if (Test-Path $guiExe) {
-    Install-StartupShortcut -LinkPath $guiStartupLink -TargetPath $guiExe `
-        -Description "Finance E*TRADE Trader desktop app"
-    $programsLink = Join-Path ([Environment]::GetFolderPath("Programs")) "ETrade Trader.lnk"
-    Install-StartupShortcut -LinkPath $programsLink -TargetPath $guiExe `
-        -Description "Finance agent strategies applied to E*TRADE account"
-} elseif (Test-Path $guiLauncher) {
-    Install-StartupShortcut -LinkPath $guiStartupLink -TargetPath $guiLauncher `
-        -Arguments "`"$guiArgs`"" -Description "Finance E*TRADE Trader desktop app"
-    $programsLink = Join-Path ([Environment]::GetFolderPath("Programs")) "ETrade Trader.lnk"
-    Install-StartupShortcut -LinkPath $programsLink -TargetPath $guiLauncher `
-        -Arguments "`"$guiArgs`"" -Description "Finance agent strategies applied to E*TRADE account"
+# Remove leftover trader GUI autostart/shortcuts if present
+foreach ($dir in @($startup, [Environment]::GetFolderPath("Programs"))) {
+    foreach ($n in @("ETrade Trader.lnk", "ETrade Unified Trader.lnk", "ETrade Short Trader.lnk")) {
+        $p = Join-Path $dir $n
+        if (Test-Path $p) {
+            Remove-Item $p -Force -ErrorAction SilentlyContinue
+            Write-Host "Removed obsolete GUI shortcut: $p"
+        }
+    }
 }
 
 $watchdogOk = $false

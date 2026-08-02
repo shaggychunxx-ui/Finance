@@ -28,27 +28,30 @@ if (-not $DataDir -or -not (Test-Path -LiteralPath $DataDir)) {
 }
 $DataDir = (Resolve-Path -LiteralPath $DataDir).Path
 
-# Resolve install dir
+# Resolve install dir (Finance root with etrade API/worker — desktop trader UIs removed)
+function Test-FinanceRoot([string]$path) {
+    if (-not $path) { return $false }
+    return (Test-Path (Join-Path $path "etrade_worker.py")) -or (Test-Path (Join-Path $path "etrade_api"))
+}
 if (-not $InstallDir) {
     $candidates = @(
-        (Join-Path $env:LOCALAPPDATA "Programs\ETrade Unified Trader"),
         (Join-Path $env:USERPROFILE "Finance"),
-        "C:\Users\Box One\Finance"
+        "C:\Users\Box One\Finance",
+        (Join-Path $env:LOCALAPPDATA "Programs\ETrade Unified Trader")
     )
-    # If script lives inside an app root that has unified_trader_gui.py, use that
     $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-    if (Test-Path (Join-Path $here "unified_trader_gui.py")) {
+    if (Test-FinanceRoot $here) {
         $candidates = @($here) + $candidates
     }
     foreach ($c in $candidates) {
-        if ($c -and (Test-Path (Join-Path $c "unified_trader_gui.py"))) {
+        if ($c -and (Test-FinanceRoot $c)) {
             $InstallDir = $c
             break
         }
     }
 }
-if (-not $InstallDir -or -not (Test-Path (Join-Path $InstallDir "unified_trader_gui.py"))) {
-    throw "InstallDir not found. Pass -InstallDir to the ETrade Unified Trader folder (must contain unified_trader_gui.py)."
+if (-not $InstallDir -or -not (Test-FinanceRoot $InstallDir)) {
+    throw "InstallDir not found. Pass -InstallDir to the Finance folder (must contain etrade_worker.py or etrade_api/)."
 }
 $InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
 
@@ -133,5 +136,5 @@ if (-not $WhatIf) {
 
 Write-Host ""
 Write-Step "DONE — imported $copied files into $InstallDir"
-Write-Host "Next: launch ETrade Unified Trader → Settings → Connect if tokens expired."
+Write-Host "Next: if tokens expired, run begin_etrade_login.py / finish_etrade_login.py, then restart the background worker."
 exit 0

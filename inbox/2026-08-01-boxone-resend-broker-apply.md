@@ -22,8 +22,8 @@ Or: `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`
 
 ## After script
 
-1. ETrade Unified Trader (practice ON)  
-2. Restart worker  
+1. Practice/dry_run ON (no desktop Unified Trader UI — headless only)  
+2. Restart **background worker** (`Start ETrade Background Service.vbs` / silent worker)  
 3. Fresh share `broker/`  
 4. STATUS Done **042** → arm **043** for PHONE GitStatus; Act on: none  
 

@@ -186,12 +186,13 @@ Delete the transfer folder after import on the new PC.
 
 IMPORT (other PC)
 -----------------
-1. Install ETrade Unified Trader (Setup.exe) first
-2. Close the app if it is running
+1. Ensure Finance runtime is present (agents + etrade_api + worker; no desktop trader UI required)
+2. Stop background workers if running
 3. Copy this folder onto the new PC
 4. Run:
      powershell -ExecutionPolicy Bypass -File Import-ETrade-UserData.ps1 -DataDir "PATH\to\ETrade-UserData-Transfer"
    Or place this folder next to the app and double-click Import-ETrade-UserData.bat
+5. Re-auth OAuth if needed (begin_etrade_login.py / finish_etrade_login.py), then Install ETrade Background.bat
 
 FULL export (optional, multi-GB)
 --------------------------------

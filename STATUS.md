@@ -1,6 +1,6 @@
 # Status / Handoff â€” Finance
 
-**Last updated:** 2026-08-01 (RE-SEND)
+**Last updated:** 2026-08-02
 **Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
@@ -20,8 +20,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
   Or double-click: `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`
 
   **Then:**
-  1. Open **ETrade Unified Trader** (API already connected; leave practice/dry_run ON).
-  2. Restart etrade worker / background service.
+  1. Desktop trader UIs are **removed** — do **not** look for Unified Trader. Leave practice/dry_run ON.
+  2. Restart **background worker** only (`Install ETrade Background.bat` / `Start ETrade Background Service.vbs` / silent worker). OAuth CLI if needed: `begin_etrade_login.py` / `finish_etrade_login.py`.
   3. Confirm share `broker\account_snapshot.json` and `broker_status.json` get a **new** timestamp (host should be BOXONE).
   4. STATUS: Done line for **042**; arm Next for PHONE GitStatus verify **043**; **Act on: none**; ack once — no ping-pong.
   5. Do **not** Act on PHONE. Do **not** put tokens on the share.
@@ -32,6 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
 ## Done
 
+- [x] **AI-CODING:** Headless E*TRADE — removed desktop Trader/Unified/Short GUIs; Finance Agents + background worker only. `phone_bridge` prefers fuller dual-PC share snapshots (quality gate). Docs: `ETRADE_HEADLESS.md`. BOXONE **042** steps updated (worker only, no Unified Trader).
 - [x] **AI-CODING:** Full accuracy/ops plan shipped (night backtest, RTH pipeline, learning, abstain, fusion horizon, regime gate, meta-calibrator, pre-open burst, plan rebuild). APK rebuild assigned Oxygen-OS task **062**.
 
 - [x] **AI-CODING (PHONE):** slow constant full backtest from 2000-01-01 â€” **done / running**.
@@ -63,7 +64,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
 ## Next
 
-- [ ] **BOXONE:** Run broker apply script (see NOTIFY one-liner / `Apply-Broker-Role-BOXONE.ps1` on share). Restart Unified Trader + worker. Verify share `broker/` freshness. Task **042**. When done → arm PHONE GitStatus verify (task **043**).
+- [ ] **BOXONE:** Run broker apply script (see NOTIFY one-liner / `Apply-Broker-Role-BOXONE.ps1` on share). Restart **headless background worker** only (no desktop trader UI). Verify share `broker/` freshness. Task **042**. When done → arm PHONE GitStatus verify (task **043**).
 - [ ] **PHONE (GitStatus / OXYGEN):** After **042** Done — verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`.
 
 

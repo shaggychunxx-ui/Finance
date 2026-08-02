@@ -50,7 +50,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.2"
+BRIDGE_VERSION = "1.5.3"
 
 # Phone "full data pull" flag for the current request (thread-local).
 _pull_ctx = threading.local()
@@ -58,6 +58,9 @@ _pull_ctx = threading.local()
 # Human rule (PHONE 2026-07-31): all P/L / chart / average calcs start here.
 # Transfer/deposit capital only enters P/L math from each event's date forward.
 CALCULATION_START_ISO = "2026-07-24"
+
+# Snapshot quality: never clobber a fuller book with a thin live pull / publish.
+_MIN_POS_KEEP_RICHER = 3  # if prior has ≥ this many lots and new has fewer → keep prior
 
 
 def _log(msg: str) -> None:
@@ -72,7 +75,7 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
         return data if isinstance(data, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
@@ -101,11 +104,165 @@ def load_bridge_config() -> dict[str, Any]:
     return raw
 
 
+def _snapshot_position_count(snap: dict[str, Any] | None) -> int:
+    if not isinstance(snap, dict):
+        return 0
+    pos = snap.get("positions")
+    return len(pos) if isinstance(pos, list) else 0
+
+
+def _snapshot_age_sec(snap: dict[str, Any] | None) -> float | None:
+    """Age of fetched_at in seconds, or None if unknown."""
+    if not isinstance(snap, dict):
+        return None
+    fetched = str(snap.get("fetched_at") or "").strip()
+    if not fetched:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        ts = fetched.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
+    except Exception:
+        return None
+
+
+def _snapshot_quality(snap: dict[str, Any] | None) -> tuple[int, float]:
+    """Higher is better: (position_count, -age_seconds). Missing age → treat as old."""
+    n = _snapshot_position_count(snap)
+    age = _snapshot_age_sec(snap)
+    age_score = -(age if age is not None and age >= 0 else 1e12)
+    return (n, age_score)
+
+
+def _prefer_snapshot(
+    a: dict[str, Any] | None,
+    b: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Pick the stronger of two snapshots (more lots first, then fresher)."""
+    if not a and not b:
+        return {}
+    if not a:
+        return dict(b or {})
+    if not b:
+        return dict(a)
+    return dict(a if _snapshot_quality(a) >= _snapshot_quality(b) else b)
+
+
+def _shared_broker_snapshot_paths() -> list[Path]:
+    """Possible dual-PC share paths for broker account_snapshot.json."""
+    paths: list[Path] = []
+    try:
+        from deployment import load_deployment
+
+        dep = load_deployment()
+        root = str(dep.get("shared_root") or "").strip()
+        if root:
+            paths.append(Path(root) / "broker" / "account_snapshot.json")
+    except Exception:
+        pass
+    # Common dual-PC layouts (HelperDrop + dedicated FinanceShare)
+    for candidate in (
+        Path(r"C:\Users\Public\HelperDrop\FinanceShare\broker\account_snapshot.json"),
+        Path(r"\\10.10.10.1\HelperDrop\FinanceShare\broker\account_snapshot.json"),
+        Path(r"\\10.10.10.1\FinanceShare\broker\account_snapshot.json"),
+    ):
+        if candidate not in paths:
+            paths.append(candidate)
+    return paths
+
+
+def _load_shared_broker_snapshot() -> dict[str, Any]:
+    """Best broker snapshot from dual-PC share (BOXONE writer after role flip B)."""
+    best: dict[str, Any] = {}
+    best_src = ""
+    for path in _shared_broker_snapshot_paths():
+        try:
+            if not path.is_file():
+                continue
+            data = _read_json(path)
+            if _snapshot_position_count(data) <= 0 and not data.get("balance"):
+                continue
+            if _snapshot_quality(data) > _snapshot_quality(best):
+                best = dict(data)
+                best["_snapshot_path"] = str(path)
+                best_src = str(path)
+        except Exception:
+            continue
+    if best and best_src:
+        best.setdefault("source", "shared_broker")
+        best["_loaded_from"] = best_src
+    return best
 
 
 def _load_account_snapshot() -> dict[str, Any]:
-    """Broker account snapshot (full positions) written by etrade_worker / live pull."""
-    return _read_json(ROOT / "output" / "account_snapshot.json")
+    """Best available broker snapshot: local output + dual-PC share.
+
+    Role flip B: AI-CODING is often pipeline (thin/no tokens); BOXONE writes
+    full lots to share broker/. Prefer the fuller book so the phone never
+    sees a 1-lot stub when 14 lots exist on the share.
+    """
+    local = _read_json(ROOT / "output" / "account_snapshot.json")
+    shared = _load_shared_broker_snapshot()
+    chosen = _prefer_snapshot(local, shared)
+    if not chosen:
+        return {}
+    # Tag which source won (for data_pull / health)
+    if shared and _snapshot_quality(shared) > _snapshot_quality(local):
+        chosen.setdefault("source", "shared_broker")
+        chosen["_chosen_from"] = "shared_broker"
+        # Heal thin local so future cache hits and other tools see the full book
+        local_n = _snapshot_position_count(local)
+        shared_n = _snapshot_position_count(shared)
+        if shared_n >= _MIN_POS_KEEP_RICHER and shared_n > local_n:
+            try:
+                to_write = {
+                    k: v
+                    for k, v in chosen.items()
+                    if not str(k).startswith("_")
+                }
+                to_write["source"] = "shared_broker_healed"
+                _write_json(ROOT / "output" / "account_snapshot.json", to_write)
+                _log(
+                    f"healed local account_snapshot from share "
+                    f"({local_n} → {shared_n} lots)"
+                )
+            except Exception as exc:
+                _log(f"heal local snapshot skipped: {exc}")
+    else:
+        chosen.setdefault("source", local.get("source") or "local_account_snapshot")
+        chosen["_chosen_from"] = "local"
+    return chosen
+
+
+def _data_quality_report() -> dict[str, Any]:
+    """Non-secret snapshot quality for /health and ops."""
+    local = _read_json(ROOT / "output" / "account_snapshot.json")
+    shared = _load_shared_broker_snapshot()
+    best = _prefer_snapshot(local, shared)
+    role = "all"
+    try:
+        from deployment import load_deployment
+
+        role = str(load_deployment().get("role") or "all")
+    except Exception:
+        pass
+    return {
+        "role": role,
+        "local_positions": _snapshot_position_count(local),
+        "local_age_sec": _snapshot_age_sec(local),
+        "shared_positions": _snapshot_position_count(shared),
+        "shared_age_sec": _snapshot_age_sec(shared),
+        "serving_positions": _snapshot_position_count(best),
+        "serving_age_sec": _snapshot_age_sec(best),
+        "serving_source": best.get("_chosen_from")
+        or best.get("source")
+        or ("none" if not best else "unknown"),
+        "strong": _snapshot_position_count(best) >= _MIN_POS_KEEP_RICHER,
+    }
 
 
 def _last_pull_meta() -> dict[str, Any]:
@@ -127,27 +284,29 @@ def try_refresh_account_snapshot(
 
     Phone "full data pull from PC" needs real lots + qty, not offline TARGET stubs.
     When force=True (phone Refresh / /api/full?refresh=1), always attempt a live pull.
+
+    Quality gate: never overwrite a fuller snapshot (local or share) with a thinner
+    live response — common on pipeline hosts with partial OAuth.
     """
     snap_path = ROOT / "output" / "account_snapshot.json"
     prior = _load_account_snapshot()
+    prior_n = _snapshot_position_count(prior)
+
     if not force:
         try:
             fetched = str(prior.get("fetched_at") or "")
-            if fetched and prior.get("positions"):
-                from datetime import datetime, timezone
-
-                ts = fetched.replace("Z", "+00:00")
-                dt = datetime.fromisoformat(ts)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                age = (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
-                if 0 <= age < max_age_sec:
+            if fetched and prior_n > 0:
+                age = _snapshot_age_sec(prior)
+                if age is not None and 0 <= age < max_age_sec:
                     _set_pull_meta(
                         live=False,
-                        source="account_snapshot_cache",
+                        source=str(prior.get("_chosen_from") or prior.get("source") or "account_snapshot_cache"),
                         fetched_at=fetched,
-                        position_count=len(prior.get("positions") or []),
-                        message="Using recent PC snapshot (within max age)",
+                        position_count=prior_n,
+                        message=(
+                            f"Using recent snapshot ({prior_n} lots, "
+                            f"source={prior.get('_chosen_from') or prior.get('source') or 'cache'})"
+                        ),
                     )
                     return prior
         except Exception:
@@ -173,10 +332,11 @@ def try_refresh_account_snapshot(
         if cfg is None:
             _set_pull_meta(
                 live=False,
-                source="account_snapshot",
+                source=str(prior.get("_chosen_from") or "account_snapshot"),
                 error="No E*TRADE config on PC",
-                position_count=len(prior.get("positions") or []),
+                position_count=prior_n,
                 fetched_at=prior.get("fetched_at"),
+                message="No local API config — serving best local/share snapshot",
             )
             return prior
         client = ETradeClient(cfg)
@@ -201,23 +361,44 @@ def try_refresh_account_snapshot(
         if not key:
             _set_pull_meta(
                 live=False,
-                source="account_snapshot",
+                source=str(prior.get("_chosen_from") or "account_snapshot"),
                 error="No account id on PC",
-                position_count=len(prior.get("positions") or []),
+                position_count=prior_n,
                 fetched_at=prior.get("fetched_at"),
+                message="No account id — serving best local/share snapshot",
             )
             return prior
         balance = client.get_balance(key) or {}
         positions = client.get_portfolio(key) or []
-        if not positions and prior.get("positions"):
+        live_n = len(positions) if isinstance(positions, list) else 0
+        if live_n == 0 and prior_n > 0:
             _set_pull_meta(
                 live=False,
-                source="account_snapshot",
-                error="Live portfolio empty — kept prior snapshot",
-                position_count=len(prior.get("positions") or []),
+                source=str(prior.get("_chosen_from") or "account_snapshot"),
+                error="Live portfolio empty — kept prior/share snapshot",
+                position_count=prior_n,
                 fetched_at=prior.get("fetched_at"),
+                message="Live empty — kept fuller snapshot",
             )
             return prior
+        # Quality gate: partial OAuth / wrong account must not clobber full book
+        if prior_n >= _MIN_POS_KEEP_RICHER and live_n < prior_n:
+            _log(
+                f"live pull thinner ({live_n} < prior {prior_n}) — keeping fuller snapshot"
+            )
+            _set_pull_meta(
+                live=False,
+                source=str(prior.get("_chosen_from") or "account_snapshot"),
+                error=f"Live pull only {live_n} lots vs prior {prior_n}",
+                position_count=prior_n,
+                fetched_at=prior.get("fetched_at"),
+                message=(
+                    f"Kept fuller snapshot ({prior_n} lots); "
+                    f"live returned {live_n} (re-auth on broker PC if needed)"
+                ),
+            )
+            return prior
+
         from datetime import datetime, timezone
 
         snap = {
@@ -248,17 +429,21 @@ def try_refresh_account_snapshot(
         _log(f"live account_snapshot refresh skipped: {exc}")
         _set_pull_meta(
             live=False,
-            source="account_snapshot",
+            source=str(prior.get("_chosen_from") or "account_snapshot"),
             error=str(exc),
-            position_count=len(prior.get("positions") or []),
+            position_count=prior_n,
             fetched_at=prior.get("fetched_at"),
-            message="PC live pull failed — serving last full snapshot",
+            message="PC live pull failed — serving best local/share snapshot",
         )
         return prior
 
 
 def _publish_dashboard_to_oxygen(payload: dict[str, Any]) -> None:
-    """Write non-secret dashboard JSON for phone GitHub bus (cellular path)."""
+    """Write non-secret dashboard JSON for phone GitHub bus (cellular path).
+
+    Quality gate: never replace a richer published pack with a thinner one
+    (e.g. pipeline host 1-lot stub overwriting 14-lot broker publish).
+    """
     try:
         oxygen = (
             Path.home()
@@ -270,11 +455,33 @@ def _publish_dashboard_to_oxygen(payload: dict[str, Any]) -> None:
             / "etrade-dashboard.json"
         )
         oxygen.parent.mkdir(parents=True, exist_ok=True)
-        oxygen.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-        _log(
-            f"published dashboard -> {oxygen} "
-            f"({len(payload.get('positions') or [])} pos)"
-        )
+        new_n = len(payload.get("positions") or [])
+        if oxygen.is_file():
+            try:
+                prev = json.loads(oxygen.read_text(encoding="utf-8-sig"))
+                if isinstance(prev, dict):
+                    old_n = len(prev.get("positions") or [])
+                    if old_n >= _MIN_POS_KEEP_RICHER and new_n < old_n:
+                        # Allow overwrite only if new pack has real balance and is explicitly live
+                        pull = payload.get("data_pull") if isinstance(payload.get("data_pull"), dict) else {}
+                        if not pull.get("live"):
+                            _log(
+                                f"oxygen publish skipped: new {new_n} pos < prior {old_n} "
+                                f"(non-live thinner pack)"
+                            )
+                            return
+                        if new_n < max(1, old_n // 2):
+                            _log(
+                                f"oxygen publish blocked: new {new_n} pos << prior {old_n}"
+                            )
+                            return
+            except (OSError, json.JSONDecodeError, TypeError):
+                pass
+        # Atomic write so phone/GitHub never reads half a file
+        tmp = oxygen.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        tmp.replace(oxygen)
+        _log(f"published dashboard -> {oxygen} ({new_n} pos)")
     except Exception as exc:
         _log(f"oxygen dashboard publish failed: {exc}")
 
@@ -2270,6 +2477,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         try:
             if path == "/health":
                 ips = lan_ips()
+                quality = _data_quality_report()
                 self._send(
                     200,
                     {
@@ -2285,6 +2493,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         "features_path": "/api/features",
                         "full_path": "/api/full",
                         "orders_path": "/api/orders",
+                        "data_quality": quality,
+                        "data_strong": bool(quality.get("strong")),
                     },
                 )
                 return

@@ -4,7 +4,7 @@ Human chose **inverted dual-PC roles**:
 
 | Machine   | New role  | Does |
 |-----------|-----------|------|
-| **BOXONE** | **broker** | E*TRADE OAuth, Unified Trader UI, plan build, quotes publish, orders (practice until dry_run off) |
+| **BOXONE** | **broker** | E*TRADE OAuth, headless background worker, plan build, quotes publish, orders (practice until dry_run off) |
 | **AI-CODING** | **pipeline** | Agents, fusion, accuracy, night/full-day backtests; pull quotes from share; **no** order placement |
 
 Applied on AI-CODING already:
@@ -21,7 +21,7 @@ Applied on AI-CODING already:
 
 3. Confirm practice mode: background_worker.dry_run=true until ready for live.
 
-4. Start **ETrade Unified Trader** + background worker on BOXONE.
+4. Start **background worker** on BOXONE (headless; desktop trader UIs removed).
 
 5. After connect, verify share updates:
    - roker/account_snapshot.json recent

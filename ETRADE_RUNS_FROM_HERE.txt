@@ -1,13 +1,16 @@
-﻿E*TRADE runs from this Finance git clone (Option A).
+E*TRADE runs from this Finance folder (headless worker + agents).
 
-Location: %USERPROFILE%\Finance  (on AI-CODING after rename: C:\Users\AI Coding\Finance)
+Location: %USERPROFILE%\Finance  (or this git clone)
 Remote:   https://github.com/shaggychunxx-ui/Finance
 
-Dual-PC (see DUAL_PC_DEPLOYMENT.md):
-  AI-CODING  role=broker   → UI + E*TRADE + orders
-  BOXONE     role=pipeline → agents always-on; no orders
+Dual-PC option B (active — see DUAL_PC_DEPLOYMENT.md / ROLE_FLIP_B.md):
+  BOXONE     role=broker    → OAuth + headless worker + orders (practice until dry_run off)
+  AI-CODING  role=pipeline  → agents/backtests; pull quotes from share; no orders
   Share: C:\Users\Public\HelperDrop\FinanceShare
          (UNC from BOXONE: \\10.10.10.1\HelperDrop\FinanceShare)
+
+Desktop ETrade Trader / Unified Trader GUIs: REMOVED (see ETRADE_HEADLESS.md).
+Use Finance Agents.bat for research UI; background worker for trading.
 
 How to update:
   1. Open this folder in GitHub Desktop (or: git pull)
@@ -19,6 +22,5 @@ Secrets stay local (gitignored):
   etrade_config.json, etrade_tokens.json, short_etrade_config.json,
   config.json, ui_prefs.json, output/
 
-Desktop shortcut and Startup now point here.
-Old install (optional delete after testing):
+Old separate install (optional delete after testing):
   %LOCALAPPDATA%\Programs\ETrade Unified Trader

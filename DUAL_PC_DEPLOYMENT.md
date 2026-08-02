@@ -8,7 +8,7 @@ Practice / dry-run stays **on** until you turn it off.
 
 | Machine | `deployment.role` | Does |
 |---------|-------------------|------|
-| **BOXONE** | **broker** | UI, E\*TRADE OAuth, plan build, orders, publish quotes to `broker/` |
+| **BOXONE** | **broker** | Headless worker, E\*TRADE OAuth, plan build, orders, publish quotes to `broker/` |
 | **AI-CODING** | **pipeline** | Agents, fusion, accuracy, night/full-day backtests; publish research to `pipeline/`; pull quotes |
 
 Handoff on share: `ROLE_FLIP_B.md` and `_deploy/deployment.json.broker-for-BOXONE.json`.
@@ -18,17 +18,17 @@ Handoff on share: `ROLE_FLIP_B.md` and `_deploy/deployment.json.broker-for-BOXON
 | Machine | `deployment.role` | Does | Does not |
 |---------|-------------------|------|----------|
 | **BOXONE** | `pipeline` | Agents, fusion, accuracy, off-hours backtests; push research; pull quotes | OAuth, place orders |
-| **AI-CODING** | `broker` | Unified Trader UI, E\*TRADE, plan build, swing/day orders, publish quotes | Heavy agent pipeline |
+| **AI-CODING** | `broker` | Headless worker, E\*TRADE, plan build, swing/day orders, publish quotes | Heavy agent pipeline |
 | Single PC | `all` (default) | Everything local (legacy) | — |
 
-**Stop all / Resume** on the UI affects **trading only**. Pipeline host keeps researching.
+**Stop all / Resume** (worker / bridge controls) affects **trading only**. Pipeline host keeps researching. Desktop trader GUIs are removed — see `ETRADE_HEADLESS.md`.
 
 ---
 
 ## Roles (generic)
 
 `pipeline` — agent research, fusion, accuracy/backtests; no order placement.  
-`broker` — UI host, E\*TRADE OAuth, plan build, order placement, quote feed.  
+`broker` — E\*TRADE OAuth host, headless worker, plan build, order placement, quote feed.  
 `all` — single machine.
 
 ---
@@ -88,8 +88,8 @@ In the **runtime** Finance folder on the broker host:
 2. Set `shared_root` to UNC of the share (BOXONE typically uses `\\10.10.10.1\HelperDrop\FinanceShare`).
 3. In `etrade_config.json` / `short_etrade_config.json`:
    - practice: keep dry_run / prefer_dry_run true until ready
-   - Confirm OAuth works in **ETrade Unified Trader**
-4. Start **ETrade Unified Trader** + background worker.
+   - Confirm OAuth (CLI: `begin_etrade_login.py` / `finish_etrade_login.py` — desktop trader UIs removed)
+4. Start **background worker** only (`Install ETrade Background.bat` / `Start ETrade Background Service.vbs` / silent worker).
 
 ### 3. Pipeline machine config (option B: AI-CODING)
 

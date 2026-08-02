@@ -1317,12 +1317,7 @@ class FinanceAgentsApp(tk.Frame):
 
 
 def main() -> int:
-    if os.environ.get("FINANCE_AGENTS_STANDALONE") != "1":
-        # Standalone long trader app removed — open unified app (agents tab if supported).
-        os.environ.setdefault("ETRADE_TAB", "agents")
-        from unified_trader_gui import main as unified_main
-
-        return unified_main()
+    """Run standalone Finance Agents desktop UI (E*TRADE trader GUIs removed)."""
     try:
         app = FinanceAgentsApp()
         app._window.mainloop()

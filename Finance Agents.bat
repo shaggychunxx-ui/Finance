@@ -6,8 +6,8 @@ set "ROOT=%~dp0"
 set "VBS=%ROOT%Launch Finance Agents.vbs"
 
 if not exist "%ROOT%.venv\Scripts\python.exe" (
-    echo Setting up E*TRADE Trader environment...
-    call "%ROOT%Install ETrade Trader.bat"
+    echo Setting up Python environment...
+    call "%ROOT%Install Finance Agents.bat"
     if errorlevel 1 goto :fail
 )
 

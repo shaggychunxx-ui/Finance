@@ -14,7 +14,7 @@ Or: \\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat
 
 ## After
 
-1. ETrade Unified Trader (OAuth already connected)
+1. Headless background worker (OAuth already connected; desktop trader UIs removed)
 2. Restart etrade worker / background service
 3. Confirm share roker\account_snapshot.json / roker_status.json fresh
 4. Ack STATUS once; Act on: none

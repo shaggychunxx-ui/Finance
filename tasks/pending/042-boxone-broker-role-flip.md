@@ -32,7 +32,7 @@ Or double-click `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.b
 
 1. Run the script above (sets `deployment.json` role=broker; practice/dry_run ON).
 2. Keep OAuth tokens **local only**.
-3. Restart Unified Trader + etrade worker.
+3. Restart **headless background worker** only (desktop Unified Trader UIs removed — see `ETRADE_HEADLESS.md`). OAuth CLI if needed: `begin_etrade_login.py` / `finish_etrade_login.py`.
 4. Confirm share `broker/` files get fresh `pushed_at` / `fetched_at`.
 5. Update STATUS: Done line for 042; clear your Next item; **do not leave Act on: BOXONE**.
 6. **When done — arm OXYGEN verify (task 043):** under Next add:
