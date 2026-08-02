@@ -110,6 +110,9 @@ def measure_horizon_gain_pct(
 ) -> float | None:
     """Return trading P&L % over the horizon — deposits/withdrawals excluded.
 
+    Deposits and transferred positions still count as **capital** (equity base);
+    only the trading gain over the window is scored here.
+
     Formula (same spirit as account_profit):
         gain_$ = (latest − older) − net_external_flows_in_window
         gain_% = gain_$ / older × 100

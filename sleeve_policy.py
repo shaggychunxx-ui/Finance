@@ -5,6 +5,10 @@ Capital: one pool (total account equity / buying power). Both sleeves size
 against the same account; soft max_deploy_pct caps prevent either side from
 claiming the whole book, but cash is not ring-fenced into exclusive buckets.
 
+Deposits (cash ACH/wires) and transferred (ACATS) positions count as capital:
+they are included in total_account_value and may be sold/rebalanced. They are
+not treated as trading profit at book-in (see account_profit.py).
+
 Positions: strict isolation.
   - Long sleeve only opens/closes LONG positions (BUY / SELL of longs).
   - Short sleeve only opens/closes SHORT positions (SELL_SHORT / BUY_TO_COVER).

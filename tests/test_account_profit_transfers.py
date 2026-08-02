@@ -1,6 +1,17 @@
-"""Transfer / ACATS lots count as deposits; zero false P/L at book-in."""
+"""Transfer / ACATS lots count as deposits; zero false P/L at book-in.
+
+Deposits and transferred positions remain usable capital (equity/BP/sellable);
+only book-in is excluded from trading P/L.
+"""
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from account_profit import (
     _is_capital_event,
@@ -93,3 +104,8 @@ def test_profit_excludes_transfer_book_in():
     assert metrics["net_external_flows"] and metrics["net_external_flows"] > 1000
     assert metrics["profit_amount"] is not None
     assert abs(metrics["profit_amount"]) < 100, metrics
+    # Deposits / transfers raise capital — usable equity is full latest balance
+    assert metrics.get("deposits_are_capital") is True
+    assert metrics.get("transfer_positions_are_capital") is True
+    assert metrics.get("usable_capital") == 3550.0
+    assert metrics.get("invested_capital") and metrics["invested_capital"] > 3000

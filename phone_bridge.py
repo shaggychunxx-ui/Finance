@@ -739,8 +739,11 @@ def build_account_summary() -> dict[str, Any]:
                 "total_pl": total_pl,
                 "total_pl_pct": total_pl_pct,
                 "invested_capital": invested,
+                "usable_capital": usable,
                 "opening_balance": _f(opening) if opening is not None else None,
                 "deposits_total": deposits_total,
+                "deposits_are_capital": True,
+                "transfer_positions_are_capital": True,
                 "trend": "up" if (total_pl or 0) >= 0 else "down",
             }
         )
@@ -1461,32 +1464,32 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
             or "transfer as deposit" in why
         )
         p["transfer_as_deposit"] = bool(is_xfer)
+        p["usable_as_capital"] = True  # cash deposits + every open lot count as capital
         if is_xfer:
             if sym:
                 learned.add(sym)
             cost = _f(p.get("cost_total"))
-            # Cost basis only â€” never book transfer deposits at market value.
+            # Cost basis for deposit tracking — market value still usable capital in equity.
             if cost is not None and cost > 0:
                 transfer_deposit += abs(cost)
             p["open_pl_for_total"] = 0.0  # transfer book-in is capital, not P/L
-            # Position display: deposit capital, never red/green open P/L
-            # Keep plan proposed_action (SELL/BUY) — transfer lots are tradeable
+            # Keep plan proposed_action (SELL/BUY) — transfer lots are tradeable capital
             p["unrealized_pl"] = 0.0
             p["unrealized_pl_pct"] = 0.0
             if not p.get("role"):
                 p["role"] = "transfer/deposit"
             disp = p.get("display") if isinstance(p.get("display"), dict) else {}
             disp = dict(disp)
-            disp["unrealized_pl"] = "Deposit"
-            disp["unrealized_pl_pct"] = "â€”"
+            disp["unrealized_pl"] = "Capital"
+            disp["unrealized_pl_pct"] = "—"
             prop_a = str(p.get("proposed_action") or "HOLD").upper()
             is_trade = prop_a in ("BUY", "SELL", "SELL_SHORT", "BUY_TO_COVER")
             if not is_trade:
-                # No plan trade — keep deposit HOLD label
+                # No plan trade — label as capital (not locked)
                 if not disp.get("proposed_action") or "HOLD" in str(disp.get("proposed_action") or "").upper():
-                    disp["proposed_action"] = "HOLD Â· deposit"
+                    disp["proposed_action"] = "HOLD · capital"
                 if not p.get("proposed_status"):
-                    p["proposed_status"] = "deposit"
+                    p["proposed_status"] = "deposit_capital"
             # else: leave proposed_action / display from build_positions (plan trade)
             p["display"] = disp
         else:
@@ -1533,7 +1536,10 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
     dep = _f(account.get("deposits_total"))
     dep_note = ""
     if dep is not None and abs(dep) >= 0.01:
-        dep_note = f" Â· P/L excludes deposits Â· deposits {_money(dep)} not in P/L"
+        dep_note = (
+            f" · deposits/transfers {_money(dep)} are capital "
+            f"(usable; not counted as P/L at book-in)"
+        )
     status = f"Connected to E*TRADE{dep_note}" if not guidance.startswith("Could not") else guidance
     if guidance and "Could not" not in guidance and guidance != "Dashboard ready.":
         status = f"{guidance}{dep_note}"
@@ -1609,6 +1615,10 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
             "unrealized_pl": pos_pl,
             "transfer_deposit": round(transfer_deposit, 2),
             "deposits_total": account.get("deposits_total"),
+            # Full book MV is deployable/sellable capital (includes transfer lots).
+            "usable_capital_positions": pos_mv,
+            "deposits_are_capital": True,
+            "transfer_positions_are_capital": True,
             "display": {
                 "market_value": _money(pos_mv),
                 "unrealized_pl": _money(pos_pl),
@@ -1617,6 +1627,8 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
         },
         "pl_excludes_deposits": True,
         "pl_excludes_transfer_mtm": True,
+        "deposits_are_capital": True,
+        "transfer_positions_are_capital": True,
         "pl_from_calculation_start": True,
         "calculation_start": CALCULATION_START_ISO,
         "transfer_open_mtm": round(transfer_open_mtm, 4),

@@ -878,7 +878,10 @@ def generate_portfolio(
     if profit_pct is not None:
         note = f"Account profit since open: {profit_pct:+.2f}%"
         if growth.get("net_external_flows"):
-            note += f" (excludes ${float(growth['net_external_flows']):,.0f} transfers)"
+            note += (
+                f" (P/L excludes ${float(growth['net_external_flows']):,.0f} "
+                f"deposits/transfers — those remain usable capital)"
+            )
         recommendations.append(note)
     if regime["posture"] == "risk-off":
         recommendations.append("Elevated defensive allocation — favor quality and hedges")
