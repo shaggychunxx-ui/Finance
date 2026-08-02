@@ -1,9 +1,9 @@
 # Status / Handoff â€” Finance
 
-**Last updated:** 2026-08-02 (BOXONE: 042 complete — snapshot fresh + SFTP)
-**Updated by:** BOXONE
+**Last updated:** 2026-08-02 (CONNECTION REPAIRED — fresh account_snapshot)
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** none
 
 ## NOTIFY
 
@@ -222,6 +222,9 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ watchers â�
 
 
 ## Done
+
+- [x] **AI-CODING (human: repair connection):** Verified share **account_snapshot FRESH** fetched_at=2026-08-02T12:30:12Z value~\.82 positions=14. Host SMB repair + pipeline pull/push OK. Dual-PC data path live. Act on: none.
+
 
 - [x] **BOXONE 042 complete:** role=broker; worker pid 23348 Connected production; `account_snapshot` **2026-08-02T12:28:38Z**; 48 quotes; SFTP + done marker; FinanceWorkspaceWatch Running. Tokens local only (synced from human Unified Trader login → runtime). dry_run ON.
 
