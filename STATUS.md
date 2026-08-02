@@ -1,7 +1,12 @@
 # Status / Handoff â€” Finance
 
+<<<<<<< HEAD
 **Last updated:** 2026-08-02 (BOXONE 042/060 handoff)
 **Updated by:** BOXONE
+=======
+**Last updated:** 2026-08-02 (BOXONE ran finish; OAuth re-login still needed)
+**Updated by:** AI-CODING
+>>>>>>> 90dca26 (STATUS: BOXONE finish verified; OAuth re-login remaining)
 **Active owner:** none
 **Act on:** AI-CODING
 
@@ -11,14 +16,36 @@
 
 ---
 
-## >>> BOXONE â€” DUAL-PC PIPELINE GO (do now) <<<
+## >>> BOXONE — SCRIPT RAN — NEED FRESH E*TRADE TOKEN <<<
 
-**Human:** get the pipeline functioning with BOXONE and make it happen.
+**Verified on share (AI-CODING):** BOXONE **did** execute the dual-PC finish path.
+
+| Check | Result |
+|-------|--------|
+| `BOXONE_BROKER_APPLY_DONE.txt` | **Present** host=BOXONE worker_pid=13536 dry_run=on role=broker |
+| `broker_status.json` | **Pushed today** 2026-08-02 |
+| `account_snapshot.json` | Still **Jul 30** |
+| `etrade_connected` | **False** — marker: token expired past midnight ET |
+
+**LAN note:** AI-CODING can **ping** BOXONE (10.10.10.2) and share is open for BOXONE writes, but **admin WinRM/SSH/SMB admin shares still Access Denied** without a working remote password (stored labctrl has no password blob). BOXONE **did** act via **repo bus + SFTP**.
+
+### Last step on BOXONE (OAuth — human/browser)
+
+```powershell
+cd "C:\Users\Box One\Finance"
+python begin_etrade_login.py
+python finish_etrade_login.py
+# restart headless worker, then:
+powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\FinanceShare\BOXONE_FINISH_042_NOW.ps1"
+```
+
+Prove `broker\account_snapshot.json` is **today**, then finish tasks 042/060 → **Act on: AI-CODING**.
 
 ### Target architecture (Role flip B)
 
 | Machine | Role | Job |
 |---------|------|-----|
+<<<<<<< HEAD
 | **BOXONE** | **broker** | E\*TRADE login (done) + headless worker + publish share `broker/` |
 | **AI-CODING** | **pipeline** | Agents/fusion (running; 51/51 repair OK) + pull share broker + publish `pipeline/` |
 
@@ -57,6 +84,10 @@ Then: 042 â†’ `tasks/done/` + Done line + **NOTIFY AI-CODING** + **Act on: 
 | Login on BOXONE | Tokens **expired** past midnight ET (need re-auth) |
 | `broker/account_snapshot.json` | Still **Jul 30** |
 | Done marker | **Present** (SFTP) |
+=======
+| **BOXONE** | **broker** | E*TRADE + headless worker + publish `broker/` |
+| **AI-CODING** | **pipeline** | Agents/fusion (51/51 OK) + pull broker + publish `pipeline/` |
+>>>>>>> 90dca26 (STATUS: BOXONE finish verified; OAuth re-login remaining)
 
 dry_run ON. Tokens local only.
 
