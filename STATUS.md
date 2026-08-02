@@ -1,13 +1,15 @@
 # Status / Handoff â€” Finance
 
 **Last updated:** 2026-08-02
-**Updated by:** AI-CODING
+**Updated by:** LAPTOP
 **Active owner:** none
 **Act on:** BOXONE
 
 ## Current goal
 
-Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ FinanceWorkspaceWatch â†’ headless Grok on AI-CODING. **Dropshipping business info** is canonical under `dropshipping/`. **Primary trading goal:** increase daily and total average P/L; groups earn role-scaled points per full 1.0% total P/L.
+Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch → headless Grok on AI-CODING. **Dropshipping business info** is canonical under `dropshipping/`. **Primary trading goal:** increase daily and total average P/L; groups earn role-scaled points per full 1.0% total P/L.
+
+**AI workstation hardware (gsw bus — does not override Finance):** New ABS tower + UPS ordered (gsw `work/ai-workstation/`). **Finance goals/rules and E\*TRADE P0 always win** over workstation payoff/cutover. See Notes + gsw `PAYOFF-ROADMAP.md`.
 
 ## NOTIFY
 
@@ -32,6 +34,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
 ## Done
 
+- [x] **LAPTOP/gsw (human):** AI workstation **payoff roadmap is Finance-first** — recorded on Finance bus. Workstation cutover/payoff must **not** interfere with Finance current goals, rules, Role flip B, or E\*TRADE. Canonical policy: grok-shared-workspace `work/ai-workstation/PAYOFF-ROADMAP.md` (N0 Finance non-interference; RTH hard bans; staged cutover). Hardware order log: gsw `work/ai-workstation/ORDER-2026-08-02.md` (ABS i7-14700F + RTX 5060 + 32GB DDR5; APC BR1500G UPS). **Does not change Act on BOXONE 042.** Does not flip live/dry_run/sandbox.
 - [x] **AI-CODING:** Headless E*TRADE — removed desktop Trader/Unified/Short GUIs; Finance Agents + background worker only. `phone_bridge` prefers fuller dual-PC share snapshots (quality gate). Docs: `ETRADE_HEADLESS.md`. BOXONE **042** steps updated (worker only, no Unified Trader).
 - [x] **AI-CODING:** Full accuracy/ops plan shipped (night backtest, RTH pipeline, learning, abstain, fusion horizon, regime gate, meta-calibrator, pre-open burst, plan rebuild). APK rebuild assigned Oxygen-OS task **062**.
 
@@ -66,6 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
 - [ ] **BOXONE:** Run broker apply script (see NOTIFY one-liner / `Apply-Broker-Role-BOXONE.ps1` on share). Restart **headless background worker** only (no desktop trader UI). Verify share `broker/` freshness. Task **042**. When done → arm PHONE GitStatus verify (task **043**).
 - [ ] **PHONE (GitStatus / OXYGEN):** After **042** Done — verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`.
+- [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive — follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision. Optional: stage new tower as pipeline/bus first; broker stays BOXONE until human says otherwise.
 
 
 
@@ -75,6 +79,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
 ## Notes
 
+- **AI workstation + UPS (2026-08-02, gsw → Finance STATUS):** Human ordered ABS Cyclone Aqua (i7-14700F / RTX 5060 / 32GB DDR5) + APC BR1500G. Full payoff/cutover lives in **grok-shared-workspace** `work/ai-workstation/PAYOFF-ROADMAP.md` and `FLEET-INCORPORATE.md`. **Binding here:** (1) Finance primary goal (raise daily/total avg P/L) and all Finance rules **outrank** workstation setup. (2) E\*TRADE / headless worker priority and dual-PC roles stand — currently **Role flip B: BOXONE=broker, AI-CODING=pipeline**. (3) No RTH reboot/rename/migrate that kills broker or pipeline for a checklist. (4) No live_trading / dry_run / sandbox flips as part of hardware payoff. (5) UPS unplug tests only when **non-live** / off-RTH. (6) Secrets stay off-git. BOXONE **042** and PHONE **043** remain the active Finance Next path; this note does **not** reassign them.
 - **Role flip B (2026-08-01):** BOXONE=broker, AI-CODING=pipeline. Tokens stay on BOXONE only. AI-CODING trading flags off. See ROLE_FLIP_B.md / DUAL_PC_DEPLOYMENT.md.
 - **After BOXONE done — OXYGEN verify (2026-08-01):** Human uses **GitStatus** (Finance window) to confirm bus/data connection (task **043**). Never `Act on: PHONE`. Probe string: `gitstatus-data-probe-verify-role-B`.
 - **Full day backtest (2026-08-01):** Continuous walk-forward from 2000-01-01 on AI-CODING. `python run_full_day_backtest.py` or `Start Full Day Backtest.bat`. Check `output/history/full_day_backtest_state.json` / `.log`. Resumes mid-pass unless `--fresh`.
