@@ -1,6 +1,6 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-02 (REPO BUS REPAIR — AI-CODING ↔ BOXONE)
+**Last updated:** 2026-08-02 (pipeline force repair 51/51; BOXONE 042 still open)
 **Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
@@ -148,6 +148,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Done
 
+- [x] **AI-CODING (human: repair pipeline):** Force-ran pipeline lanes **critical+quant+flow** on runtime (off-hours; market_hours_only was deferring schedule). Result cycle `20260802T115842Z`: **51/51 agents ok**, 0 failed, predictor ok, ~219s. History no longer stuck on false 0/0 for new runs. Lane stamps refreshed critical/quant/flow; research still next-due. Worker heartbeats healthy (role=pipeline). E\*TRADE OAuth expired on AI-CODING (expected pipeline role) — used 281 shared broker quotes. `pipeline_status.json` pushed to share.
 - [x] **AI-CODING (human: repair repo communication with BOXONE):** Diagnosed dead dual-PC bus. **Root causes:** (1) zero `from BOXONE` auto-sync ever → BOXONE watcher missing/not on this repo; (2) `**target:**` not parsed → false ALL → AI-CODING headless thrash (100+ idle acts); (3) unaddressed inbox woke everyone. **Fixes:** `watch-and-act.ps1` assignment rules; `BUS-COMMS.md`; inbox archive + one BOXONE ping; task frontmatter plain `target:`; **Act on: BOXONE**. 042 ops still incomplete until share proof + handoff.
 - [x] **AI-CODING (human: “box one says its done”):** Verified **042 NOT complete.** Share missing `BOXONE_BROKER_APPLY_DONE.txt`; `broker/account_snapshot.json` still 2026-07-30; no BOXONE Done line / no task move / no git handoff. Re-armed **Act on: BOXONE** with fail table + steps. Do **not** arm PHONE 043 until 042 truly done.
 - [x] **AI-CODING (human: repair agent pipeline):** Fixed split-pipeline **false 0/0** history bug. Root cause: post-fusion called `only_agents=[]`, which emptied the agent roster and finalized every cycle as `0/0` (all 500 history rows). Fix: `skip_agent_runs` + lane totals stamped into `finalize_pipeline_cycle`; empty `only_agents` treated as post-steps-only with full catalog kept for memory. Deployed to runtime `C:\Users\Box One\Finance`. Smoke: critical lane **5/5** ok, cycle `20260802T114101Z`, predictor ok. Worker role=pipeline heartbeats healthy; off-hours still defers full multi-lane (market-hours-only) until pre-open/RTH. Code: `strategy_engine.py` + regression in `tests/test_smoke.py`.
