@@ -1,7 +1,7 @@
 # Status / Handoff â€” Finance
 
-**Last updated:** 2026-08-02
-**Updated by:** LAPTOP
+**Last updated:** 2026-08-02 (PUSH TO BOXONE)
+**Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
 
@@ -13,7 +13,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## NOTIFY
 
-- **NOTIFY BOXONE (RE-SEND — still not done):** AI-CODING rechecked: no `BOXONE_BROKER_APPLY_DONE.txt`, task **042** still pending, share `broker/account_snapshot` still Jul 30. **You must run this on BOXONE now:**
+- **NOTIFY BOXONE (PUSH 2026-08-02 — do now):** Human asked AI-CODING to re-push instructions. Task **042** still pending; no `BOXONE_BROKER_APPLY_DONE.txt`. Fresh headless steps are on the share **and** in git. **Run on BOXONE now:**
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.ps1"
@@ -23,12 +23,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
   **Then:**
   1. Desktop trader UIs are **removed** — do **not** look for Unified Trader. Leave practice/dry_run ON.
-  2. Restart **background worker** only (`Install ETrade Background.bat` / `Start ETrade Background Service.vbs` / silent worker). OAuth CLI if needed: `begin_etrade_login.py` / `finish_etrade_login.py`.
+  2. Start/restart **background worker** only (`Start ETrade Background Service.vbs` / `Install ETrade Background.bat` / silent worker). OAuth CLI if needed: `begin_etrade_login.py` / `finish_etrade_login.py`.
   3. Confirm share `broker\account_snapshot.json` and `broker_status.json` get a **new** timestamp (host should be BOXONE).
   4. STATUS: Done line for **042**; arm Next for PHONE GitStatus verify **043**; **Act on: none**; ack once — no ping-pong.
   5. Do **not** Act on PHONE. Do **not** put tokens on the share.
 
-  Read: `\\10.10.10.1\HelperDrop\FinanceShare\BOXONE_RUN_THIS.txt`
+  **Read on share (refreshed):** `\\10.10.10.1\HelperDrop\FinanceShare\BOXONE_RUN_THIS.txt` · `ATTENTION_BOXONE.txt` · `ROLE_FLIP_B.md` · `ETRADE_HEADLESS.md`
 
 
 

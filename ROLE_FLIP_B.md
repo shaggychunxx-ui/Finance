@@ -24,14 +24,14 @@ Applied on AI-CODING already:
 4. Start **background worker** on BOXONE (headless; desktop trader UIs removed).
 
 5. After connect, verify share updates:
-   - roker/account_snapshot.json recent
-   - roker/etrade_enhanced_quotes.json recent (market hours)
-   - roker/broker_status.json pushed_at fresh
+   - broker/account_snapshot.json recent
+   - broker/etrade_enhanced_quotes.json recent (market hours)
+   - broker/broker_status.json pushed_at fresh
 
 6. On AI-CODING (already pipeline): silent worker / pipeline loop pulls broker/* and pushes pipeline/*.
 
 **Writer ownership (unchanged folders, swapped hosts):**
 - pipeline/ writer = AI-CODING
-- roker/ writer = BOXONE
+- broker/ writer = BOXONE
 
-Generated: 2026-08-01T10:54:30.834113+00:00
+Updated: 2026-08-02 (headless; push instructions to BOXONE)
