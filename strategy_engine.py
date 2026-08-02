@@ -1300,6 +1300,9 @@ def run_agent_pipeline(
     only_agents: list[str] | set[str] | frozenset[str] | None = None,
     agents_only: bool = False,
     agent_timeout_sec: int | None = None,
+    skip_agent_runs: bool = False,
+    recorded_agents_ok: int | None = None,
+    recorded_agents_total: int | None = None,
 ) -> int:
     """Run platform agents.
 
@@ -1310,6 +1313,14 @@ def run_agent_pipeline(
         (used by split-lane workers; the orchestrator runs post-steps once).
     agent_timeout_sec:
         Override per-agent hard kill budget for this lane.
+    skip_agent_runs:
+        Run post-steps only (predictor / accuracy / finalize). Keep full source
+        list for memory sync. Used after split lanes already executed agents.
+        Legacy callers passed only_agents=[] for this — empty allow-list is
+        treated as skip_agent_runs so history is not finalized as 0/0.
+    recorded_agents_ok / recorded_agents_total:
+        When skip_agent_runs, stamp finalize_pipeline_cycle with lane totals
+        instead of len(sources) from an empty agent loop.
     """
     from agents.platform_catalog import active_agent_sources, log_catalog_changes, resolve_runner
 
@@ -1318,6 +1329,17 @@ def run_agent_pipeline(
     _saved_timeout = AGENT_RUN_TIMEOUT_SEC
     if agent_timeout_sec is not None:
         AGENT_RUN_TIMEOUT_SEC = max(20, int(agent_timeout_sec))
+
+    # Legacy post-fusion signal: only_agents=[] meant "do not re-run agents".
+    # That emptied sources and finalized every split cycle as 0/0 for months.
+    if (
+        not skip_agent_runs
+        and only_agents is not None
+        and len(list(only_agents)) == 0
+        and not pipeline_id
+    ):
+        skip_agent_runs = True
+        only_agents = None
 
     if runners is None:
         from finance_runners import load_finance_runners
@@ -1359,26 +1381,28 @@ def run_agent_pipeline(
         except Exception as exc:
             if on_progress:
                 on_progress(f"Agent group registration note: {exc}")
-        try:
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+        # Split post-fusion already did proactive enhance; skip a second pass.
+        if not skip_agent_runs:
+            try:
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
-            from etrade_market_enhancer import run_proactive_etrade_enhancement
+                from etrade_market_enhancer import run_proactive_etrade_enhancement
 
-            enhance_timeout = max(
-                20, int(os.environ.get("FINANCE_ETRADE_ENHANCE_TIMEOUT_SEC", "60"))
-            )
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                fut = pool.submit(run_proactive_etrade_enhancement, on_progress=on_progress)
-                try:
-                    fut.result(timeout=enhance_timeout)
-                except FuturesTimeoutError:
-                    if on_progress:
-                        on_progress(
-                            f"Proactive E*TRADE enhancement timed out after {enhance_timeout}s — continuing."
-                        )
-        except Exception as exc:
-            if on_progress:
-                on_progress(f"Proactive E*TRADE enhancement skipped: {exc}")
+                enhance_timeout = max(
+                    20, int(os.environ.get("FINANCE_ETRADE_ENHANCE_TIMEOUT_SEC", "60"))
+                )
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(run_proactive_etrade_enhancement, on_progress=on_progress)
+                    try:
+                        fut.result(timeout=enhance_timeout)
+                    except FuturesTimeoutError:
+                        if on_progress:
+                            on_progress(
+                                f"Proactive E*TRADE enhancement timed out after {enhance_timeout}s — continuing."
+                            )
+            except Exception as exc:
+                if on_progress:
+                    on_progress(f"Proactive E*TRADE enhancement skipped: {exc}")
     sources = active_agent_sources(check_remote=check_remote and not agents_only)
     # Prefer group order: risk first, then short mechanics, then core alpha, platform last
     try:
@@ -1435,18 +1459,46 @@ def run_agent_pipeline(
     agent_failures: list[dict[str, Any]] = []
     agent_degraded: list[dict[str, Any]] = []
     try:
-        ok = _run_agent_pipeline_body(
-            runners=runners,
-            sources=sources,
-            on_progress=_prog if lane_prefix else on_progress,
-            cycle_id=cycle_id,
-            pipeline_started_at=pipeline_started_at,
-            agents_only=agents_only,
-            benchmark_profile=benchmark_profile,
-            agent_failures=agent_failures,
-            agent_degraded=agent_degraded,
-            skipped_start=skipped,
-        )
+        if skip_agent_runs:
+            ok = int(recorded_agents_ok or 0)
+            total_stamp = (
+                int(recorded_agents_total)
+                if recorded_agents_total is not None
+                else len(sources)
+            )
+            if on_progress:
+                on_progress(
+                    f"Post-steps only — lane totals {ok}/{total_stamp} "
+                    "(agents already ran; full catalog kept for memory/archive)."
+                )
+            ok = _run_agent_pipeline_body(
+                runners=runners,
+                sources=sources,
+                on_progress=_prog if lane_prefix else on_progress,
+                cycle_id=cycle_id,
+                pipeline_started_at=pipeline_started_at,
+                agents_only=agents_only,
+                benchmark_profile=benchmark_profile,
+                agent_failures=agent_failures,
+                agent_degraded=agent_degraded,
+                skipped_start=skipped,
+                skip_agent_runs=True,
+                recorded_agents_ok=ok,
+                recorded_agents_total=total_stamp,
+            )
+        else:
+            ok = _run_agent_pipeline_body(
+                runners=runners,
+                sources=sources,
+                on_progress=_prog if lane_prefix else on_progress,
+                cycle_id=cycle_id,
+                pipeline_started_at=pipeline_started_at,
+                agents_only=agents_only,
+                benchmark_profile=benchmark_profile,
+                agent_failures=agent_failures,
+                agent_degraded=agent_degraded,
+                skipped_start=skipped,
+            )
     finally:
         AGENT_RUN_TIMEOUT_SEC = _saved_timeout
     return ok
@@ -1464,74 +1516,80 @@ def _run_agent_pipeline_body(
     agent_failures: list[dict[str, Any]],
     agent_degraded: list[dict[str, Any]],
     skipped_start: int,
+    skip_agent_runs: bool = False,
+    recorded_agents_ok: int | None = None,
+    recorded_agents_total: int | None = None,
 ) -> int:
     from agents.platform_catalog import resolve_runner
 
     ok = 0
     skipped = skipped_start
-    for index, src in enumerate(sources, start=1):
-        aid = src["id"]
-        label = str(src.get("label") or aid)
-        if on_progress:
-            on_progress(f"Agent {index}/{len(sources)}: {label}")
-        runner = resolve_runner(aid, runners)
-        if runner is None:
-            skipped += 1
+    if skip_agent_runs:
+        ok = int(recorded_agents_ok or 0)
+    else:
+        for index, src in enumerate(sources, start=1):
+            aid = src["id"]
+            label = str(src.get("label") or aid)
             if on_progress:
-                on_progress(f"Agent skipped: {label} — no runner")
-            continue
-        out_path = OUTPUT / src["file"]
-        outcome = _run_platform_agent(
-            runner=runner,
-            agent_id=aid,
-            label=label,
-            out_path=out_path,
-            started_at=pipeline_started_at,
-            cycle_id=cycle_id,
-            on_progress=on_progress,
-        )
-        if outcome.get("ok"):
-            ok += 1
-            try:
-                from agents.pipeline_memory import register_same_cycle_agent_output
+                on_progress(f"Agent {index}/{len(sources)}: {label}")
+            runner = resolve_runner(aid, runners)
+            if runner is None:
+                skipped += 1
+                if on_progress:
+                    on_progress(f"Agent skipped: {label} — no runner")
+                continue
+            out_path = OUTPUT / src["file"]
+            outcome = _run_platform_agent(
+                runner=runner,
+                agent_id=aid,
+                label=label,
+                out_path=out_path,
+                started_at=pipeline_started_at,
+                cycle_id=cycle_id,
+                on_progress=on_progress,
+            )
+            if outcome.get("ok"):
+                ok += 1
+                try:
+                    from agents.pipeline_memory import register_same_cycle_agent_output
 
-                agent_data = outcome.get("agent_data")
-                if isinstance(agent_data, dict):
-                    register_same_cycle_agent_output(aid, agent_data)
-                elif out_path.exists():
-                    loaded = json.loads(out_path.read_text(encoding="utf-8"))
-                    if isinstance(loaded, dict):
-                        register_same_cycle_agent_output(aid, loaded)
-            except Exception:
-                pass
-            if outcome.get("degraded"):
-                agent_degraded.append(
-                    {
-                        "agent_id": aid,
-                        "label": label,
-                        "error": outcome.get("error") or "memory steering fallback",
-                    }
-                )
-            continue
-        agent_failures.append(
-            {
-                "agent_id": aid,
-                "label": label,
-                "error": outcome.get("error") or "unknown error",
-                "traceback": str(outcome.get("traceback") or "")[-2000:],
-            }
-        )
-    if skipped and on_progress:
-        on_progress(f"Skipped {skipped} agent(s) without runners.")
-    if agent_failures and on_progress:
-        preview = "; ".join(
-            f"{row.get('label') or row.get('agent_id')}: {row.get('error')}"
-            for row in agent_failures[:4]
-        )
-        extra = len(agent_failures) - 4
-        if extra > 0:
-            preview += f"; and {extra} more"
-        on_progress(f"Pipeline agent failures ({len(agent_failures)}): {preview}")
+                    agent_data = outcome.get("agent_data")
+                    if isinstance(agent_data, dict):
+                        register_same_cycle_agent_output(aid, agent_data)
+                    elif out_path.exists():
+                        loaded = json.loads(out_path.read_text(encoding="utf-8"))
+                        if isinstance(loaded, dict):
+                            register_same_cycle_agent_output(aid, loaded)
+                except Exception:
+                    pass
+                if outcome.get("degraded"):
+                    agent_degraded.append(
+                        {
+                            "agent_id": aid,
+                            "label": label,
+                            "error": outcome.get("error") or "memory steering fallback",
+                        }
+                    )
+                continue
+            agent_failures.append(
+                {
+                    "agent_id": aid,
+                    "label": label,
+                    "error": outcome.get("error") or "unknown error",
+                    "traceback": str(outcome.get("traceback") or "")[-2000:],
+                }
+            )
+        if skipped and on_progress:
+            on_progress(f"Skipped {skipped} agent(s) without runners.")
+        if agent_failures and on_progress:
+            preview = "; ".join(
+                f"{row.get('label') or row.get('agent_id')}: {row.get('error')}"
+                for row in agent_failures[:4]
+            )
+            extra = len(agent_failures) - 4
+            if extra > 0:
+                preview += f"; and {extra} more"
+            on_progress(f"Pipeline agent failures ({len(agent_failures)}): {preview}")
     if agents_only:
         if on_progress:
             on_progress(f"Lane agents complete — {ok}/{len(sources)} ok (post-steps deferred).")
@@ -1715,10 +1773,16 @@ def _run_agent_pipeline_body(
                     degraded=agent_degraded,
                     predictor_failure=predictor_failure,
                 )
+            finalize_total = (
+                int(recorded_agents_total)
+                if recorded_agents_total is not None
+                else len(sources)
+            )
+            finalize_ok = int(recorded_agents_ok) if recorded_agents_ok is not None else ok
             finalize_pipeline_cycle(
                 cycle_id,
-                agents_ok=ok,
-                agents_total=len(sources),
+                agents_ok=finalize_ok,
+                agents_total=finalize_total,
                 agents_failed=len(agent_failures),
                 agent_failures=agent_failures,
                 predictor_ok=predictor_ok,
@@ -1744,7 +1808,9 @@ def _run_agent_pipeline_body(
                 on_progress("Pipeline memory updated — future runs will use this cycle.")
                 if agent_failures or not predictor_ok:
                     on_progress(
-                        f"Pipeline finished with issues — agents {ok}/{len(sources)}, "
+                        f"Pipeline finished with issues — agents "
+                        f"{finalize_ok if 'finalize_ok' in dir() else ok}/"
+                        f"{finalize_total if 'finalize_total' in dir() else len(sources)}, "
                         f"predictor {'ok' if predictor_ok else 'failed'}"
                     )
     except Exception:
