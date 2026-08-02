@@ -175,6 +175,7 @@ def run_loop(
     once: bool = False,
     night_only: bool = False,
     continuous: bool = False,
+    hours: float | None = None,
 ) -> int:
     """Main loop: run cycles separated by *interval_minutes*.
 
@@ -182,9 +183,14 @@ def run_loop(
     (interval only used as a tiny settle pause, default 5s).
     *night_only*: skip / wait during US regular market hours.
     *once*: run exactly one eligible cycle and exit.
+    *hours*: stop after this many wall-clock hours (after current cycle).
     """
     signal.signal(signal.SIGTERM, _request_shutdown)
     signal.signal(signal.SIGINT, _request_shutdown)
+
+    deadline_mono: float | None = None
+    if hours is not None and hours > 0:
+        deadline_mono = time.monotonic() + float(hours) * 3600.0
 
     state = _load_state()
     if not state.get("started_at"):
@@ -196,11 +202,19 @@ def run_loop(
         "target_trials": target_trials,
         "max_symbols": max_symbols,
         "full": full,
+        "hours": hours,
+        "burst_until": (
+            datetime.now(timezone.utc).timestamp() + float(hours) * 3600.0
+            if hours and hours > 0
+            else None
+        ),
     }
     _save_state(state)
 
     if once:
         mode = "once"
+    elif hours and continuous and not night_only:
+        mode = f"continuous burst ({hours:g}h, including RTH)"
     elif night_only and continuous:
         mode = "night-only continuous (full-day when RTH closed)"
     elif night_only:
@@ -216,6 +230,8 @@ def run_loop(
     _log(f"  State       → {STATE_FILE}")
     _log(f"  Log         → {LOG_FILE}")
     _log(f"  Trials/symbols/full → {target_trials:,} / {max_symbols} / {full}")
+    if deadline_mono is not None:
+        _log(f"  Duration cap → {hours:g} hour(s) wall-clock")
 
     cycle_num = int(state.get("cycles", 0) or 0)
     failures = 0
@@ -224,6 +240,9 @@ def run_loop(
     while True:
         if _shutdown_requested:
             _log("Shutdown requested before starting cycle — exiting cleanly.")
+            break
+        if deadline_mono is not None and time.monotonic() >= deadline_mono:
+            _log("Duration elapsed — stopping after wall-clock limit.")
             break
 
         if night_only and is_us_regular_session():
@@ -272,6 +291,9 @@ def run_loop(
         _save_state(state)
 
         if once or _shutdown_requested:
+            break
+        if deadline_mono is not None and time.monotonic() >= deadline_mono:
+            _log("Duration elapsed after cycle — stopping.")
             break
 
         # If market opened mid-cycle, go idle until night again.
@@ -421,12 +443,26 @@ def main() -> int:
         action="store_true",
         help="Single-instance night-only continuous full-day service",
     )
+    parser.add_argument(
+        "--hours",
+        type=float,
+        default=None,
+        metavar="N",
+        help="Stop after N wall-clock hours (after the current cycle finishes)",
+    )
+    parser.add_argument(
+        "--hold-service-lock",
+        action="store_true",
+        help="Hold the night-service mutex so the scheduled night service does not start a second loop",
+    )
     args = parser.parse_args()
 
     if args.service:
         return run_service()
 
-    use_full_day = args.full_day or args.night_only or args.continuous
+    use_full_day = args.full_day or args.night_only or args.continuous or (
+        args.hours is not None and args.hours > 0
+    )
     target = args.target_trials
     symbols = args.max_symbols
     if use_full_day:
@@ -451,16 +487,39 @@ def main() -> int:
     if symbols < 1:
         print("--max-symbols must be >= 1", file=sys.stderr)
         return 2
+    if args.hours is not None and args.hours <= 0:
+        print("--hours must be > 0", file=sys.stderr)
+        return 2
 
-    return run_loop(
-        interval_minutes=float(args.interval_minutes),
-        target_trials=int(target),
-        max_symbols=int(symbols),
-        full=full,
-        once=args.once,
-        night_only=bool(args.night_only or args.service),
-        continuous=bool(args.continuous or args.service),
-    )
+    held_lock = False
+    if args.hold_service_lock:
+        if not acquire_service_lock():
+            # Steal stale lock if prior night service still holds it for burst
+            try:
+                if SERVICE_LOCK.exists():
+                    SERVICE_LOCK.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if not acquire_service_lock():
+                _log("Could not acquire service lock — another loop may be running.")
+                return 3
+        held_lock = True
+        _log(f"Service lock held for burst (pid {__import__('os').getpid()}).")
+
+    try:
+        return run_loop(
+            interval_minutes=float(args.interval_minutes),
+            target_trials=int(target),
+            max_symbols=int(symbols),
+            full=full,
+            once=args.once,
+            night_only=bool(args.night_only),
+            continuous=bool(args.continuous),
+            hours=float(args.hours) if args.hours is not None else None,
+        )
+    finally:
+        if held_lock:
+            release_service_lock()
 
 
 if __name__ == "__main__":
