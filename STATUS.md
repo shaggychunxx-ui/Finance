@@ -1,6 +1,6 @@
 # Status / Handoff â€” Finance
 
-**Last updated:** 2026-08-02 (PUSH TO BOXONE)
+**Last updated:** 2026-08-02 (TEAM HANDOFF — BOXONE finish 042)
 **Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
@@ -13,22 +13,29 @@ Finance phone bus live: GitStatus Send → STATUS.md → FinanceWorkspaceWatch �
 
 ## NOTIFY
 
-- **NOTIFY BOXONE (PUSH 2026-08-02 — do now):** Human asked AI-CODING to re-push instructions. Task **042** still pending; no `BOXONE_BROKER_APPLY_DONE.txt`. Fresh headless steps are on the share **and** in git. **Run on BOXONE now:**
+- **NOTIFY BOXONE (FINISH 042 — then report to AI-CODING):** Human: work as a team. AI-CODING verified **042 incomplete** — no `BOXONE_BROKER_APPLY_DONE.txt`, share `broker/account_snapshot` still ~Jul 30, STATUS never closed by BOXONE. **BOXONE: finish the job end-to-end, then inform AI-CODING.**
 
-```
-powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.ps1"
-```
+  **A) Do the work (on BOXONE runtime):**
+  ```
+  powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.ps1"
+  ```
+  Or: `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`  
+  Then start/restart **headless background worker only** (`Start ETrade Background Service.vbs` / `Install ETrade Background.bat`). No desktop Unified Trader. practice/dry_run **ON**. Tokens stay **local** on BOXONE.  
+  Confirm share files are **fresh** (new timestamps today):
+  - `\\10.10.10.1\HelperDrop\FinanceShare\broker\account_snapshot.json`
+  - `\\10.10.10.1\HelperDrop\FinanceShare\broker\broker_status.json`  
+  Done marker should exist: `\\10.10.10.1\HelperDrop\FinanceShare\BOXONE_BROKER_APPLY_DONE.txt`
 
-  Or double-click: `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.bat`
+  **B) Report complete to AI-CODING (required — this is the handoff):**
+  1. Move task **042** → `tasks/done/` with a short **Result** (host, dry_run on, share fresh).
+  2. STATUS **Done** line: `- [x] **BOXONE:** task 042 broker role applied; headless worker up; share broker/ fresh.`
+  3. Clear the BOXONE **Next** item. Keep PHONE **043** under Next.
+  4. Set **NOTIFY:** `NOTIFY AI-CODING: 042 complete — share broker fresh; please ack and leave PHONE 043 for human GitStatus.`
+  5. Set **Act on: AI-CODING** (so AI-CODING wakes, acks once, then sets Act on: none for phone verify).
+  6. **git commit + push** STATUS/task (or auto-sync). Do **not** go silent after only running the script.
+  7. Do **not** Act on PHONE. Do **not** put tokens on the share.
 
-  **Then:**
-  1. Desktop trader UIs are **removed** — do **not** look for Unified Trader. Leave practice/dry_run ON.
-  2. Start/restart **background worker** only (`Start ETrade Background Service.vbs` / `Install ETrade Background.bat` / silent worker). OAuth CLI if needed: `begin_etrade_login.py` / `finish_etrade_login.py`.
-  3. Confirm share `broker\account_snapshot.json` and `broker_status.json` get a **new** timestamp (host should be BOXONE).
-  4. STATUS: Done line for **042**; arm Next for PHONE GitStatus verify **043**; **Act on: none**; ack once — no ping-pong.
-  5. Do **not** Act on PHONE. Do **not** put tokens on the share.
-
-  **Read on share (refreshed):** `\\10.10.10.1\HelperDrop\FinanceShare\BOXONE_RUN_THIS.txt` · `ATTENTION_BOXONE.txt` · `ROLE_FLIP_B.md` · `ETRADE_HEADLESS.md`
+  Full checklist on share: `\\10.10.10.1\HelperDrop\FinanceShare\BOXONE_RUN_THIS.txt` · `ATTENTION_BOXONE.txt`
 
 
 
@@ -67,7 +74,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\Fin
 
 ## Next
 
-- [ ] **BOXONE:** Run broker apply script (see NOTIFY one-liner / `Apply-Broker-Role-BOXONE.ps1` on share). Restart **headless background worker** only (no desktop trader UI). Verify share `broker/` freshness. Task **042**. When done → arm PHONE GitStatus verify (task **043**).
+- [ ] **BOXONE:** **Finish task 042 completely** (apply + headless worker + fresh share `broker/`), then **report to AI-CODING** via STATUS Done + `NOTIFY AI-CODING` + **Act on: AI-CODING** + git push. See NOTIFY above. Incomplete = missing done-marker or stale Jul-30 snapshot.
+- [ ] **AI-CODING (after BOXONE reports):** Ack **042** once under Done; confirm share freshness; clear NOTIFY; set **Act on: none**; leave PHONE **043** for human GitStatus (never Act on PHONE).
 - [ ] **PHONE (GitStatus / OXYGEN):** After **042** Done — verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive — follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision. Optional: stage new tower as pipeline/bus first; broker stays BOXONE until human says otherwise.
 

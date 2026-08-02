@@ -33,17 +33,17 @@ Or double-click `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.b
 1. Run the script above (sets `deployment.json` role=broker; practice/dry_run ON).
 2. Keep OAuth tokens **local only**.
 3. Restart **headless background worker** only (desktop Unified Trader UIs removed — see `ETRADE_HEADLESS.md`). OAuth CLI if needed: `begin_etrade_login.py` / `finish_etrade_login.py`.
-4. Confirm share `broker/` files get fresh `pushed_at` / `fetched_at`.
-5. Update STATUS: Done line for 042; clear your Next item; **do not leave Act on: BOXONE**.
-6. **When done — arm OXYGEN verify (task 043):** under Next add:
-
-```
-- [ ] **PHONE (GitStatus):** Verify Finance data connection — open Finance in GitStatus, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or FAIL. See task **043** / share `OXYGEN_GITSTATUS_VERIFY.md`.
-```
-
-   Set **Act on: none** (human phone uses GitStatus Send; never Act on PHONE).  
-   One NOTIFY ack only — no ping-pong.
+4. Confirm share `broker/` files get fresh `pushed_at` / `fetched_at` (**today**, not Jul 30).
+5. Confirm `BOXONE_BROKER_APPLY_DONE.txt` exists on the share.
+6. **Report complete to AI-CODING (required):**
+   - Move this task → `tasks/done/` with **Result** filled.
+   - STATUS **Done** line for BOXONE 042.
+   - Clear your Next item; keep PHONE **043** Next line.
+   - **NOTIFY:** `NOTIFY AI-CODING: 042 complete — share broker fresh; please ack.`
+   - **Act on: AI-CODING** (so main wakes and acks; then AI-CODING sets Act on: none for phone).
+   - **git commit + push** (or auto-sync). Do not go silent after only running the script.
+7. Never Act on PHONE. No secrets on share.
 
 ## Result
 
-(empty until BOXONE completes)
+(empty until BOXONE completes and notifies AI-CODING)
