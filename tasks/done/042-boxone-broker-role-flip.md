@@ -1,13 +1,15 @@
 ﻿# 042 â€” BOXONE becomes broker (role flip B)
 
-**status:** pending  
+**status:** done  
 target: BOXONE  
 **kind:** ops  
-**handoff_count:** 0  
+**handoff_count:** 1  
 **max_handoffs:** 2  
 **created:** 2026-08-01  
 **created_by:** AI-CODING (human chose option B)  
-**next_after:** 043 (OXYGEN GitStatus data-connection verify)
+**next_after:** 043 (OXYGEN GitStatus data-connection verify)  
+**completed:** 2026-08-02  
+**completed_by:** BOXONE
 
 ## Goal
 
@@ -46,30 +48,23 @@ Or double-click `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.b
 
 ## Result
 
-(empty until BOXONE completes and notifies AI-CODING)
-
-## Result
-
-**Partial complete (BOXONE 2026-08-02).** Role flip + headless worker + bus watcher done; live snapshot blocked on OAuth.
+**Complete (BOXONE 2026-08-02).** Role flip B broker path live; fresh snapshot published.
 
 | Check | Result |
 |-------|--------|
-| role=broker | YES on runtime `C:\Users\Box One\Finance\deployment.json` |
-| dry_run | ON |
-| headless etrade_worker --service | RUNNING (role=broker) |
-| SMB UNC HelperDrop | FAIL (error 5/1223); publish via **SFTP** fsbox |
-| BOXONE_BROKER_APPLY_DONE.txt | YES on share (via SFTP) |
-| broker/broker_status.json | fresh today (SFTP) |
-| broker/account_snapshot.json | STALE Jul 30 — token expired past midnight ET (last tokens 2026-07-31) |
-| FinanceWorkspaceWatch | Ready (install-watcher.ps1) |
-| FinanceBrokerSftpPublish | Ready every 2m |
+| role=broker | YES (`C:\Users\Box One\Finance\deployment.json`) |
+| dry_run | ON (`prefer_dry_run` + runtime dry_run) |
+| headless etrade_worker --service | RUNNING pid **23348** role=broker |
+| E*TRADE | **Connected** production (worker log) |
+| OAuth tokens | Human logged in via Unified Trader; BOXONE copied fresh tokens **local-only** into runtime `etrade_tokens.json` (not git/share) |
+| SMB UNC HelperDrop | FAIL; publish via **SFTP** |
+| BOXONE_BROKER_APPLY_DONE.txt | YES (SFTP) snapshot_today=True etrade_connected=True |
+| broker/broker_status.json | fresh today |
+| broker/account_snapshot.json | **fresh** `fetched_at=2026-08-02T12:28:38Z` (14 positions) |
+| broker/etrade_enhanced_quotes.json | 48 quotes published |
+| FinanceWorkspaceWatch | Running |
+| FinanceBrokerSftpPublish | Ready / ran OK |
 
-**Blocker (human on BOXONE):**
-```
-cd $env:USERPROFILE\Finance
-python begin_etrade_login.py
-python finish_etrade_login.py <CODE>
-```
-Then worker publishes fresh snapshot; SFTP task mirrors to AI-CODING share.
+**Note:** Two Unified Trader GUI processes still present on BOXONE (human OAuth path). Headless worker is the publish source. Tokens never committed.
 
-Report (gsw): `work/finance-dual-pc/reports/apply-BOXONE-060-latest.md`
+**Handoff:** NOTIFY AI-CODING + Act on AI-CODING. PHONE **043** remains for human GitStatus verify.
