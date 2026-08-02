@@ -13,15 +13,15 @@ Applied on AI-CODING already:
 
 ## BOXONE steps (do once on BOXONE)
 
-1. Copy this into BOXONE Finance runtime as deployment.json:
-   _deploy/deployment.json.broker-for-BOXONE.json
-   (or set role=broker + shared_root=\\10.10.10.1\HelperDrop\FinanceShare)
+1. Run share script: `Apply-Broker-Role-BOXONE.ps1` / `.bat`  
+   (or set role=broker + shared_root=`\\10.10.10.1\HelperDrop\FinanceShare`)
 
 2. Keep OAuth tokens **local on BOXONE only** (already connected). Never copy tokens to share or git.
 
 3. Confirm practice mode: background_worker.dry_run=true until ready for live.
 
-4. Start **background worker** on BOXONE (headless; desktop trader UIs removed).
+4. Start **background worker** on BOXONE (headless; desktop trader UIs removed).  
+   `Start ETrade Background Service.vbs` / `Install ETrade Background.bat`
 
 5. After connect, verify share updates:
    - broker/account_snapshot.json recent
