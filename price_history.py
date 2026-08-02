@@ -18,8 +18,15 @@ BAR_CACHE_DIR = HISTORY_ROOT / "bars"
 CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Finance/1.0)"}
 MAX_PRICE_POINTS = 2000
+# File-mtime ceiling used only as a soft secondary check for very old files.
 BAR_CACHE_MAX_AGE_HOURS = 24
+# Last bar may lag several calendar days (weekends / holidays) and still be "current".
+BAR_CACHE_TIP_MAX_AGE_DAYS = 3
+# When history is good but the tip is stale, re-download only this recent window and merge.
+BAR_CACHE_INCREMENTAL_LOOKBACK_DAYS = 14
 _yahoo_cache: dict[tuple[str, str], float | None] = {}
+# Last fetch_daily_bars source: "cache" | "incremental" | "network" | "cache_fallback"
+_last_bar_fetch_source: str = "cache"
 
 
 def _now_iso() -> str:
