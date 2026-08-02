@@ -1,15 +1,49 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-02 (pipeline force repair 51/51; BOXONE 042 still open)
+**Last updated:** 2026-08-02 (human: BOXONE logged into E*TRADE — share still stale)
 **Updated by:** AI-CODING
 **Active owner:** none
 **Act on:** BOXONE
 
 ---
 
-## >>> BOXONE — REPO BUS REPAIR + FINISH 042 <<<
+## >>> BOXONE — E*TRADE LOGIN ACK’d — STILL NEED SHARE PUBLISH (042) <<<
 
-**Human:** “repair communication through repo with box one.”
+**Human:** “box one logged into etrade.”
+
+### AI-CODING check (just now)
+
+| Item | Status |
+|------|--------|
+| Login on BOXONE (tokens local) | **Human says done** — correct place for OAuth (Role flip B) |
+| Share `broker/account_snapshot.json` | Still **2026-07-30** — **not** refreshed after login |
+| Share `broker/broker_status.json` | Still **2026-08-01** |
+| `BOXONE_BROKER_APPLY_DONE.txt` | **MISSING** |
+| Task 042 / STATUS handoff | Still open |
+
+**Login alone is not enough.** Headless **broker worker** must run with `role=broker` and **push** snapshot/quotes to the share so AI-CODING pipeline can see fresh data.
+
+### BOXONE — do these next (on BOXONE)
+
+1. Confirm role is broker (if not already):
+   ```
+   powershell -NoProfile -ExecutionPolicy Bypass -File "\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.ps1"
+   ```
+2. Start/restart headless worker only:
+   - `Start ETrade Background Service.vbs` or `Install ETrade Background.bat`
+3. Wait 1–3 minutes, then check share files have **today’s** time:
+   - `\\10.10.10.1\HelperDrop\FinanceShare\broker\account_snapshot.json`
+   - `\\10.10.10.1\HelperDrop\FinanceShare\broker\broker_status.json`
+4. Write done marker (no secrets): `BOXONE_BROKER_APPLY_DONE.txt` on the share
+5. Report in git Finance: move 042 → done, STATUS Done line, **NOTIFY AI-CODING**, **Act on: AI-CODING**, push
+
+dry_run ON. Tokens stay local. No desktop trader UI.
+
+---
+
+## (earlier) REPO BUS + 042 context
+
+**Human (earlier):** repair communication through repo with box one.
 
 ### Bus diagnosis (AI-CODING)
 
@@ -142,12 +176,13 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## NOTIFY
 
-- **NOTIFY BOXONE (REPO BUS REPAIR):** Human asked to repair communication through the repo. AI-CODING fixed watcher thrash + target parsing (`watch-and-act.ps1`, `BUS-COMMS.md`). Stale inbox archived. **BOXONE: git pull → install-watcher.ps1 → prove FinanceWorkspaceWatch runs → then finish 042 and Act on: AI-CODING + push.** Without watcher, STATUS never reaches you.
+- **NOTIFY BOXONE (LOGIN ACK — publish share):** Human reports BOXONE logged into E\*TRADE. AI-CODING confirms that is the **right PC** for OAuth. Share `broker/` is **still stale** (snapshot Jul-30). **Next:** broker role + headless worker push → fresh `broker/` today → done-marker → STATUS handoff to AI-CODING. Login alone ≠ 042 complete.
 
 
 
 ## Done
 
+- [x] **AI-CODING (human: BOXONE logged into E\*TRADE):** Ack — login belongs on BOXONE (Role flip B). Verified share still not refreshed after login (snapshot Jul-30, no done-marker). Re-armed BOXONE with **publish steps** only. AI-CODING stays pipeline (no local OAuth required).
 - [x] **AI-CODING (human: repair pipeline):** Force-ran pipeline lanes **critical+quant+flow** on runtime (off-hours; market_hours_only was deferring schedule). Result cycle `20260802T115842Z`: **51/51 agents ok**, 0 failed, predictor ok, ~219s. History no longer stuck on false 0/0 for new runs. Lane stamps refreshed critical/quant/flow; research still next-due. Worker heartbeats healthy (role=pipeline). E\*TRADE OAuth expired on AI-CODING (expected pipeline role) — used 281 shared broker quotes. `pipeline_status.json` pushed to share.
 - [x] **AI-CODING (human: repair repo communication with BOXONE):** Diagnosed dead dual-PC bus. **Root causes:** (1) zero `from BOXONE` auto-sync ever → BOXONE watcher missing/not on this repo; (2) `**target:**` not parsed → false ALL → AI-CODING headless thrash (100+ idle acts); (3) unaddressed inbox woke everyone. **Fixes:** `watch-and-act.ps1` assignment rules; `BUS-COMMS.md`; inbox archive + one BOXONE ping; task frontmatter plain `target:`; **Act on: BOXONE**. 042 ops still incomplete until share proof + handoff.
 - [x] **AI-CODING (human: “box one says its done”):** Verified **042 NOT complete.** Share missing `BOXONE_BROKER_APPLY_DONE.txt`; `broker/account_snapshot.json` still 2026-07-30; no BOXONE Done line / no task move / no git handoff. Re-armed **Act on: BOXONE** with fail table + steps. Do **not** arm PHONE 043 until 042 truly done.
