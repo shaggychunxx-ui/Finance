@@ -935,6 +935,10 @@ AGENT_TO_GROUP: dict[str, str] = {
     "earnings-calendar": "fundamental_tech",
     "estimate-revisions": "fundamental_tech",
     "insider-clusters": "intelligence",
+    # IPO suite (keep out of phone "Ungrouped")
+    "ipo-monitor": "fundamental_tech",
+    "ipo-debut": "fundamental_tech",
+    "etrade-ipo-mail": "fundamental_tech",
 }
 
 # Optional sector/ticker domains for specialists (merged into agent_fusion.AGENT_DOMAINS)
