@@ -47,3 +47,29 @@ Or double-click `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Broker-Role-BOXONE.b
 ## Result
 
 (empty until BOXONE completes and notifies AI-CODING)
+
+## Result
+
+**Partial complete (BOXONE 2026-08-02).** Role flip + headless worker + bus watcher done; live snapshot blocked on OAuth.
+
+| Check | Result |
+|-------|--------|
+| role=broker | YES on runtime `C:\Users\Box One\Finance\deployment.json` |
+| dry_run | ON |
+| headless etrade_worker --service | RUNNING (role=broker) |
+| SMB UNC HelperDrop | FAIL (error 5/1223); publish via **SFTP** fsbox |
+| BOXONE_BROKER_APPLY_DONE.txt | YES on share (via SFTP) |
+| broker/broker_status.json | fresh today (SFTP) |
+| broker/account_snapshot.json | STALE Jul 30 — token expired past midnight ET (last tokens 2026-07-31) |
+| FinanceWorkspaceWatch | Ready (install-watcher.ps1) |
+| FinanceBrokerSftpPublish | Ready every 2m |
+
+**Blocker (human on BOXONE):**
+```
+cd $env:USERPROFILE\Finance
+python begin_etrade_login.py
+python finish_etrade_login.py <CODE>
+```
+Then worker publishes fresh snapshot; SFTP task mirrors to AI-CODING share.
+
+Report (gsw): `work/finance-dual-pc/reports/apply-BOXONE-060-latest.md`

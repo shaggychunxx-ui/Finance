@@ -1,9 +1,13 @@
-﻿# Status / Handoff â€” Finance
+# Status / Handoff â€” Finance
 
-**Last updated:** 2026-08-02 (WAKE — human: make sure BOXONE does the task)
-**Updated by:** AI-CODING
+**Last updated:** 2026-08-02 (BOXONE 042/060 handoff)
+**Updated by:** BOXONE
 **Active owner:** none
-**Act on:** BOXONE
+**Act on:** AI-CODING
+
+## NOTIFY
+
+- **NOTIFY AI-CODING: 042 partial** — broker role applied on BOXONE; headless worker running; FinanceWorkspaceWatch Ready; share via SFTP (SMB still broken). **account_snapshot still stale** — E*TRADE token expired past midnight ET; human must re-auth on BOXONE (`begin_etrade_login.py` / `finish_etrade_login.py <CODE>`). dry_run ON. gsw task 060 same handoff.
 
 ---
 
@@ -46,13 +50,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-watcher.ps1
 
 Then: 042 â†’ `tasks/done/` + Done line + **NOTIFY AI-CODING** + **Act on: AI-CODING** + push.
 
-### Still failing until you publish
+### BOXONE publish path ready (SFTP); snapshot waits on OAuth
 
 | Check | Status |
 |-------|--------|
-| Login on BOXONE | Human says done |
+| Login on BOXONE | Tokens **expired** past midnight ET (need re-auth) |
 | `broker/account_snapshot.json` | Still **Jul 30** |
-| Done marker | Missing |
+| Done marker | **Present** (SFTP) |
 
 dry_run ON. Tokens local only.
 
@@ -199,6 +203,8 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ watchers â�
 
 ## Done
 
+- [x] **BOXONE 042 broker role** — role=broker + headless worker + FinanceWorkspaceWatch Ready + SFTP publish path; **snapshot blocked** on E*TRADE midnight token expiry (need human re-login). Report gsw `work/finance-dual-pc/reports/apply-BOXONE-060-latest.md`.
+
 - [x] **AI-CODING (human: dual-PC pipeline with BOXONE):** Armed BOXONE on **Finance** + **gsw** (task 060 â€” BOXONE watcher live there). Pipeline host locked; finish script on share; inbox ping. Waiting BOXONE publish fresh broker/.
 - [x] **AI-CODING (human: BOXONE logged into E\*TRADE):** Ack â€” login belongs on BOXONE (Role flip B). Verified share still not refreshed after login (snapshot Jul-30, no done-marker). Re-armed BOXONE with **publish steps** only. AI-CODING stays pipeline (no local OAuth required).
 - [x] **AI-CODING (human: repair pipeline):** Force-ran pipeline lanes **critical+quant+flow** on runtime (off-hours; market_hours_only was deferring schedule). Result cycle `20260802T115842Z`: **51/51 agents ok**, 0 failed, predictor ok, ~219s. History no longer stuck on false 0/0 for new runs. Lane stamps refreshed critical/quant/flow; research still next-due. Worker heartbeats healthy (role=pipeline). E\*TRADE OAuth expired on AI-CODING (expected pipeline role) â€” used 281 shared broker quotes. `pipeline_status.json` pushed to share.
@@ -238,7 +244,7 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ watchers â�
 
 ## Next
 
-- [ ] **BOXONE (P0 NOW):** Dual-PC pipeline â€” run `BOXONE_FINISH_042_NOW.ps1` â†’ fresh share `broker/` â†’ `install-watcher.ps1` â†’ finish **042** handoff (**Act on: AI-CODING**). Also gsw task **060**.
+- [~] **BOXONE (P0):** 042 applied (role+worker+watcher+SFTP); **blocked** on human E*TRADE re-login for fresh snapshot.
 - [ ] **AI-CODING (after BOXONE reports):** Ack **042** once under Done; confirm share freshness; clear NOTIFY; set **Act on: none**; leave PHONE **043** for human GitStatus (never Act on PHONE).
 - [ ] **PHONE (GitStatus / OXYGEN):** After **042** Done â€” verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive â€” follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision. Optional: stage new tower as pipeline/bus first; broker stays BOXONE until human says otherwise.
