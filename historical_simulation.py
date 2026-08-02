@@ -642,13 +642,19 @@ def run_historical_simulation(
     universe = _collect_universe(max_symbols=max_symbols if not quick else min(max_symbols, 20))
     bar_cache: dict[str, list[dict[str, Any]]] = {}
 
+    from price_history import last_bar_fetch_source
+
     proxy_syms = set(AGENT_PROXY_ETF.values()) | {"SPY", "QQQ"}
     fetch_list = list(dict.fromkeys(universe + sorted(proxy_syms)))
     throttle = 0.15 if quick else 0.08 if len(fetch_list) > 120 else 0.0
+    network_since_sleep = 0
     for i, sym in enumerate(fetch_list):
-        if throttle and i > 0 and i % 4 == 0:
-            time.sleep(throttle)
         bar_cache[sym] = fetch_daily_bars(sym, days=lookback_days, use_cache=True)
+        # Only pace Yahoo when we actually left pure disk cache.
+        if throttle and last_bar_fetch_source() in {"network", "incremental"}:
+            network_since_sleep += 1
+            if network_since_sleep % 4 == 0:
+                time.sleep(throttle)
 
     _ensure_proxy_bars(proxy_syms, lookback_days=lookback_days, bar_cache=bar_cache)
 

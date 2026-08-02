@@ -370,19 +370,36 @@ def _load_bar_series(
     *,
     start: date,
 ) -> dict[str, dict[str, Any]]:
-    """Load full daily series for each symbol from *start* (calendar)."""
-    from price_history import bar_closes, bar_datetimes, fetch_daily_bars
+    """Load full daily series for each symbol from *start* (calendar).
+
+    Uses disk bar cache + incremental tip refresh (price_history). Pure cache
+    hits skip Yahoo throttle; network/incremental still pace requests.
+    """
+    from price_history import (
+        bar_closes,
+        bar_datetimes,
+        fetch_daily_bars,
+        last_bar_fetch_source,
+    )
 
     start_dt = datetime(start.year, start.month, start.day, tzinfo=timezone.utc)
     # Calendar span from start to now + pad.
     days = max(400, (date.today() - start).days + 60)
     series: dict[str, dict[str, Any]] = {}
+    cache_hits = 0
+    network_calls = 0
     for i, sym in enumerate(symbols):
         if _shutdown_requested:
             break
-        if i > 0:
-            time.sleep(0.35)  # gentle on Yahoo
         bars = fetch_daily_bars(sym, days=days, use_cache=True, start=start_dt)
+        source = last_bar_fetch_source()
+        if source == "cache":
+            cache_hits += 1
+        elif source in {"network", "incremental"}:
+            network_calls += 1
+            # Gentle on Yahoo only when we actually hit the network.
+            if i < len(symbols) - 1 and not _shutdown_requested:
+                time.sleep(0.35)
         closes = bar_closes(bars)
         dates = bar_datetimes(bars)
         # Align lengths if parse dropped some.
@@ -392,7 +409,11 @@ def _load_bar_series(
             "dates": dates[:n],
             "date_to_idx": {d.date(): i for i, d in enumerate(dates[:n])},
         }
-        _log(f"  Bars {sym}: {n} days (first={dates[0].date() if n else 'n/a'})")
+        _log(
+            f"  Bars {sym}: {n} days (first={dates[0].date() if n else 'n/a'}, "
+            f"source={source})"
+        )
+    _log(f"Bar load summary: cache_hits={cache_hits} network_or_incremental={network_calls}")
     return series
 
 
