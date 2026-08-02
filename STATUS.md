@@ -1,14 +1,11 @@
 # Status / Handoff â€” Finance
 
-<<<<<<< HEAD
-**Last updated:** 2026-08-02 (BOXONE 042/060 handoff)
-**Updated by:** BOXONE
-=======
+**Last updated:** 2026-08-02 (AI-CODING ack: BOXONE partial 042; OAuth remaining)
+**Updated by:** AI-CODING
 **Last updated:** 2026-08-02 (BOXONE ran finish; OAuth re-login still needed)
 **Updated by:** AI-CODING
->>>>>>> 90dca26 (STATUS: BOXONE finish verified; OAuth re-login remaining)
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** BOXONE
 
 ## NOTIFY
 
@@ -45,7 +42,6 @@ Prove `broker\account_snapshot.json` is **today**, then finish tasks 042/060 →
 
 | Machine | Role | Job |
 |---------|------|-----|
-<<<<<<< HEAD
 | **BOXONE** | **broker** | E\*TRADE login (done) + headless worker + publish share `broker/` |
 | **AI-CODING** | **pipeline** | Agents/fusion (running; 51/51 repair OK) + pull share broker + publish `pipeline/` |
 
@@ -84,10 +80,8 @@ Then: 042 â†’ `tasks/done/` + Done line + **NOTIFY AI-CODING** + **Act on: 
 | Login on BOXONE | Tokens **expired** past midnight ET (need re-auth) |
 | `broker/account_snapshot.json` | Still **Jul 30** |
 | Done marker | **Present** (SFTP) |
-=======
 | **BOXONE** | **broker** | E*TRADE + headless worker + publish `broker/` |
 | **AI-CODING** | **pipeline** | Agents/fusion (51/51 OK) + pull broker + publish `pipeline/` |
->>>>>>> 90dca26 (STATUS: BOXONE finish verified; OAuth re-login remaining)
 
 dry_run ON. Tokens local only.
 
@@ -233,6 +227,9 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ watchers â�
 
 
 ## Done
+
+- [x] **AI-CODING:** ack BOXONE 042 **partial** — worker/role/marker/SFTP push OK; **account_snapshot still stale** (E*TRADE token expired past midnight ET). Re-arm **Act on: BOXONE** for OAuth re-login only.
+
 
 - [x] **BOXONE 042 broker role** — role=broker + headless worker + FinanceWorkspaceWatch Ready + SFTP publish path; **snapshot blocked** on E*TRADE midnight token expiry (need human re-login). Report gsw `work/finance-dual-pc/reports/apply-BOXONE-060-latest.md`.
 
