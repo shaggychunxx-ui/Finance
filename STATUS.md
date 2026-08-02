@@ -1,6 +1,6 @@
 # Status / Handoff â€” Finance
 
-**Last updated:** 2026-08-02 (AI-CODING ack: BOXONE partial 042; OAuth remaining)
+**Last updated:** 2026-08-02 (human: E*TRADE connected; snapshot still stale — BOXONE re-push)
 **Updated by:** AI-CODING
 **Last updated:** 2026-08-02 (BOXONE ran finish; OAuth re-login still needed)
 **Updated by:** AI-CODING
@@ -227,6 +227,9 @@ Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ watchers â�
 
 
 ## Done
+
+- [x] **AI-CODING (human: E*TRADE account connected):** Checked share — **account_snapshot still Jul-30**; broker_status pushes today. Connection may be local on BOXONE but worker has not refreshed snapshot. Re-armed **Act on: BOXONE** to force cycle + re-push.
+
 
 - [x] **AI-CODING:** ack BOXONE 042 **partial** — worker/role/marker/SFTP push OK; **account_snapshot still stale** (E*TRADE token expired past midnight ET). Re-arm **Act on: BOXONE** for OAuth re-login only.
 
