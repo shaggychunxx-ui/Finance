@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-02
-**Updated by:** BOXONE
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** AI-CODING
 
 ## NOTIFY
 
@@ -79,6 +79,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - [ ] **Human (AI-CODING desktop, once):** Complete Gmail OAuth so unattended mail works: `powershell -ExecutionPolicy Bypass -File ~\Documents\GitHub\grok-shared-workspace\work\gmail-api\Invoke-GmailOAuthSetup.ps1` (sign in shaggychunxx@gmail.com). Then AI-CODING can re-read "attn AI-CODING" / Massive mail.
 - [ ] **Human (key, secrets off-git):** Set Massive API key only in runtime: env `MASSIVE_API_KEY` **or** `C:\Users\Box One\Finance\etrade_config.json` → `data_apis.massive_api_key`. Dashboard: https://massive.com/dashboard/keys. Then re-run `massive-market` / quant lane for live bars.
 - [x] **AI-CODING** Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken — **done (partial)**; see Done 045.
+- [ ] **AI-CODING** lEMaVTVCT1GGZF     typ1y3MS9RQbgBHbfG   minus the spaces
 
 ## Blockers
 
@@ -101,4 +102,5 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
 - **Massive.com (2026-08-02):** New agent `massive-market`. Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Task **045**.
+- PHONE: lEMaVTVCT1GGZF     typ1y3MS9RQbgBHbfG   minus the spaces → Act on AI-CODING
 
