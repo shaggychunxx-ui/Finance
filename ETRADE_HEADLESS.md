@@ -13,14 +13,29 @@ Desktop **ETrade Trader** / **ETrade Unified Trader** GUIs have been **removed**
 | Quiet pipeline/worker | `Start Silent Worker Only.vbs` |
 | Phone monitor | `phone_bridge.py` (LAN) |
 
+## Standalone short worker — retired
+
+Do **not** run `short_worker.py --service` as a second background process.  
+It duplicated the main stack (venv stub pairs) and error-looped on the pipeline host when tokens live only on BOXONE.
+
+| Was | Now |
+|-----|-----|
+| `Start ETrade Short Background Service.vbs` | **No-op** (safe if old Startup lnk remains) |
+| `install_short_background.ps1` | **Retire/uninstall only** (removes autostart) |
+| Task `Finance ETrade Short Dry-Run` | Disable on hosts that ran it |
+| Manual CLI | Still OK: `short_worker.py --plan` / `--day` / `--force-dry-run` |
+
+Use the main immortal stack: `finance_supervisor` → `pipeline_watchdog` → `etrade_worker` (+ continuum).
+
 ## Config
 
 - Long/shared API: `etrade_config.json` (from `etrade_config.example.json`)
-- Short sleeve: `short_etrade_config.json` (optional; shares API via `shared_etrade_api.py`)
+- Short sleeve config: `short_etrade_config.json` (optional; shares API via `shared_etrade_api.py` — not a second daemon)
 - Dual-PC roles: `deployment.json` — see `DUAL_PC_DEPLOYMENT.md` / `ROLE_FLIP_B.md`
 
 ## Not removed
 
-- `etrade_worker.py`, `short_worker.py`, `ensure_silent_worker.py`
+- `etrade_worker.py`, `ensure_silent_worker.py`
+- `short_worker.py` (manual one-shots only; not an autostart service)
 - `etrade_api/`, day/swing strategy engines, pipeline agents
-- Install/run scripts for **background** services (not the old desktop GUI)
+- Install/run scripts for the **main** background stack (not desktop GUI)
