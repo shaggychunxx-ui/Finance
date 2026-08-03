@@ -853,6 +853,9 @@ AGENT_TO_GROUP: dict[str, str] = {
     "google-finance": "markets_core",
     "yahoo-finance": "markets_core",
     "massive-market": "markets_core",
+    "equity-tracker": "markets_core",
+    "etf-tracker": "markets_core",
+    "bond-markets": "macro_index",
 
     # Quant
     "datascience": "quant_stats",
@@ -1061,6 +1064,26 @@ GROUP_DOMAIN_HINTS: dict[str, dict[str, frozenset[str]]] = {
     "etf-mechanics": {
         "tickers": frozenset({"SPY", "QQQ", "IWM", "TLT", "HYG", "GLD"}),
         "sectors": frozenset({"etf", "nav", "creation", "arbitrage", "flows"}),
+    },
+    "etf-tracker": {
+        "tickers": frozenset(
+            {"SPY", "QQQ", "IWM", "XLK", "EFA", "EEM", "BND", "TLT", "HYG", "GLD", "MTUM", "QUAL"}
+        ),
+        "sectors": frozenset({"etf", "vehicle", "tracking", "beta", "sector", "factor", "bond etf"}),
+    },
+    "equity-tracker": {
+        "tickers": frozenset(
+            {"AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "JPM", "SPY", "QQQ"}
+        ),
+        "sectors": frozenset({"equity", "stock", "single name", "mega cap", "factor", "rs"}),
+    },
+    "bond-markets": {
+        "tickers": frozenset(
+            {"TLT", "IEF", "SHY", "TIP", "BND", "AGG", "LQD", "HYG", "JNK", "SGOV", "BIL", "MUB"}
+        ),
+        "sectors": frozenset(
+            {"bonds", "fixed income", "treasury", "duration", "credit", "tips", "rates", "yield"}
+        ),
     },
     "capital-return": {
         "tickers": frozenset({"SCHD", "VIG", "DVY", "SPY", "XLP", "XLU"}),

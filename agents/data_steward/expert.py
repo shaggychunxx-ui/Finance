@@ -122,6 +122,30 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Massive REST API (api.massive.com)"],
         "owner": "platform",
     },
+    {
+        "command": "equity-tracker",
+        "agent": "Equity Tracker & Single-Name Stock Expert",
+        "primary_output": "equity_tracker.json",
+        "sidecars": [],
+        "sources": ["Yahoo Finance", "account_snapshot equities"],
+        "owner": "platform",
+    },
+    {
+        "command": "bond-markets",
+        "agent": "Bond Markets & Fixed-Income Expert",
+        "primary_output": "bond_markets.json",
+        "sidecars": [],
+        "sources": ["Yahoo Finance bond ETF proxies"],
+        "owner": "platform",
+    },
+    {
+        "command": "etf-tracker",
+        "agent": "ETF Tracker & Vehicle Structure Expert",
+        "primary_output": "etf_tracker.json",
+        "sidecars": [],
+        "sources": ["Yahoo Finance ETF universe", "account_snapshot"],
+        "owner": "platform",
+    },
 
     {
         "command": "geopolitics",

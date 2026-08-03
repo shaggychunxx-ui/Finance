@@ -70,6 +70,9 @@ from agents.earnings_calendar import run_earnings_calendar_analysis
 from agents.equity_structuring import run_equity_structuring_analysis
 from agents.estimate_revisions import run_estimate_revisions_analysis
 from agents.etf_mechanics import run_etf_mechanics_analysis
+from agents.etf_tracker import run_etf_tracker_analysis
+from agents.equity_tracker import run_equity_tracker_analysis
+from agents.bond_markets import run_bond_markets_analysis
 from agents.fed_policy import run_fed_policy_analysis
 from agents.insider_clusters import run_insider_clusters_analysis
 from agents.margin_stress import run_margin_stress_analysis
@@ -1400,6 +1403,9 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "equity-structuring": run_equity_structuring_analysis,
     "estimate-revisions": run_estimate_revisions_analysis,
     "etf-mechanics": run_etf_mechanics_analysis,
+    "etf-tracker": run_etf_tracker_analysis,
+    "equity-tracker": run_equity_tracker_analysis,
+    "bond-markets": run_bond_markets_analysis,
     "fed-policy": run_fed_policy_analysis,
     "insider-clusters": run_insider_clusters_analysis,
     "margin-stress": run_margin_stress_analysis,
