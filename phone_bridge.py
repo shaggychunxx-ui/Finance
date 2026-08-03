@@ -159,6 +159,7 @@ def run_phone_data_refresh(*, force_refresh: bool = True, reason: str = "schedul
         "market_open": _is_us_equity_rth(),
     }
     try:
+        _log(f"phone auto-refresh starting ({reason}) force_refresh={force_refresh}…")
         # Dual-PC: pull latest broker snapshot/quotes from share before publish
         try:
             from sync_shared_data import pull_broker_feed
