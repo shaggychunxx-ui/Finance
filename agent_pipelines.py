@@ -61,7 +61,31 @@ RESEARCH_AGENTS: frozenset[str] = frozenset(
     }
 )
 
-# Everything else → quant (markets, macro, probability, technical, etc.)
+# Explicit quant-lane core (always scheduled when present in runners).
+# Order = run priority within quant (asset-class trackers first).
+QUANT_CORE_AGENTS: tuple[str, ...] = (
+    "equity-tracker",
+    "bond-markets",
+    "etf-tracker",
+    "markets",
+    "massive-market",
+    "finance",
+    "financial-data",
+    "sector-rotation",
+    "etf-mechanics",
+    "corporate-credit",
+    "fed-policy",
+    "market-regime",
+    "technical-pattern",
+    "fundamental-analyst",
+    "momentum-reversion",
+    "quality-factor",
+)
+
+# Membership set (everything else not in critical/flow/research still → quant).
+QUANT_AGENTS: frozenset[str] = frozenset(QUANT_CORE_AGENTS)
+
+# Unlisted agents still fall into *quant* so new specialists run.
 
 PIPELINE_SPECS: dict[str, dict[str, Any]] = {
     "critical": {
@@ -82,13 +106,13 @@ PIPELINE_SPECS: dict[str, dict[str, Any]] = {
     "quant": {
         "id": "quant",
         "label": "Quant & Markets",
-        "description": "Markets, macro, stats, factors, technicals.",
+        "description": "Markets, macro, stats, factors, technicals, equity/bond/ETF trackers.",
         "priority": 1,
         "parallel_ok": True,
         "timeout_sec": 700,
         "stall_sec": 55,
         "agent_timeout_sec": 50,
-        "agents": frozenset(),  # filled dynamically = residual
+        "agents": QUANT_AGENTS,  # core listed; residual still filled dynamically
         # Slightly less frequent than critical → fewer Yahoo collisions, better bars.
         "interval_market_minutes": 10,
         "interval_off_hours_minutes": 45,
@@ -149,13 +173,29 @@ def pipeline_id_for_agent(agent_id: str) -> str:
     # Fusion/predictor handled post-lanes, not a lane member
     if aid in {"market-predictor", "accuracy-benchmark", "historical-sim"}:
         return "post"
+    # QUANT_CORE_AGENTS and all other unlisted specialists → quant
     return "quant"
+
+
+def _order_quant_agents(residual: list[str]) -> list[str]:
+    """Put QUANT_CORE_AGENTS first (asset-class trackers), then remaining quant ids."""
+    residual_norm = [normalize_agent_id(a) for a in residual]
+    present = set(residual_norm)
+    ordered: list[str] = []
+    for aid in QUANT_CORE_AGENTS:
+        if aid in present and aid not in ordered:
+            ordered.append(aid)
+    for aid in residual_norm:
+        if aid not in ordered:
+            ordered.append(aid)
+    return ordered
 
 
 def agents_for_pipeline(pipeline_id: str, all_agent_ids: list[str] | None = None) -> list[str]:
     """Return ordered agent ids for a lane.
 
-    If all_agent_ids is provided, filter to those present (catalog order preserved).
+    If all_agent_ids is provided, filter to those present (catalog order preserved,
+    except quant which prioritizes QUANT_CORE_AGENTS).
     """
     pid = str(pipeline_id or "").strip().lower()
     if pid == "critical":
@@ -166,8 +206,10 @@ def agents_for_pipeline(pipeline_id: str, all_agent_ids: list[str] | None = None
         wanted = RESEARCH_AGENTS
     elif pid == "quant":
         if not all_agent_ids:
-            return []
-        return [a for a in all_agent_ids if pipeline_id_for_agent(a) == "quant"]
+            # Core list only when no catalog provided (still explicit membership)
+            return list(QUANT_CORE_AGENTS)
+        residual = [a for a in all_agent_ids if pipeline_id_for_agent(a) == "quant"]
+        return _order_quant_agents(residual)
     else:
         return []
 
