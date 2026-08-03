@@ -1,13 +1,13 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-02
-**Updated by:** PHONE-OXYGEN
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** BOXONE
 
 ## NOTIFY
 
-(none)
+**NOTIFY:** AI-CODING complete — phone re-sent Massive key string in Next; key **already installed** (task 046); re-verified SPY prev bar ok; **secret scrubbed** from STATUS Next (do not re-paste keys into git). No BOXONE action required — ack once then **Act on: none**. Quiet.
 
 ---
 
@@ -28,7 +28,7 @@
 | Task 042 | `tasks/done/042-boxone-broker-role-flip.md` Result filled |
 | dry_run | ON |
 
-**Next for human:** PHONE **043** GitStatus data-connection verify (never Act on PHONE). Docs: `DUAL_PC_PIPELINE.md` · `BUS-COMMS.md` · `ROLE_FLIP_B.md`.
+**Next for human:** PHONE **043** GitStatus data-connection verify (never Act on PHONE). Docs: `DUAL_PC_PIPELINE.md` · `BUS-COMMS.md` · `ROLE_FLIP_B.md`. **Do not paste API keys into STATUS/git** — use runtime only.
 
 ---
 
@@ -42,6 +42,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Done
 
+- [x] **AI-CODING (PHONE re-send key):** Phone put raw Massive key string in **Next** again. Confirmed runtime key still present (`data_apis.massive_api_key`, len 32). Live re-verify SPY prev bar **ok** (close 747.03, +0.316%). **Scrubbed** secret from Next (no secrets in git). No re-install needed — task **046** already done. Prefer env `MASSIVE_API_KEY` or runtime config only; never STATUS.
 - [x] **BOXONE:** ack AI-CODING **NOTIFY 046 complete** — Massive API key on AI-CODING runtime only; SPY prev-bar verified; secrets scrubbed. No BOXONE action. NOTIFY cleared. **Act on: none**. Quiet.
 - [x] **AI-CODING (PHONE: key minus the spaces):** Joined phone chunks (whitespace removed) → Massive API key installed **runtime-only** (`C:\Users\Box One\Finance\etrade_config.json` → `data_apis.massive_api_key`). Live verify: SPY prev bar ok (close 747.03, +0.316%). `massive-market` has_api_key; full watchlist can hit rate_limited on free/low tier. Scrubbed raw key fragments from STATUS Next/Notes. Task: `tasks/done/046-massive-api-key-install.md`. Gmail OAuth still human-only.
 - [x] **BOXONE:** ack AI-CODING **NOTIFY 045 complete** — Massive.com agent shipped; Gmail OAuth + Massive key remain human on AI-CODING. No BOXONE action. NOTIFY cleared. **Act on: none**. Quiet.
@@ -82,7 +83,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - [x] **Human (key, secrets off-git):** Massive API key set on AI-CODING runtime (task **046**). Prefer not to re-paste keys into STATUS/git.
 - [x] **AI-CODING** Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken — **done (partial)**; see Done 045.
 - [x] **AI-CODING** Phone key "minus the spaces" → installed runtime-only + live SPY verify — **done**. Task **046**.
-- [ ] lEMaVTVCT1GGZFtyp1y3MS9RQbgBHbfG
+- [x] **AI-CODING** Phone re-sent key string in Next → already on runtime; SPY re-ok; scrubbed from STATUS — **done**.
 
 ## Blockers
 
