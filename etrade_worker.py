@@ -55,7 +55,9 @@ DEFAULT_WORKER = {
     "pipeline_off_hours_interval_minutes": 30,
     "accuracy_interval_minutes": 15,
     "accuracy_off_hours_interval_minutes": 60,
+    # RTH: full lanes. Off-hours: eco mode (sparse agents / long intervals) unless disabled.
     "pipeline_market_hours_only": True,
+    "pipeline_eco_mode_off_hours": True,
     "pre_open_research_enabled": True,
     "plan_interval_minutes": 20,
     "execute_min_interval_minutes": 15,
@@ -69,10 +71,10 @@ DEFAULT_WORKER = {
     # Tuned so critical/day risk stays hot, Yahoo-heavy flow is less frequent
     # (better option-chain quality), research is slow-moving.
     "pipeline_lanes": {
-        "critical": {"market": 5, "off_hours": 30},
-        "quant": {"market": 10, "off_hours": 45},
-        "flow": {"market": 15, "off_hours": 90},
-        "research": {"market": 60, "off_hours": 90},
+        "critical": {"market": 5, "off_hours": 30, "eco_off_hours": 90},
+        "quant": {"market": 10, "off_hours": 45, "eco_off_hours": 120},
+        "flow": {"market": 15, "off_hours": 90, "eco_off_hours": 0},
+        "research": {"market": 60, "off_hours": 90, "eco_off_hours": 240},
     },
 }
 
@@ -238,6 +240,20 @@ def gui_should_defer_to_worker(config_path: Path = CONFIG_PATH) -> bool:
 
 
 def _pipeline_runs_off_hours(settings: dict[str, Any]) -> bool:
+    """True when agent lanes may run outside RTH/pre-open.
+
+    Eco mode (default) allows a *reduced* off-hours pipeline even when
+    pipeline_market_hours_only is True. Full off-hours roster only when
+    market_hours_only is False and eco is off.
+    """
+    try:
+        from agent_pipelines import pipeline_eco_mode_enabled
+
+        if pipeline_eco_mode_enabled(settings):
+            return True
+    except Exception:
+        if bool(settings.get("pipeline_eco_mode_off_hours", True)):
+            return True
     return not bool(settings.get("pipeline_market_hours_only", True))
 
 
@@ -279,19 +295,27 @@ def _lanes_due(
     *,
     market_open: bool,
     force: bool = False,
+    eco_mode: bool = False,
 ) -> list[str]:
     """Return pipeline lane ids that should run now."""
-    from agent_pipelines import DEFAULT_LANE_SCHEDULE, lane_interval_minutes
+    from agent_pipelines import lane_interval_minutes
 
     lane_times = state.get("last_pipeline_lane_at")
     if not isinstance(lane_times, dict):
         lane_times = {}
     due: list[str] = []
     for pid in ("critical", "quant", "flow", "research"):
+        interval = lane_interval_minutes(
+            pid,
+            market_open=market_open,
+            settings=settings,
+            eco_mode=eco_mode if not market_open else False,
+        )
+        if interval <= 0:
+            continue  # eco-disabled lane
         if force:
             due.append(pid)
             continue
-        interval = lane_interval_minutes(pid, market_open=market_open, settings=settings)
         # Only trust *per-lane* timestamps. Falling back to last_pipeline_at
         # starves lanes that never completed (research was stuck for days while
         # critical/quant/flow kept refreshing the global stamp).
@@ -303,7 +327,15 @@ def _lanes_due(
             due.append(pid)
     # Preserve preferred order
     order = ["critical", "quant", "flow", "research"]
-    return [p for p in order if p in due]
+    due = [p for p in order if p in due]
+    if eco_mode and not market_open:
+        try:
+            from agent_pipelines import filter_lanes_for_eco
+
+            due = filter_lanes_for_eco(due)
+        except Exception:
+            due = [p for p in due if p != "flow"]
+    return due
 
 
 def _next_service_sleep_seconds(config_path: Path = CONFIG_PATH) -> float:
@@ -1012,8 +1044,19 @@ def _run_pipeline(
     pre_open = is_pre_open_research_window()
     research_session = bool(market_open or pre_open)
     off_hours_ok = _pipeline_runs_off_hours(settings)
-    # When pipeline_market_hours_only is on, never run agent lanes overnight —
-    # except pre-open warm window (06:30–09:30 ET) and true RTH.
+    try:
+        from agent_pipelines import is_eco_session
+
+        eco_mode = is_eco_session(
+            settings, market_open=market_open, pre_open=pre_open
+        )
+    except Exception:
+        eco_mode = (not research_session) and bool(
+            settings.get("pipeline_eco_mode_off_hours", True)
+        )
+    # When pipeline_market_hours_only is on and eco is off, never run agent lanes
+    # overnight — except pre-open warm window (06:30–09:30 ET) and true RTH.
+    # Eco mode (default) still runs a sparse off-hours roster.
     if not force and not research_session and not off_hours_ok:
         if calibration_due:
             _log(
@@ -1025,11 +1068,16 @@ def _run_pipeline(
         return False
 
     session = "market" if market_open else ("pre_open" if pre_open else "off_hours")
+    if eco_mode:
+        session = "off_hours_eco"
+    # Per-lane due: market_open flag true for RTH *or* pre-open uses market-ish cadence
+    # except pure eco off-hours uses eco intervals.
     due_lanes = _lanes_due(
         state,
         settings,
-        market_open=bool(research_session),
+        market_open=bool(research_session and not eco_mode),
         force=force or (calibration_due and research_session),
+        eco_mode=eco_mode,
     )
     if only_lanes is not None:
         wanted = {str(x).strip().lower() for x in only_lanes}
@@ -1077,15 +1125,17 @@ def _run_pipeline(
 
     # Off-hours / routine: never run multi-hour walk-forward inside the schedule.
     benchmark_profile = "skip"
+    lane_open_flag = bool(research_session and not eco_mode)
     if calibration_due:
         _log("Daily calibration due - running due lanes without long backtest.")
     else:
+        mode_tag = " ECO" if eco_mode else ""
         _log(
-            f"{session} cycle - lanes due: {', '.join(due_lanes)} "
-            f"(critical={_lane_iv(settings, 'critical', market_open)}m "
-            f"quant={_lane_iv(settings, 'quant', market_open)}m "
-            f"flow={_lane_iv(settings, 'flow', market_open)}m "
-            f"research={_lane_iv(settings, 'research', market_open)}m)"
+            f"{session} cycle{mode_tag} - lanes due: {', '.join(due_lanes)} "
+            f"(critical={_lane_iv(settings, 'critical', lane_open_flag)}m "
+            f"quant={_lane_iv(settings, 'quant', lane_open_flag)}m "
+            f"flow={_lane_iv(settings, 'flow', lane_open_flag)}m "
+            f"research={_lane_iv(settings, 'research', lane_open_flag)}m)"
         )
 
     use_split = str(os.environ.get("FINANCE_SPLIT_PIPELINES", "1")).strip().lower() not in {
@@ -1125,6 +1175,22 @@ def _run_pipeline(
     # Stall must exceed Market Predictor / enhance timeouts (else post-fusion is
     # killed mid-"Fusing Market Predictor" with no progress lines).
     pipeline_stall = max(150, int(os.environ.get("FINANCE_PIPELINE_STALL_SEC", "200")))
+    if eco_mode:
+        try:
+            from agent_pipelines import ECO_PIPELINE_STALL_SEC, ECO_PIPELINE_TIMEOUT_SEC
+
+            pipeline_timeout = min(pipeline_timeout, int(ECO_PIPELINE_TIMEOUT_SEC))
+            pipeline_stall = min(pipeline_stall, int(ECO_PIPELINE_STALL_SEC))
+        except Exception:
+            pipeline_timeout = min(pipeline_timeout, 600)
+            pipeline_stall = min(pipeline_stall, 120)
+        os.environ["FINANCE_PIPELINE_ECO"] = "1"
+        _log(
+            f"Eco mode: reduced agents/lanes, timeout {pipeline_timeout}s, "
+            f"stall {pipeline_stall}s, FINANCE_PIPELINE_ECO=1"
+        )
+    else:
+        os.environ.pop("FINANCE_PIPELINE_ECO", None)
     try:
         from agents.agent_process_runner import run_pipeline_subprocess
 
