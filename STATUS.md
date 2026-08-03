@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-02 (AI-CODING ack BOXONE 042 — share fresh; quiet for PHONE 043)
-**Updated by:** AI-CODING
+**Last updated:** 2026-08-02
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** AI-CODING
 
 ## NOTIFY
 
@@ -74,6 +74,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - [x] **AI-CODING:** Ack 042 once; confirm share freshness; clear NOTIFY; Act on none; leave PHONE 043.
 - [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`. Never Act on PHONE.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive — follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision.
+- [ ] **AI-CODING** Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken
 
 ## Blockers
 
@@ -94,3 +95,4 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - Armed for HUMAN GitStatus: Send any message from phone on Finance window → AI-CODING should claim and respond.
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
+- PHONE: Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken → Act on AI-CODING
