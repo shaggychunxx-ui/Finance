@@ -156,6 +156,13 @@
     "accuracy_interval_minutes": 5,
     "accuracy_off_hours_interval_minutes": 30,
     "pipeline_market_hours_only": true,
+    "pipeline_eco_mode_off_hours": true,
+    "pipeline_lanes": {
+      "critical": {"market": 5, "off_hours": 30, "eco_off_hours": 90},
+      "quant": {"market": 10, "off_hours": 45, "eco_off_hours": 120},
+      "flow": {"market": 15, "off_hours": 90, "eco_off_hours": 0},
+      "research": {"market": 60, "off_hours": 90, "eco_off_hours": 240}
+    },
     "pre_open_research_enabled": true,
     "live_accuracy": {
       "enabled": true,

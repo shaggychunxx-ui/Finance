@@ -1883,7 +1883,16 @@ def run_split_pipelines(
 
     # Live quotes only when trading-relevant lanes run (saves E*TRADE/API budget).
     # Hard wall-clock cap so a hung quote/OAuth call cannot freeze the worker.
-    if wanted & {"critical", "quant", "flow"}:
+    # Eco off-hours: skip enhance (no need for live quotes overnight).
+    try:
+        from agent_pipelines import eco_session_from_env
+
+        _eco = eco_session_from_env()
+    except Exception:
+        _eco = False
+    if _eco:
+        _say("Eco mode — skipping proactive E*TRADE enhancement (off-hours).")
+    elif wanted & {"critical", "quant", "flow"}:
         try:
             from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
@@ -1924,7 +1933,17 @@ def run_split_pipelines(
     def _run_lane_inprocess(pid: str) -> tuple[str, int, int]:
         spec = pipeline_spec(pid)
         expected = int(lane_expected.get(pid) or 0)
-        _say(f"> Lane {pid} - {spec['label']} ({expected} agent(s))")
+        agent_to = int(spec["agent_timeout_sec"])
+        if _eco:
+            try:
+                from agent_pipelines import ECO_AGENT_TIMEOUT_SEC
+
+                agent_to = min(agent_to, int(ECO_AGENT_TIMEOUT_SEC))
+            except Exception:
+                agent_to = min(agent_to, 35)
+            _say(f"> Lane {pid} - {spec['label']} ({expected} agent(s)) [eco]")
+        else:
+            _say(f"> Lane {pid} - {spec['label']} ({expected} agent(s))")
 
         def _lane_prog(msg: str) -> None:
             text = str(msg or "")
@@ -1940,7 +1959,7 @@ def run_split_pipelines(
             benchmark_profile="skip",
             pipeline_id=pid,
             agents_only=True,
-            agent_timeout_sec=int(spec["agent_timeout_sec"]),
+            agent_timeout_sec=agent_to,
         )
         return pid, int(n or 0), expected
 
