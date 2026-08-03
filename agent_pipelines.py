@@ -157,6 +157,113 @@ DEFAULT_LANE_SCHEDULE: dict[str, dict[str, int]] = {
     "research": {"market": 60, "off_hours": 90},
 }
 
+# ---------------------------------------------------------------------------
+# Off-hours ECO mode — sparse lanes, core agents only, long intervals
+# ---------------------------------------------------------------------------
+# When pipeline_eco_mode_off_hours is on (default), nights/weekends still run
+# a light pipeline instead of a full RTH roster (saves CPU, Yahoo, disk).
+
+ECO_LANE_SCHEDULE: dict[str, dict[str, int]] = {
+    # 0 off_hours = lane disabled in eco session
+    "critical": {"off_hours": 90},
+    "quant": {"off_hours": 120},
+    "flow": {"off_hours": 0},
+    "research": {"off_hours": 240},
+}
+
+ECO_LANES: frozenset[str] = frozenset({"critical", "quant", "research"})
+
+# Minimal critical set (skip day microstructure overnight)
+ECO_CRITICAL_AGENTS: tuple[str, ...] = (
+    "risk-guardrail",
+    "risk-protection",
+    "order-execution",
+)
+
+# Asset-class trackers + thin market core
+ECO_QUANT_AGENTS: tuple[str, ...] = (
+    "equity-tracker",
+    "bond-markets",
+    "etf-tracker",
+    "markets",
+    "massive-market",
+    "market-regime",
+    "finance",
+)
+
+ECO_RESEARCH_AGENTS: tuple[str, ...] = (
+    "data-steward",
+    "records-management",
+)
+
+ECO_AGENT_TIMEOUT_SEC = 35
+ECO_PIPELINE_TIMEOUT_SEC = 600
+ECO_PIPELINE_STALL_SEC = 120
+
+
+def pipeline_eco_mode_enabled(settings: dict[str, Any] | None = None) -> bool:
+    """Config default True — off-hours use eco roster/schedule."""
+    if isinstance(settings, dict) and "pipeline_eco_mode_off_hours" in settings:
+        return bool(settings.get("pipeline_eco_mode_off_hours"))
+    import os
+
+    env = str(os.environ.get("FINANCE_PIPELINE_ECO_MODE", "1")).strip().lower()
+    return env not in {"0", "false", "no", "off"}
+
+
+def is_eco_session(
+    settings: dict[str, Any] | None = None,
+    *,
+    market_open: bool,
+    pre_open: bool = False,
+) -> bool:
+    """True outside RTH and pre-open when eco mode is enabled."""
+    if market_open or pre_open:
+        return False
+    return pipeline_eco_mode_enabled(settings)
+
+
+def eco_session_from_env() -> bool:
+    """Child processes inherit eco via FINANCE_PIPELINE_ECO=1."""
+    import os
+
+    return str(os.environ.get("FINANCE_PIPELINE_ECO", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def eco_lanes_allowed() -> frozenset[str]:
+    return ECO_LANES
+
+
+def filter_lanes_for_eco(lanes: list[str]) -> list[str]:
+    """Drop flow + any lane with eco off_hours=0."""
+    allowed = eco_lanes_allowed()
+    out: list[str] = []
+    for pid in lanes:
+        p = str(pid).strip().lower()
+        if p not in allowed:
+            continue
+        iv = int(ECO_LANE_SCHEDULE.get(p, {}).get("off_hours", 0) or 0)
+        if iv <= 0:
+            continue
+        out.append(p)
+    return out
+
+
+def eco_agents_for_lane(pipeline_id: str) -> tuple[str, ...]:
+    pid = str(pipeline_id or "").strip().lower()
+    if pid == "critical":
+        return ECO_CRITICAL_AGENTS
+    if pid == "quant":
+        return ECO_QUANT_AGENTS
+    if pid == "research":
+        return ECO_RESEARCH_AGENTS
+    return ()
+
 
 def normalize_agent_id(agent_id: str) -> str:
     return str(agent_id or "").strip().replace("_", "-").lower()
@@ -191,13 +298,33 @@ def _order_quant_agents(residual: list[str]) -> list[str]:
     return ordered
 
 
-def agents_for_pipeline(pipeline_id: str, all_agent_ids: list[str] | None = None) -> list[str]:
+def agents_for_pipeline(
+    pipeline_id: str,
+    all_agent_ids: list[str] | None = None,
+    *,
+    eco_mode: bool | None = None,
+) -> list[str]:
     """Return ordered agent ids for a lane.
 
     If all_agent_ids is provided, filter to those present (catalog order preserved,
     except quant which prioritizes QUANT_CORE_AGENTS).
+
+    eco_mode:
+        When True (or FINANCE_PIPELINE_ECO=1), only the eco roster runs per lane.
     """
+    if eco_mode is None:
+        eco_mode = eco_session_from_env()
     pid = str(pipeline_id or "").strip().lower()
+
+    if eco_mode:
+        eco_wanted = {normalize_agent_id(a) for a in eco_agents_for_lane(pid)}
+        if not eco_wanted:
+            return []
+        if all_agent_ids is None:
+            return list(eco_agents_for_lane(pid))
+        present = {normalize_agent_id(a) for a in all_agent_ids}
+        return [a for a in eco_agents_for_lane(pid) if a in present]
+
     if pid == "critical":
         wanted = CRITICAL_AGENTS
     elif pid == "flow":
@@ -246,9 +373,36 @@ def lane_interval_minutes(
     *,
     market_open: bool,
     settings: dict[str, Any] | None = None,
+    eco_mode: bool | None = None,
 ) -> int:
-    """Resolve how often a lane should run given market session + optional config override."""
+    """Resolve how often a lane should run given market session + optional config override.
+
+    Returns 0 when eco mode disables the lane (caller should skip it).
+    """
     pid = str(pipeline_id or "").strip().lower()
+    if eco_mode is None and not market_open:
+        eco_mode = is_eco_session(settings, market_open=False, pre_open=False)
+    if eco_mode and not market_open:
+        # Prefer explicit eco block in config, else ECO_LANE_SCHEDULE
+        cfg_eco: dict[str, Any] = {}
+        if isinstance(settings, dict):
+            raw_eco = settings.get("pipeline_lanes_eco") or settings.get("eco_lane_schedule") or {}
+            if isinstance(raw_eco, dict) and isinstance(raw_eco.get(pid), dict):
+                cfg_eco = raw_eco[pid]
+            # Also allow pipeline_lanes[pid].eco_off_hours
+            raw = settings.get("pipeline_lanes") or {}
+            if isinstance(raw, dict) and isinstance(raw.get(pid), dict):
+                lane_cfg = raw[pid]
+                if "eco_off_hours" in lane_cfg:
+                    cfg_eco = {**cfg_eco, "off_hours": lane_cfg.get("eco_off_hours")}
+        eco_default = int(ECO_LANE_SCHEDULE.get(pid, {}).get("off_hours", 120) or 0)
+        val = cfg_eco.get("off_hours") if "off_hours" in cfg_eco else eco_default
+        try:
+            minutes = int(val)
+        except (TypeError, ValueError):
+            minutes = eco_default
+        return max(0, minutes)
+
     spec = PIPELINE_SPECS.get(pid) or {}
     default_m = int(spec.get("interval_market_minutes") or DEFAULT_LANE_SCHEDULE.get(pid, {}).get("market", 15))
     default_o = int(
