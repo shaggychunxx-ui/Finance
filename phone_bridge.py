@@ -123,21 +123,28 @@ def load_bridge_config() -> dict[str, Any]:
 
 def _is_us_equity_rth() -> bool:
     """True during US regular session Mon–Fri 9:30–16:00 America/New_York."""
+    from datetime import datetime, time as dt_time, timedelta, timezone
+
+    now = None
     try:
-        from datetime import datetime, time as dt_time
         from zoneinfo import ZoneInfo
 
         now = datetime.now(ZoneInfo("America/New_York"))
-        if now.weekday() >= 5:
-            return False
-        return dt_time(9, 30) <= now.time() <= dt_time(16, 0)
     except Exception:
         try:
             from etrade_worker import is_us_market_open
 
             return bool(is_us_market_open())
         except Exception:
-            return False
+            # No tzdata / worker: approximate US Eastern from UTC (EDT Mar–Nov).
+            now_utc = datetime.now(timezone.utc)
+            offset_h = -4 if 3 <= now_utc.month <= 10 else -5
+            now = now_utc + timedelta(hours=offset_h)
+    if now is None:
+        return False
+    if now.weekday() >= 5:
+        return False
+    return dt_time(9, 30) <= now.time() <= dt_time(16, 0)
 
 
 def run_phone_data_refresh(*, force_refresh: bool = True, reason: str = "scheduled") -> dict[str, Any]:
@@ -226,18 +233,20 @@ def start_phone_refresh_thread(cfg: dict[str, Any] | None = None) -> threading.T
             f"market_hours_only={market_only}"
         )
         # Short delay so HTTP server is up first
-        time.sleep(20.0)
+        time.sleep(15.0)
         last_run = 0.0
+        # First pass as soon as eligible (do not wait a full interval after boot)
         while True:
             try:
                 open_now = _is_us_equity_rth()
-                due = (time.time() - last_run) >= interval_sec
+                never_ran = last_run <= 0.0
+                due = never_ran or (time.time() - last_run) >= interval_sec
                 should = due and (open_now or not market_only)
                 if should:
-                    run_phone_data_refresh(
-                        force_refresh=True,
-                        reason="rth_timer" if open_now else "offhours_timer",
+                    reason = "startup" if never_ran else (
+                        "rth_timer" if open_now else "offhours_timer"
                     )
+                    run_phone_data_refresh(force_refresh=True, reason=reason)
                     last_run = time.time()
                     time.sleep(min(60.0, interval_sec))
                 else:
