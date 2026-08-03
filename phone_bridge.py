@@ -128,7 +128,7 @@ def _phone_ascii_text(value: str) -> str:
     for old, new in _PHONE_TEXT_REPLACEMENTS:
         if old in out:
             out = out.replace(old, new)
-    return out.replace(" |  | ", " | ")
+    return out.replace(" | ", " | ")
 
 
 def _sanitize_phone_payload(obj: Any) -> Any:
