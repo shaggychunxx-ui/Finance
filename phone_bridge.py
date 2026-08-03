@@ -50,7 +50,12 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.3"
+BRIDGE_VERSION = "1.5.4"
+
+# Auto-publish phone dashboard/agents during RTH (config can override).
+DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 30
+DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY = True
+DEFAULT_PHONE_REFRESH_ENABLED = True
 
 # Phone "full data pull" flag for the current request (thread-local).
 _pull_ctx = threading.local()
@@ -100,10 +105,159 @@ def load_bridge_config() -> dict[str, Any]:
     if "host" not in raw:
         raw["host"] = DEFAULT_HOST
         changed = True
+    # Phone pack auto-refresh (dashboard + agents → Oxygen-OS work/phone)
+    if "phone_refresh_enabled" not in raw:
+        raw["phone_refresh_enabled"] = DEFAULT_PHONE_REFRESH_ENABLED
+        changed = True
+    if "phone_refresh_interval_minutes" not in raw:
+        raw["phone_refresh_interval_minutes"] = DEFAULT_PHONE_REFRESH_INTERVAL_MIN
+        changed = True
+    if "phone_refresh_market_hours_only" not in raw:
+        raw["phone_refresh_market_hours_only"] = DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY
+        changed = True
     if changed:
         _write_json(BRIDGE_CONFIG, raw)
-        _log(f"Wrote {BRIDGE_CONFIG.name} (new bridge token generated)")
+        _log(f"Wrote {BRIDGE_CONFIG.name} (bridge defaults updated)")
     return raw
+
+
+def _is_us_equity_rth() -> bool:
+    """True during US regular session Mon–Fri 9:30–16:00 America/New_York."""
+    try:
+        from datetime import datetime, time as dt_time
+        from zoneinfo import ZoneInfo
+
+        now = datetime.now(ZoneInfo("America/New_York"))
+        if now.weekday() >= 5:
+            return False
+        return dt_time(9, 30) <= now.time() <= dt_time(16, 0)
+    except Exception:
+        try:
+            from etrade_worker import is_us_market_open
+
+            return bool(is_us_market_open())
+        except Exception:
+            return False
+
+
+def run_phone_data_refresh(*, force_refresh: bool = True, reason: str = "scheduled") -> dict[str, Any]:
+    """Rebuild + publish dashboard/agents pack for the phone (Oxygen-OS + bridge)."""
+    from datetime import datetime, timezone
+
+    started = time.time()
+    result: dict[str, Any] = {
+        "ok": False,
+        "reason": reason,
+        "at": datetime.now(timezone.utc).isoformat(),
+        "market_open": _is_us_equity_rth(),
+    }
+    try:
+        # Dual-PC: pull latest broker snapshot/quotes from share before publish
+        try:
+            from sync_shared_data import pull_broker_feed
+
+            pull = pull_broker_feed()
+            result["broker_pull"] = {
+                "ok": bool(pull.get("ok")),
+                "copied": pull.get("copied"),
+                "error": pull.get("error"),
+            }
+        except Exception as exc:
+            result["broker_pull"] = {"ok": False, "error": str(exc)}
+
+        full = build_full_for_phone(force_refresh=force_refresh)
+        dash = full.get("dashboard") if isinstance(full, dict) else {}
+        if not isinstance(dash, dict):
+            dash = {}
+        agents = full.get("agents") if isinstance(full, dict) else {}
+        if not isinstance(agents, dict):
+            agents = {}
+        result.update(
+            {
+                "ok": bool(full.get("ok", True) if isinstance(full, dict) else True),
+                "positions": len(dash.get("positions") or []),
+                "data_pull": dash.get("data_pull"),
+                "long_mode": (dash.get("long") or {}).get("mode")
+                if isinstance(dash.get("long"), dict)
+                else None,
+                "agent_count": agents.get("agent_count")
+                or agents.get("count")
+                or len(agents.get("agents") or []),
+                "elapsed_sec": round(time.time() - started, 2),
+            }
+        )
+        _log(
+            f"phone auto-refresh ({reason}): ok={result['ok']} "
+            f"pos={result.get('positions')} agents={result.get('agent_count')} "
+            f"market_open={result['market_open']} {result.get('elapsed_sec')}s"
+        )
+    except Exception as exc:
+        result["error"] = str(exc)
+        _log(f"phone auto-refresh failed ({reason}): {exc}")
+        _log(traceback.format_exc())
+    try:
+        _write_json(ROOT / "output" / "phone_refresh_last.json", result)
+    except OSError:
+        pass
+    return result
+
+
+def start_phone_refresh_thread(cfg: dict[str, Any] | None = None) -> threading.Thread | None:
+    """Background loop: refresh phone pack every N minutes during market hours."""
+    cfg = cfg or load_bridge_config()
+    if not bool(cfg.get("phone_refresh_enabled", DEFAULT_PHONE_REFRESH_ENABLED)):
+        _log("phone auto-refresh disabled (phone_refresh_enabled=false)")
+        return None
+    try:
+        interval_min = float(
+            cfg.get("phone_refresh_interval_minutes") or DEFAULT_PHONE_REFRESH_INTERVAL_MIN
+        )
+    except (TypeError, ValueError):
+        interval_min = float(DEFAULT_PHONE_REFRESH_INTERVAL_MIN)
+    interval_min = max(5.0, interval_min)  # floor 5 min to avoid thrash
+    market_only = bool(
+        cfg.get("phone_refresh_market_hours_only", DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY)
+    )
+    interval_sec = interval_min * 60.0
+
+    def _loop() -> None:
+        _log(
+            f"phone auto-refresh started: every {interval_min:g} min, "
+            f"market_hours_only={market_only}"
+        )
+        # Short delay so HTTP server is up first
+        time.sleep(20.0)
+        last_run = 0.0
+        while True:
+            try:
+                open_now = _is_us_equity_rth()
+                due = (time.time() - last_run) >= interval_sec
+                should = due and (open_now or not market_only)
+                if should:
+                    run_phone_data_refresh(
+                        force_refresh=True,
+                        reason="rth_timer" if open_now else "offhours_timer",
+                    )
+                    last_run = time.time()
+                    time.sleep(min(60.0, interval_sec))
+                else:
+                    # Wake often enough to catch the open / next slot
+                    if market_only and not open_now:
+                        time.sleep(60.0)
+                    else:
+                        remaining = max(5.0, interval_sec - (time.time() - last_run))
+                        time.sleep(min(60.0, remaining))
+            except Exception as exc:
+                _log(f"phone auto-refresh loop error: {exc}")
+                time.sleep(60.0)
+
+    thread = threading.Thread(
+        target=_loop,
+        name="phone-data-refresh",
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 def _snapshot_position_count(snap: dict[str, Any] | None) -> int:
@@ -2617,6 +2771,14 @@ def main() -> int:
         _log(f"  Phone base URL: http://{ip}:{port}")
     _log(f"  Bridge token (enter in phone app): {token}")
     _log("  GET /health  (no auth)  |  GET /api/dashboard  |  POST /api/oauth/start")
+    try:
+        rmin = float(cfg.get("phone_refresh_interval_minutes") or DEFAULT_PHONE_REFRESH_INTERVAL_MIN)
+    except (TypeError, ValueError):
+        rmin = float(DEFAULT_PHONE_REFRESH_INTERVAL_MIN)
+    _log(
+        f"  Phone data refresh: every {rmin:g} min during market hours "
+        f"(enabled={bool(cfg.get('phone_refresh_enabled', True))})"
+    )
 
     # Print a compact pairing card for first-run
     print("")
@@ -2626,9 +2788,12 @@ def main() -> int:
     if ips:
         print(f"  Base URL:  http://{ips[0]}:{port}")
     print(f"  Token:     {token}")
+    print(f"  Auto-refresh: every {rmin:g} min (market hours)")
     print("  Enter both in the phone app Setup screen.")
     print("=" * 56)
     print("")
+
+    start_phone_refresh_thread(cfg)
 
     try:
         httpd.serve_forever()
