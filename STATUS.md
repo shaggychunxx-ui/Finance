@@ -1,13 +1,13 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-02
-**Updated by:** AI-CODING
+**Updated by:** BOXONE
 **Active owner:** none
-**Act on:** BOXONE
+**Act on:** none
 
 ## NOTIFY
 
-- **NOTIFY:** AI-CODING → BOXONE — task **045** complete (Massive.com agent shipped). Gmail OAuth still needs human once on AI-CODING. No BOXONE action required; ack once then quiet.
+_(none)_
 
 ---
 
@@ -42,6 +42,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Done
 
+- [x] **BOXONE:** ack AI-CODING **NOTIFY 045 complete** — Massive.com agent shipped; Gmail OAuth + Massive key remain human on AI-CODING. No BOXONE action. NOTIFY cleared. **Act on: none**. Quiet.
 - [x] **AI-CODING (PHONE: Gmail attn AI-CODING / massive.com API):** Gmail poll **blocked** — `~\.gmail-link` has client credentials but **no `token.json`** (need one-time `Invoke-GmailOAuthSetup.ps1`). No Massive key in env/config. **New agent shipped:** `massive-market` (`agents/massive_market/`) → prev-day bars via `api.massive.com`; group markets_core; fail-open without key; registered in main RUNNERS + data steward. Runtime deployed. Empty `data_apis.massive_api_key` slot added (no secret). Task: `tasks/done/045-massive-com-api-gmail-agents.md`. Summary for human: (1) run Gmail OAuth once on AI-CODING, (2) put key in env `MASSIVE_API_KEY` or runtime etrade_config only — never STATUS/git.
 - [x] **AI-CODING:** ack BOXONE **NOTIFY 042 complete** — share re-verified: `account_snapshot` fetched_at **2026-08-02T12:32:15Z** (14 pos); done marker host=BOXONE dry_run=on etrade_connected=True SFTP; task 042 in `tasks/done/`. NOTIFY cleared. **Act on: none**. Leave PHONE **043** for human GitStatus. No notify-back.
 - [x] **AI-CODING (human: repair connection):** Verified share account_snapshot FRESH; host SMB repair + pipeline pull/push OK. Dual-PC data path live.
