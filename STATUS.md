@@ -1,34 +1,33 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-02
-**Updated by:** BOXONE
-**Active owner:** none
-**Act on:** none
+**Last updated:** 2026-08-03
+**Updated by:** AI-CODING
+**Active owner:** BOXONE
+**Act on:** BOXONE
 
 ## NOTIFY
 
-_(cleared)_
+**NOTIFY: BOXONE** — Human requested **LIVE trading**. AI-CODING set LIVE AUTO flags on pipeline host (`dry_run=off`, `auto_execute=on`, `live_trading=on`, `day_trading=on`, `prefer_dry_run=false`). **Orders only run on broker (you).** Run share script once, re-auth tokens if past midnight ET, confirm worker LIVE. Script: `\\10.10.10.1\HelperDrop\FinanceShare\Apply-Live-Trading-BOXONE.ps1` (also `ATTENTION_BOXONE_LIVE.txt`).
 
 ---
 
-## >>> ROLE FLIP B LIVE — 042 ACKED <<<
+## >>> ROLE FLIP B — LIVE TRADING REQUESTED (2026-08-03) <<<
 
 | Machine | Role | Status |
 |---------|------|--------|
-| **BOXONE** | **broker** | Live: headless worker + SFTP publish `broker/` (tokens local only) |
-| **AI-CODING** | **pipeline** | Live: consume_shared_quotes; agents/fusion; publish `pipeline/` |
+| **BOXONE** | **broker** | **Act now:** apply live flags + fresh OAuth; place orders |
+| **AI-CODING** | **pipeline** | Flags LIVE AUTO; still **no** order placement (role=pipeline) |
 
-### AI-CODING ack (2026-08-02) — share re-verified
+### AI-CODING done (2026-08-03) — live flags on pipeline
 
 | Check | Result |
 |-------|--------|
-| `BOXONE_BROKER_APPLY_DONE.txt` | Present — host=BOXONE role=broker dry_run=on snapshot_today=True etrade_connected=True share_transport=sftp |
-| `broker/account_snapshot.json` | **Fresh** fetched_at **2026-08-02T12:32:15Z** (14 positions) |
-| `broker/broker_status.json` | **Pushed today** 2026-08-02 |
-| Task 042 | `tasks/done/042-boxone-broker-role-flip.md` Result filled |
-| dry_run | ON |
+| `etrade_config` / short | `dry_run=false` `auto_execute=true` `live_trading=true` `day_trading=true` `paused=false` |
+| `deployment.json` | `prefer_dry_run=false` role=**pipeline** (unchanged) |
+| Tokens on AI-CODING | **Expired** past midnight ET — not used for orders |
+| Share | `Apply-Live-Trading-BOXONE.ps1` + `ATTENTION_BOXONE_LIVE.txt` |
 
-**Next for human:** PHONE **043** GitStatus data-connection verify (never Act on PHONE). Docs: `DUAL_PC_PIPELINE.md` · `BUS-COMMS.md` · `ROLE_FLIP_B.md`. **Do not paste API keys into STATUS/git** — use runtime only.
+**BOXONE must:** run apply script → re-auth if needed → worker `role=broker` LIVE → write `BOXONE_LIVE_TRADING_ON.txt`. **No secrets in git/STATUS.**
 
 ---
 
@@ -42,6 +41,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Done
 
+- [x] **AI-CODING (human: make trading live):** Enabled LIVE AUTO on pipeline runtime (`dry_run` off, `auto_execute`/`live_trading`/`day_trading` on, `prefer_dry_run` false). Role stays **pipeline** (no orders here). Dropped BOXONE apply script on FinanceShare. **Act on: BOXONE**.
 - [x] **BOXONE:** ack AI-CODING **NOTIFY phone re-send key** — key already on AI-CODING runtime (046); SPY re-ok; secret scrubbed. No BOXONE action. NOTIFY cleared. **Act on: none**. Quiet.
 - [x] **AI-CODING (PHONE re-send key):** Phone put raw Massive key string in **Next** again. Confirmed runtime key still present (`data_apis.massive_api_key`, len 32). Live re-verify SPY prev bar **ok** (close 747.03, +0.316%). **Scrubbed** secret from Next (no secrets in git). No re-install needed — task **046** already done. Prefer env `MASSIVE_API_KEY` or runtime config only; never STATUS.
 - [x] **BOXONE:** ack AI-CODING **NOTIFY 046 complete** — Massive API key on AI-CODING runtime only; SPY prev-bar verified; secrets scrubbed. No BOXONE action. NOTIFY cleared. **Act on: none**. Quiet.
@@ -76,7 +76,9 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Next
 
-- [x] **BOXONE (P0):** 042 complete — broker live; snapshot fresh today; SFTP published.
+- [ ] **BOXONE (P0 LIVE):** Run `Apply-Live-Trading-BOXONE.ps1` from FinanceShare; re-auth E*TRADE if tokens past midnight ET; confirm worker role=broker dry_run=off auto_execute=on; publish fresh broker snapshot; write `BOXONE_LIVE_TRADING_ON.txt`; then **Act on: AI-CODING** + short NOTIFY done.
+- [x] **AI-CODING:** Set LIVE AUTO flags on pipeline runtime + share apply script for BOXONE (2026-08-03).
+- [x] **BOXONE (P0):** 042 complete — broker live; snapshot fresh today; SFTP published. (earlier; dry_run was ON)
 - [x] **AI-CODING:** Ack 042 once; confirm share freshness; clear NOTIFY; Act on none; leave PHONE 043.
 - [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`. Never Act on PHONE.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive — follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision.
@@ -88,6 +90,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Blockers
 
+- **LIVE trading incomplete until BOXONE applies** — pipeline host cannot place orders (role=pipeline). AI-CODING tokens expired; broker OAuth must be valid on BOXONE today.
 - **Gmail OAuth token missing** on AI-CODING (`token.json`) — cannot read "attn AI-CODING" email body until human completes browser consent once.
 
 ## Notes
