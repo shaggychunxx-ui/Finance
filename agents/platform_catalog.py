@@ -40,9 +40,11 @@ CATEGORY_BY_ID: dict[str, str] = {
     "transportation": "Energy & Infrastructure",
     "logistics": "Energy & Infrastructure",
     "markets": "Markets & Finance",
+    "massive-market": "Markets & Finance",
     "order-execution": "Markets & Finance",
     "finance": "Markets & Finance",
     "financial-data": "Markets & Finance",
+
     "datascience": "Markets & Finance",
     "sales-analytics": "Markets & Finance",
     "sec-filings": "Markets & Finance",

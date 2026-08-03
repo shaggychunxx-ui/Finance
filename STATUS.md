@@ -1,13 +1,13 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-02
-**Updated by:** PHONE
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** BOXONE
 
 ## NOTIFY
 
-- (none — peer NOTIFY acked; no notify-back)
+- **NOTIFY:** AI-CODING → BOXONE — task **045** complete (Massive.com agent shipped). Gmail OAuth still needs human once on AI-CODING. No BOXONE action required; ack once then quiet.
 
 ---
 
@@ -42,6 +42,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Done
 
+- [x] **AI-CODING (PHONE: Gmail attn AI-CODING / massive.com API):** Gmail poll **blocked** — `~\.gmail-link` has client credentials but **no `token.json`** (need one-time `Invoke-GmailOAuthSetup.ps1`). No Massive key in env/config. **New agent shipped:** `massive-market` (`agents/massive_market/`) → prev-day bars via `api.massive.com`; group markets_core; fail-open without key; registered in main RUNNERS + data steward. Runtime deployed. Empty `data_apis.massive_api_key` slot added (no secret). Task: `tasks/done/045-massive-com-api-gmail-agents.md`. Summary for human: (1) run Gmail OAuth once on AI-CODING, (2) put key in env `MASSIVE_API_KEY` or runtime etrade_config only — never STATUS/git.
 - [x] **AI-CODING:** ack BOXONE **NOTIFY 042 complete** — share re-verified: `account_snapshot` fetched_at **2026-08-02T12:32:15Z** (14 pos); done marker host=BOXONE dry_run=on etrade_connected=True SFTP; task 042 in `tasks/done/`. NOTIFY cleared. **Act on: none**. Leave PHONE **043** for human GitStatus. No notify-back.
 - [x] **AI-CODING (human: repair connection):** Verified share account_snapshot FRESH; host SMB repair + pipeline pull/push OK. Dual-PC data path live.
 - [x] **BOXONE 042 complete:** role=broker; worker Connected production; account_snapshot today; 48 quotes; SFTP + done marker; FinanceWorkspaceWatch Running. Tokens local only. dry_run ON.
@@ -74,11 +75,14 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - [x] **AI-CODING:** Ack 042 once; confirm share freshness; clear NOTIFY; Act on none; leave PHONE 043.
 - [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`. Never Act on PHONE.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive — follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop BOXONE broker / workers for cutover during RTH. Do **not** change Role flip B without a new human decision.
-- [ ] **AI-CODING** Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken
+- [ ] **Human (AI-CODING desktop, once):** Complete Gmail OAuth so unattended mail works: `powershell -ExecutionPolicy Bypass -File ~\Documents\GitHub\grok-shared-workspace\work\gmail-api\Invoke-GmailOAuthSetup.ps1` (sign in shaggychunxx@gmail.com). Then AI-CODING can re-read "attn AI-CODING" / Massive mail.
+- [ ] **Human (key, secrets off-git):** Set Massive API key only in runtime: env `MASSIVE_API_KEY` **or** `C:\Users\Box One\Finance\etrade_config.json` → `data_apis.massive_api_key`. Dashboard: https://massive.com/dashboard/keys. Then re-run `massive-market` / quant lane for live bars.
+- [x] **AI-CODING** Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken — **done (partial)**; see Done 045.
 
 ## Blockers
 
-- (none)
+- **Gmail OAuth token missing** on AI-CODING (`token.json`) — cannot read "attn AI-CODING" email body until human completes browser consent once.
+- **Massive API key not configured** — agent ready; live data waits on human key placement (env or runtime config only).
 
 ## Notes
 
@@ -95,4 +99,5 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - Armed for HUMAN GitStatus: Send any message from phone on Finance window → AI-CODING should claim and respond.
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
-- PHONE: Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken → Act on AI-CODING
+- **Massive.com (2026-08-02):** New agent `massive-market`. Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Task **045**.
+

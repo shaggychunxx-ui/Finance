@@ -115,6 +115,15 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "owner": "platform",
     },
     {
+        "command": "massive-market",
+        "agent": "Massive.com Market Data",
+        "primary_output": "massive_market.json",
+        "sidecars": [],
+        "sources": ["Massive REST API (api.massive.com)"],
+        "owner": "platform",
+    },
+
+    {
         "command": "geopolitics",
         "agent": "Geopolitics Expert",
         "primary_output": "geopolitics.json",

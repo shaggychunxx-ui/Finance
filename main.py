@@ -43,6 +43,7 @@ from agents.day_trading_microstructure import run_day_trading_microstructure_ana
 from agents.earthdata import run_earthdata_analysis
 from agents.economy import run_economy_analysis
 from agents.fred import run_fred_analysis
+from agents.massive_market import run_massive_market_analysis
 from agents.ftd_regsho import run_ftd_regsho_analysis
 from agents.ftse100 import run_ftse100_analysis
 from agents.fundamental_analyst import run_fundamental_analyst_analysis
@@ -1353,6 +1354,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "logistics": run_logistics_analysis,
     "migration": run_migration_analysis,
     "markets": run_markets_analysis,
+    "massive-market": run_massive_market_analysis,
     "market-predictor": run_market_predictor_analysis,
     "meteorology": run_meteorology_analysis,
     "order-execution": run_order_execution_analysis,

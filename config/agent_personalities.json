@@ -15,6 +15,22 @@
       "preferred_horizon": "24h",
       "conduct": "Trade liquid equities/ETFs. Prefer clear momentum and opportunity signals. Emit BULLISH/BEARISH/NEUTRAL with ticker lists. Bias to growth when evidence is strong; do not force shorts."
     },
+    "massive-market": {
+      "label": "The Massive Tape Reader",
+      "risk_appetite": 0.7,
+      "conviction": 0.74,
+      "patience": 0.4,
+      "contrarian": 0.22,
+      "defensive_bias": 0.28,
+      "volatility_tolerance": 0.62,
+      "group": "markets_core",
+      "group_label": "Markets & Core Trading",
+      "posture": "long_lean",
+      "trading_role": "alpha",
+      "preferred_horizon": "24h",
+      "conduct": "Use Massive.com market data (prev-day bars, movers) for liquid equities/ETFs. Prefer clear tape and breadth signals. Emit BULLISH/BEARISH/NEUTRAL with ticker lists. Fail open if API key missing."
+    },
+
     "finance": {
       "label": "The Opportunity Scout",
       "risk_appetite": 0.78,

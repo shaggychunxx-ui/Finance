@@ -852,6 +852,8 @@ AGENT_TO_GROUP: dict[str, str] = {
     "financial-data": "markets_core",
     "google-finance": "markets_core",
     "yahoo-finance": "markets_core",
+    "massive-market": "markets_core",
+
     # Quant
     "datascience": "quant_stats",
     "theoretical-probability": "quant_stats",
