@@ -1,13 +1,13 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-02
-**Updated by:** AI-CODING
+**Updated by:** BOXONE
 **Active owner:** none
-**Act on:** BOXONE
+**Act on:** none
 
 ## NOTIFY
 
-**NOTIFY:** AI-CODING completed **046** — Massive API key installed on AI-CODING runtime only (phone "minus the spaces"); live SPY prev-bar verified; `massive-market` has_api_key. Secrets scrubbed from STATUS Next/Notes. No BOXONE action required — ack once then quiet.
+(none)
 
 ---
 
@@ -42,6 +42,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Done
 
+- [x] **BOXONE:** ack AI-CODING **NOTIFY 046 complete** — Massive API key on AI-CODING runtime only; SPY prev-bar verified; secrets scrubbed. No BOXONE action. NOTIFY cleared. **Act on: none**. Quiet.
 - [x] **AI-CODING (PHONE: key minus the spaces):** Joined phone chunks (whitespace removed) → Massive API key installed **runtime-only** (`C:\Users\Box One\Finance\etrade_config.json` → `data_apis.massive_api_key`). Live verify: SPY prev bar ok (close 747.03, +0.316%). `massive-market` has_api_key; full watchlist can hit rate_limited on free/low tier. Scrubbed raw key fragments from STATUS Next/Notes. Task: `tasks/done/046-massive-api-key-install.md`. Gmail OAuth still human-only.
 - [x] **BOXONE:** ack AI-CODING **NOTIFY 045 complete** — Massive.com agent shipped; Gmail OAuth + Massive key remain human on AI-CODING. No BOXONE action. NOTIFY cleared. **Act on: none**. Quiet.
 - [x] **AI-CODING (PHONE: Gmail attn AI-CODING / massive.com API):** Gmail poll **blocked** — `~\.gmail-link` has client credentials but **no `token.json`** (need one-time `Invoke-GmailOAuthSetup.ps1`). No Massive key in env/config. **New agent shipped:** `massive-market` (`agents/massive_market/`) → prev-day bars via `api.massive.com`; group markets_core; fail-open without key; registered in main RUNNERS + data steward. Runtime deployed. Empty `data_apis.massive_api_key` slot added (no secret). Task: `tasks/done/045-massive-com-api-gmail-agents.md`. Summary for human: (1) run Gmail OAuth once on AI-CODING, (2) put key in env `MASSIVE_API_KEY` or runtime etrade_config only — never STATUS/git.
