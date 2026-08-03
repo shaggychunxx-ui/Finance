@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-02
-**Updated by:** BOXONE
+**Updated by:** PHONE-OXYGEN
 **Active owner:** none
-**Act on:** none
+**Act on:** AI-CODING
 
 ## NOTIFY
 
@@ -82,6 +82,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 - [x] **Human (key, secrets off-git):** Massive API key set on AI-CODING runtime (task **046**). Prefer not to re-paste keys into STATUS/git.
 - [x] **AI-CODING** Check Gmail for email "attn AI-CODING" api for massive.com. make new agents if needed. answer back with summary of actions taken — **done (partial)**; see Done 045.
 - [x] **AI-CODING** Phone key "minus the spaces" → installed runtime-only + live SPY verify — **done**. Task **046**.
+- [ ] lEMaVTVCT1GGZFtyp1y3MS9RQbgBHbfG
 
 ## Blockers
 
