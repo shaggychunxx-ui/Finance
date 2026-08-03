@@ -1,13 +1,13 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-03
-**Updated by:** BOXONE
+**Updated by:** AI-CODING
 **Active owner:** none
-**Act on:** AI-CODING
+**Act on:** none
 
 ## NOTIFY
 
-**NOTIFY: AI-CODING** — Task **047 partial**. LIVE flags applied on BOXONE broker (`dry_run=off`, auto/live/day on, `prefer_dry_run=false`, role=broker). **E*TRADE NOT connected** (session expired). Snapshot still **2026-08-02**. Did **not** write `BOXONE_LIVE_TRADING_ON.txt`. SFTP marker `BOXONE_LIVE_FLAGS_APPLIED.txt`. Task: `tasks/done/047-boxone-live-and-fresh-broker-push.md`. Please ack + surface **human OAuth on BOXONE** so phone can get a fresh snapshot.
+_(cleared — AI-CODING acked BOXONE 047 partial; no notify-back)_
 
 ---
 
@@ -18,7 +18,7 @@
 | **BOXONE** | **broker** | LIVE flags **on**; **blocked** on human E*TRADE OAuth; no orders / no fresh snapshot |
 | **AI-CODING** | **pipeline** | LIVE AUTO flags on; phone pack still from **stale** snapshot; **no** orders |
 
-### BOXONE 047 partial checklist
+### BOXONE 047 partial checklist (acked by AI-CODING)
 
 | Item | Result |
 |------|--------|
@@ -27,6 +27,8 @@
 | account_snapshot today | **NO** (still 2026-08-02) |
 | BOXONE_LIVE_TRADING_ON.txt | **NOT written** |
 | BOXONE_LIVE_FLAGS_APPLIED.txt | **YES** (SFTP) |
+
+**PHONE / Human:** LIVE trading is **not fully on**. Broker flags applied, but **E*TRADE session expired on BOXONE**. Phone data still **2026-08-02**. **P0:** human at BOXONE desktop must re-login (below), then BOXONE publishes fresh snapshot + `BOXONE_LIVE_TRADING_ON.txt` and NOTIFYs AI-CODING for phone pack refresh.
 
 **Human (BOXONE desktop):** `begin_etrade_login.py` then `finish_etrade_login.py <CODE>` (or Unified Trader Connect). After Connected → fresh snapshot + `BOXONE_LIVE_TRADING_ON.txt` + NOTIFY AI-CODING. **No secrets in git/STATUS.**
 
@@ -41,6 +43,7 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 
 ## Done
 
+- [x] **AI-CODING:** ack BOXONE **NOTIFY 047 partial** — LIVE flags on broker; E*TRADE OAuth still blocked; snapshot **2026-08-02**; no `BOXONE_LIVE_TRADING_ON.txt`. NOTIFY cleared. Surfaced human OAuth + stale snapshot for phone. **Act on: none**. No notify-back. After human re-auth on BOXONE → re-pull broker + force phone pack.
 - [x] **BOXONE (047 partial):** LIVE flags applied on broker runtime (dry_run off, auto/live/day on, prefer_dry_run false, role=broker). SMB apply script unreachable — local apply. E*TRADE **session expired** (human OAuth needed). Snapshot still **2026-08-02**. No `BOXONE_LIVE_TRADING_ON.txt`. SFTP marker `BOXONE_LIVE_FLAGS_APPLIED.txt`. Task → `tasks/done/047-boxone-live-and-fresh-broker-push.md`. **NOTIFY AI-CODING**.
 - [x] **AI-CODING (human: instruct BOXONE + fresh phone data):** Wrote task **047**, inbox, share `BOXONE_RUN_THIS.txt` / LIVE scripts; STATUS **Act on: BOXONE** + NOTIFY. Phone pack force-published (14 pos / 70 agents) still waiting on BOXONE for today's snapshot.
 - [x] **AI-CODING (human: make trading live):** Enabled LIVE AUTO on pipeline runtime (`dry_run` off, `auto_execute`/`live_trading`/`day_trading` on, `prefer_dry_run` false). Role stays **pipeline** (no orders here). Dropped BOXONE apply script on FinanceShare. **Act on: BOXONE**.
@@ -79,7 +82,8 @@ Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **
 ## Next
 
 - [ ] **Human (BOXONE desktop, P0 LIVE remainder):** E*TRADE OAuth re-login (session expired). Then confirm worker Connected with dry_run=off; publish **fresh** account_snapshot (fetched_at **today**, not 2026-08-02); write `BOXONE_LIVE_TRADING_ON.txt`; **Act on: AI-CODING** + NOTIFY. CLI: `cd C:\Users\Box One\Finance` → `begin_etrade_login.py` then `finish_etrade_login.py <CODE>`.
-- [ ] **AI-CODING:** Ack BOXONE **047 partial** NOTIFY; clear NOTIFY; surface human OAuth + stale snapshot to phone; Act on none unless more work. After human re-auth, re-pull broker and force phone pack.
+- [ ] **AI-CODING (after human re-auth):** When BOXONE NOTIFYs fresh snapshot + LIVE_ON marker — re-pull broker share and force phone pack.
+- [x] **AI-CODING:** Ack BOXONE **047 partial** NOTIFY; clear NOTIFY; surface human OAuth + stale snapshot to phone — **done**. Waiting on human OAuth.
 - [x] **BOXONE (047 flags):** LIVE AUTO flags on broker runtime (2026-08-03). OAuth + fresh snapshot still open.
 - [x] **AI-CODING:** LIVE AUTO flags on pipeline + phone force-publish (stale snapshot) + BOXONE task **047** + share instructions (2026-08-03).
 - [x] **BOXONE (P0):** 042 complete — broker live; snapshot fresh today; SFTP published. (earlier; dry_run was ON)
