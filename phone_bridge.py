@@ -50,7 +50,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.5"
+BRIDGE_VERSION = "1.5.6"
 
 # Auto-publish phone dashboard/agents during RTH (config can override).
 DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 30
@@ -554,23 +554,50 @@ def try_refresh_account_snapshot(
             )
             return prior
         client = ETradeClient(cfg)
-        accounts = []
+        accounts: list[Any] = []
         if hasattr(client, "list_accounts"):
             try:
                 accounts = client.list_accounts() or []
             except Exception:
                 accounts = []
+        # Prefer config selected_account (same as etrade_worker). accounts[0] is often
+        # a secondary 1-lot account (#6854) while the live book is on #8804.
         key = ""
         label = ""
-        if accounts and isinstance(accounts[0], dict):
-            key = str(accounts[0].get("account_id_key") or "")
+        try:
+            from etrade_api.config import get_selected_account
+
+            selected = get_selected_account(LONG_CONFIG)
+        except Exception:
+            selected = None
+        if isinstance(selected, dict):
+            key = str(selected.get("account_id_key") or "").strip()
+            label = str(selected.get("display_label") or "").strip()
+        if key and accounts:
+            match = next(
+                (
+                    a
+                    for a in accounts
+                    if isinstance(a, dict)
+                    and str(a.get("account_id_key") or "").strip() == key
+                ),
+                None,
+            )
+            if match:
+                label = str(
+                    match.get("display_label")
+                    or match.get("account_name")
+                    or label
+                )
+        if not key and accounts and isinstance(accounts[0], dict):
+            key = str(accounts[0].get("account_id_key") or "").strip()
             label = str(
                 accounts[0].get("display_label")
                 or accounts[0].get("account_name")
                 or ""
             )
         if not key:
-            key = str(prior.get("account_id_key") or "")
+            key = str(prior.get("account_id_key") or "").strip()
             label = str(prior.get("display_label") or "")
         if not key:
             _set_pull_meta(
@@ -582,6 +609,10 @@ def try_refresh_account_snapshot(
                 message="No account id - serving best local/share snapshot",
             )
             return prior
+        _log(
+            f"live pull account={label or key[:12]} "
+            f"(selected={bool(selected and selected.get('account_id_key'))})"
+        )
         balance = client.get_balance(key) or {}
         positions = client.get_portfolio(key) or []
         live_n = len(positions) if isinstance(positions, list) else 0
@@ -598,7 +629,8 @@ def try_refresh_account_snapshot(
         # Quality gate: partial OAuth / wrong account must not clobber full book
         if prior_n >= _MIN_POS_KEEP_RICHER and live_n < prior_n:
             _log(
-                f"live pull thinner ({live_n} < prior {prior_n}) - keeping fuller snapshot"
+                f"live pull thinner ({live_n} < prior {prior_n}) "
+                f"account={label or key[:12]} - keeping fuller snapshot"
             )
             _set_pull_meta(
                 live=False,
@@ -608,7 +640,8 @@ def try_refresh_account_snapshot(
                 fetched_at=prior.get("fetched_at"),
                 message=(
                     f"Kept fuller snapshot ({prior_n} lots); "
-                    f"live returned {live_n} (re-auth on broker PC if needed)"
+                    f"live returned {live_n} on {label or 'account'} "
+                    f"(check selected_account if wrong book)"
                 ),
             )
             return prior
