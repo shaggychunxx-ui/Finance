@@ -266,15 +266,92 @@ def agent_default_horizon(agent_id: str) -> str:
         return "24h"
 
 
+# Only market-moving themes count as trade-blocking event days.
+# Generic "high impact" news (natural disasters, human-interest, etc.) must not
+# zero the entire order book — that was blocking live trading on 2026-08-04.
+_MARKET_EVENT_KEYWORDS = (
+    "fomc",
+    "federal reserve",
+    "fed rate",
+    "rate decision",
+    "interest rate",
+    "cpi",
+    "pce",
+    "inflation",
+    "nfp",
+    "payroll",
+    "nonfarm",
+    "non-farm",
+    "gdp",
+    "ecb",
+    "boj",
+    "opec",
+    "tariff",
+    "sanctions",
+    "trade war",
+    "debt ceiling",
+    "government shutdown",
+    "default risk",
+    "bank failure",
+    "credit crisis",
+    "invasion",
+    "geopolitical crisis",
+    "oil embargo",
+    "election",
+    "yield curve",
+    "liquidity crisis",
+)
+
+
+def _event_text(row: dict[str, Any]) -> str:
+    parts = [
+        row.get("title"),
+        row.get("name"),
+        row.get("event"),
+        row.get("summary"),
+        row.get("description"),
+        row.get("category"),
+        row.get("type"),
+        row.get("theme"),
+        " ".join(str(x) for x in (row.get("tags") or []) if x),
+    ]
+    return " ".join(str(p) for p in parts if p).lower()
+
+
+def _is_market_moving_event(row: dict[str, Any]) -> bool:
+    """High/critical impact alone is not enough — must look market-relevant."""
+    if row.get("market_impact") is True or row.get("blocks_trading") is True:
+        return True
+    if str(row.get("market_relevance", "")).lower() in {"high", "critical", "market", "trading"}:
+        return True
+    text = _event_text(row)
+    if not text:
+        return False
+    return any(k in text for k in _MARKET_EVENT_KEYWORDS)
+
+
 def is_event_day(*, recorded_at: str | None = None) -> bool:
-    """True when high-impact macro/earnings-style events are active today."""
+    """True when high-impact *market* events are active today.
+
+    Uses FOMC/NFP windows plus agent event feeds that are market-moving.
+    Does **not** treat every high-impact headline (e.g. natural disasters) as a
+    full trade halt — that incorrectly zeroed actionable predictions.
+    """
     when = recorded_at or datetime.now(timezone.utc).isoformat()
     day = when[:10]
     try:
-        from event_calendar import event_flags
+        day_d = datetime.fromisoformat(str(when).replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            day_d = datetime.strptime(day, "%Y-%m-%d").date()
+        except ValueError:
+            day_d = datetime.now(timezone.utc).date()
 
-        flags = event_flags(when=when)
-        if flags.get("fomc_window") or flags.get("nfp_window"):
+    # Direct calendar checks — avoid event_flags() which calls is_event_day (cycle).
+    try:
+        from event_calendar import is_fomc_window, is_nfp_week
+
+        if is_fomc_window(day_d) or is_nfp_week(day_d):
             return True
     except Exception:
         pass
@@ -284,13 +361,19 @@ def is_event_day(*, recorded_at: str | None = None) -> bool:
             if not isinstance(row, dict):
                 continue
             impact = str(row.get("impact", row.get("severity", row.get("risk_level", "")))).lower()
-            if impact not in {"high", "critical", "major", "elevated"}:
+            if impact not in {"high", "critical", "major"}:
+                # "elevated" alone is too noisy for a full book halt
+                continue
+            if not _is_market_moving_event(row):
                 continue
             event_day = str(row.get("date", row.get("event_date", "")))[:10]
+            # Require today's date match — bare active=True was a permanent block.
             if event_day == day:
                 return True
-            if row.get("active") is True:
-                return True
+            if row.get("active") is True and event_day in {"", day}:
+                # active without a foreign date still counts only if market-moving
+                if not event_day or event_day == day:
+                    return True
         return False
 
     for filename in ("world_events.json", "geopolitics.json", "events.json"):
