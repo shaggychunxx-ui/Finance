@@ -50,7 +50,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.6"
+BRIDGE_VERSION = "1.5.7"
 
 # Auto-publish phone dashboard/agents during RTH (config can override).
 DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 30
@@ -1445,59 +1445,230 @@ def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
             }
         )
 
-    # If no live positions, fall back to portfolio target holdings as ideas-as-positions
-    if not positions:
-        for row in portfolio.get("holdings") or []:
-            if not isinstance(row, dict):
-                continue
-            sym = str(row.get("symbol") or "").upper().strip()
-            if not sym:
-                continue
-            price = _f(row.get("price"))
-            alloc = _f(row.get("allocation_usd"))
-            positions.append(
-                {
-                    "symbol": sym,
-                    "side": "TARGET",
-                    "quantity": None,
-                    "price": price,
-                    "market_value": alloc or None,
-                    "cost_basis": None,
-                    "cost_total": None,
-                    "unrealized_pl": None,
-                    "unrealized_pl_pct": _f(row.get("projected_return_pct"))
-                    if row.get("projected_return_pct") is not None
-                    else None,
-                    "weight_pct": row.get("weight_pct"),
-                    "score": row.get("score"),
-                    "projected_return_pct": row.get("projected_return_pct"),
-                    "projected_return_horizon": row.get("projected_return_horizon"),
-                    "confidence": row.get("confidence"),
-                    "role": row.get("role"),
-                    "rationale": row.get("rationale"),
-                    "order_type": row.get("order_type"),
-                    "allocation_usd": alloc,
-                    "display": {
-                        "price": _money(price) if price else "-",
-                        "market_value": _money(alloc) if alloc else "-",
-                        "cost_basis": "-",
-                        "unrealized_pl": "-",
-                        "unrealized_pl_pct": _pct(_f(row.get("projected_return_pct")))
-                        if row.get("projected_return_pct") is not None
-                        else "-",
-                        "quantity": "-",
-                    },
-                }
-            )
+    # Always surface portfolio + Market Predictor ideas for the phone Market
+    # Predictor tab. Live broker lots often have zero overlap with model targets
+    # (transfers / current book vs agent picks), so TARGET rows must still ship
+    # when held positions already exist — not only when the book is empty.
+    positions = _append_prediction_target_rows(positions, portfolio)
 
-    # Portfolio weight by market value if missing
+    # Portfolio weight by market value if missing (held lots only)
     if total_mv > 0:
         for p in positions:
             if p.get("weight_pct") is None and p.get("market_value") is not None:
+                side = str(p.get("side") or "").upper()
+                if side == "TARGET":
+                    continue
                 p["weight_pct"] = round(abs(_f(p["market_value"])) / total_mv * 100.0, 2)
 
-    positions.sort(key=lambda r: abs(_f(r.get("market_value"))), reverse=True)
+    def _sort_key(row: dict[str, Any]) -> tuple[int, float]:
+        side = str(row.get("side") or "").upper()
+        is_target = 1 if side == "TARGET" else 0
+        return (is_target, -abs(_f(row.get("market_value")) or 0.0))
+
+    positions.sort(key=_sort_key)
     return positions
+
+
+def _prediction_row_from_portfolio(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a TARGET position dict from portfolio.json holdings/recommendations."""
+    if not isinstance(row, dict):
+        return None
+    sym = str(row.get("symbol") or "").upper().strip()
+    if not sym:
+        return None
+    score = row.get("score")
+    proj = row.get("projected_return_pct")
+    conf = row.get("confidence")
+    sources = row.get("sources")
+    src_list = (
+        [str(s) for s in sources]
+        if isinstance(sources, (list, tuple, set))
+        else ([str(sources)] if sources else [])
+    )
+    from_predictor = any(
+        "market-predictor" in s.lower() or "market_predictor" in s.lower() for s in src_list
+    )
+    if score is None and proj is None and conf is None and not from_predictor:
+        return None
+    price = _f(row.get("price"))
+    alloc = _f(row.get("allocation_usd"))
+    return {
+        "symbol": sym,
+        "side": "TARGET",
+        "quantity": None,
+        "price": price,
+        "market_value": alloc or None,
+        "cost_basis": None,
+        "cost_total": None,
+        "unrealized_pl": None,
+        "unrealized_pl_pct": _f(proj) if proj is not None else None,
+        "weight_pct": row.get("weight_pct"),
+        "score": score,
+        "projected_return_pct": proj,
+        "projected_return_horizon": row.get("projected_return_horizon"),
+        "confidence": conf,
+        "role": row.get("role") or "market-predictor",
+        "rationale": row.get("rationale"),
+        "why_chosen": row.get("rationale") or "Market Predictor / portfolio target",
+        "order_type": row.get("order_type"),
+        "order_type_reason": row.get("order_type_reason"),
+        "sources": src_list or ["market-predictor"],
+        "allocation_usd": alloc,
+        "transfer_as_deposit": False,
+        "usable_as_capital": False,
+        "proposed_action": "TARGET",
+        "proposed_status": "idea",
+        "display": {
+            "price": _money(price) if price else "-",
+            "market_value": _money(alloc) if alloc else "-",
+            "cost_basis": "-",
+            "cost_total": "-",
+            "unrealized_pl": "-",
+            "unrealized_pl_pct": _pct(_f(proj)) if proj is not None else "-",
+            "quantity": "-",
+            "proposed_action": "TARGET idea",
+        },
+    }
+
+
+def _prediction_rows_from_market_file() -> list[dict[str, Any]]:
+    """Flatten market_predictions.json into TARGET rows (preferred horizons first)."""
+    mp = _read_json(ROOT / "output" / "market_predictions.json")
+    if not mp:
+        return []
+    by_sym: dict[str, dict[str, Any]] = {}
+    # Prefer near-term horizons the phone Market Predictor tab cares about.
+    for horizon in ("24h", "1h", "1wk", "1m", "1mo", "1yr"):
+        bucket = (mp.get("predictions") or {}).get(horizon)
+        if not isinstance(bucket, list):
+            continue
+        for row in bucket:
+            if not isinstance(row, dict):
+                continue
+            sym = str(row.get("symbol") or "").upper().strip()
+            if not sym or sym in by_sym:
+                continue
+            proj = row.get("predicted_return_pct")
+            conf = row.get("confidence")
+            score = row.get("composite_score")
+            if score is None and proj is not None:
+                try:
+                    score = float(proj) / 100.0
+                except (TypeError, ValueError):
+                    score = None
+            sources = row.get("sources") or ["market-predictor"]
+            if isinstance(sources, str):
+                sources = [sources]
+            src_list = [str(s) for s in sources]
+            if "market-predictor" not in {s.lower() for s in src_list}:
+                src_list = list(src_list) + ["market-predictor"]
+            price = _f(row.get("price_at_prediction") or row.get("price"))
+            by_sym[sym] = {
+                "symbol": sym,
+                "side": "TARGET",
+                "quantity": None,
+                "price": price,
+                "market_value": None,
+                "cost_basis": None,
+                "cost_total": None,
+                "unrealized_pl": None,
+                "unrealized_pl_pct": _f(proj) if proj is not None else None,
+                "weight_pct": None,
+                "score": score,
+                "projected_return_pct": proj,
+                "projected_return_horizon": horizon,
+                "confidence": conf,
+                "role": "market-predictor",
+                "rationale": row.get("rationale")
+                or f"Market Predictor {horizon} {row.get('predicted_direction') or ''}".strip(),
+                "why_chosen": row.get("rationale")
+                or f"Market Predictor signal ({horizon})",
+                "order_type": None,
+                "sources": src_list,
+                "predicted_direction": row.get("predicted_direction"),
+                "transfer_as_deposit": False,
+                "usable_as_capital": False,
+                "proposed_action": "TARGET",
+                "proposed_status": "idea",
+                "display": {
+                    "price": _money(price) if price else "-",
+                    "market_value": "-",
+                    "cost_basis": "-",
+                    "cost_total": "-",
+                    "unrealized_pl": "-",
+                    "unrealized_pl_pct": _pct(_f(proj)) if proj is not None else "-",
+                    "quantity": "-",
+                    "proposed_action": f"PRED {horizon}",
+                },
+            }
+    return list(by_sym.values())
+
+
+def _append_prediction_target_rows(
+    positions: list[dict[str, Any]],
+    portfolio: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Ensure Market Predictor symbols appear even when not currently held."""
+    out = list(positions or [])
+    seen = {
+        str(p.get("symbol") or "").upper().strip()
+        for p in out
+        if str(p.get("symbol") or "").strip()
+    }
+
+    # Enrich held lots missing model fields from portfolio / market_predictions.
+    enrich_from_file: dict[str, dict[str, Any]] = {}
+    for idea in _prediction_rows_from_market_file():
+        sym = str(idea.get("symbol") or "").upper()
+        if sym:
+            enrich_from_file[sym] = idea
+    for row in (portfolio.get("holdings") or []) + (portfolio.get("recommendations") or []):
+        idea = _prediction_row_from_portfolio(row if isinstance(row, dict) else {})
+        if not idea:
+            continue
+        sym = str(idea.get("symbol") or "").upper()
+        if sym:
+            # Portfolio holdings prefer over raw predictor when both exist
+            enrich_from_file[sym] = idea
+
+    for p in out:
+        sym = str(p.get("symbol") or "").upper().strip()
+        if not sym:
+            continue
+        extra = enrich_from_file.get(sym)
+        if not extra:
+            continue
+        if p.get("score") is None and extra.get("score") is not None:
+            p["score"] = extra.get("score")
+        if p.get("projected_return_pct") is None and extra.get("projected_return_pct") is not None:
+            p["projected_return_pct"] = extra.get("projected_return_pct")
+            p["projected_return_horizon"] = extra.get("projected_return_horizon")
+        if p.get("confidence") is None and extra.get("confidence") is not None:
+            p["confidence"] = extra.get("confidence")
+        if not p.get("sources") and extra.get("sources"):
+            p["sources"] = extra.get("sources")
+        if not p.get("rationale") and extra.get("rationale"):
+            p["rationale"] = extra.get("rationale")
+
+    # Append TARGET ideas not already in the book (phone Market Predictor tab).
+    for row in portfolio.get("holdings") or []:
+        idea = _prediction_row_from_portfolio(row if isinstance(row, dict) else {})
+        if not idea:
+            continue
+        sym = str(idea.get("symbol") or "").upper()
+        if not sym or sym in seen:
+            continue
+        out.append(idea)
+        seen.add(sym)
+
+    for idea in _prediction_rows_from_market_file():
+        sym = str(idea.get("symbol") or "").upper()
+        if not sym or sym in seen:
+            continue
+        out.append(idea)
+        seen.add(sym)
+
+    return out
 
 
 def _shared_api_for_phone() -> dict[str, Any]:
