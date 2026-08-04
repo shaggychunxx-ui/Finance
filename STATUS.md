@@ -1,43 +1,57 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-04
 **Updated by:** AI-CODING
-**Active owner:** none
+**Active owner:** AI-CODING
 **Act on:** none
 
 ## NOTIFY
 
-_(cleared — AI-CODING acked BOXONE 047 partial; no notify-back)_
+_(none — waiting human API verification code on AI-CODING)_
 
 ---
 
-## >>> ROLE FLIP B — LIVE PARTIAL; OAUTH BLOCKED (2026-08-03) <<<
+## >>> EMERGENCY LIVE RECOVERY (2026-08-04) — OAUTH CODE NEEDED <<<
 
-| Machine | Role | Status |
-|---------|------|--------|
-| **BOXONE** | **broker** | LIVE flags **on**; **blocked** on human E*TRADE OAuth; no orders / no fresh snapshot |
-| **AI-CODING** | **pipeline** | LIVE AUTO flags on; phone pack still from **stale** snapshot; **no** orders |
+| Machine | Role now | Status |
+|---------|----------|--------|
+| **AI-CODING** | **`all`** (pipeline + broker emergency) | LIVE flags on; **API OAuth pending** (`begin_etrade_login` done; need human Accept + verification code) |
+| **BOXONE** | still intended broker (flip B) | LAN up; **no remote shell** from AI-CODING (SSH key denied / WinRM access denied / SMB remote NTLM dead). Website E*TRADE login alone does **not** refresh API tokens. |
 
-### BOXONE 047 partial checklist (acked by AI-CODING)
+### What AI-CODING already fixed (runtime, not git secrets)
 
-| Item | Result |
-|------|--------|
-| Apply live flags | **YES** (local; SMB UNC HelperDrop unreachable) |
-| E*TRADE re-auth | **FAILED** — session expired; need human browser OAuth |
-| account_snapshot today | **NO** (still 2026-08-02) |
-| BOXONE_LIVE_TRADING_ON.txt | **NOT written** |
-| BOXONE_LIVE_FLAGS_APPLIED.txt | **YES** (SFTP) |
+- `deployment.json` → **role=all**, `prefer_dry_run=false`, `publish_quotes=true`
+- `etrade_config` / short → dry_run off, auto/live/day on
+- Wrote `recover_live_trading.py` (post-OAuth verify + snapshot + LIVE markers)
+- Share: `FIX-LIVE-TRADING-BOXONE.ps1`, updated `BOXONE_RUN_THIS.txt`, `AI_CODING_LIVE_RECOVERY.txt`
+- Started **production** `begin_etrade_login.py` — browser authorize URL opened; **oauth_pending.json** present
 
-**PHONE / Human:** LIVE trading is **not fully on**. Broker flags applied, but **E*TRADE session expired on BOXONE**. Phone data still **2026-08-02**. **P0:** human at BOXONE desktop must re-login (below), then BOXONE publishes fresh snapshot + `BOXONE_LIVE_TRADING_ON.txt` and NOTIFYs AI-CODING for phone pack refresh.
+### Human P0 (this PC — AI-CODING browser)
 
-**Human (BOXONE desktop):** `begin_etrade_login.py` then `finish_etrade_login.py <CODE>` (or Unified Trader Connect). After Connected → fresh snapshot + `BOXONE_LIVE_TRADING_ON.txt` + NOTIFY AI-CODING. **No secrets in git/STATUS.**
+1. In the E*TRADE authorize browser tab: sign in → **Accept**
+2. Copy the **verification code**
+3. Tell AI-CODING the code (or run locally):  
+   `cd C:\Users\Box One\Finance` → `.\.venv\Scripts\python.exe finish_etrade_login.py <CODE>`  
+   then `.\.venv\Scripts\python.exe recover_live_trading.py`  
+   then restart stack: `Start ETrade Background Service.vbs`
+4. **Do not** paste codes into git commits. Chat OK for one-shot finish.
+
+### After API Connected
+
+- Fresh `account_snapshot.fetched_at` = today
+- Write LIVE markers / force phone pack
+- Optional later: restore Role flip B (BOXONE=broker only) once BOXONE has API OAuth + remote publish
+
+### Why BOXONE website login did not go live
+
+E*TRADE **API** tokens die past midnight ET. Website session ≠ OAuth API session. BOXONE last published snapshot still **2026-08-02**; quotes meta **2026-07-25**. AI-CODING cannot remote-exec on BOXONE without SSH/WinRM credentials.
 
 ---
 ## Current goal
 
 Finance phone bus live: GitStatus Send → STATUS.md → watchers → agents. **Dropshipping** canonical under `dropshipping/`. **Primary trading goal:** raise daily and total average P/L; groups earn role-scaled points per full 1.0% total P/L.
 
-**Role flip B:** BOXONE = **broker** · AI-CODING = **pipeline**. Tokens only on BOXONE.
+**Role (emergency 2026-08-04):** AI-CODING **role=all** until API live; intended long-term still **Role flip B** (BOXONE broker · AI-CODING pipeline).
 
 **AI workstation hardware (gsw):** ABS tower + UPS ordered. Finance goals/rules and E*TRADE P0 always win over workstation cutover. See Notes + gsw `PAYOFF-ROADMAP.md`.
 
