@@ -2,49 +2,36 @@
 
 **Last updated:** 2026-08-04
 **Updated by:** AI-CODING
-**Active owner:** AI-CODING
+**Active owner:** none
 **Act on:** none
 
 ## NOTIFY
 
-_(none — waiting human API verification code on AI-CODING)_
+_(none)_
 
 ---
 
-## >>> EMERGENCY LIVE RECOVERY (2026-08-04) — OAUTH CODE NEEDED <<<
+## >>> LIVE ON AI-CODING (2026-08-04) — API OAUTH COMPLETE <<<
 
 | Machine | Role now | Status |
 |---------|----------|--------|
-| **AI-CODING** | **`all`** (pipeline + broker emergency) | LIVE flags on; **API OAuth pending** (`begin_etrade_login` done; need human Accept + verification code) |
-| **BOXONE** | still intended broker (flip B) | LAN up; **no remote shell** from AI-CODING (SSH key denied / WinRM access denied / SMB remote NTLM dead). Website E*TRADE login alone does **not** refresh API tokens. |
+| **AI-CODING** | **`all`** (pipeline + broker emergency) | **LIVE** — production API Connected; dry_run off; auto/live/day on; snapshot **today**; LIVE markers written |
+| **BOXONE** | intended long-term broker (flip B) | Not driving orders right now (no remote shell from AI-CODING). Can reclaim broker later after its own API OAuth. |
 
-### What AI-CODING already fixed (runtime, not git secrets)
+### Verified live (runtime)
 
-- `deployment.json` → **role=all**, `prefer_dry_run=false`, `publish_quotes=true`
-- `etrade_config` / short → dry_run off, auto/live/day on
-- Wrote `recover_live_trading.py` (post-OAuth verify + snapshot + LIVE markers)
-- Share: `FIX-LIVE-TRADING-BOXONE.ps1`, updated `BOXONE_RUN_THIS.txt`, `AI_CODING_LIVE_RECOVERY.txt`
-- Started **production** `begin_etrade_login.py` — browser authorize URL opened; **oauth_pending.json** present
+- `finish_etrade_login` → production tokens saved (local only; **no secrets in git**)
+- Worker log: **Connected to E*TRADE (production)**; enhancement fetched fresh quotes
+- `account_snapshot.fetched_at` **2026-08-04** — Individual Brokerage **#8804**, **14** positions, equity ~$4.1k
+- Second account #6854 (1 pos SPCX) visible but **not** selected
+- Share: `BOXONE_LIVE_TRADING_ON.txt` + broker snapshot updated; `status=LIVE` `etrade_connected=True`
+- Flags: role=all, prefer_dry_run=false, dry_run=false, auto_execute/live_trading/day_trading on
 
-### Human P0 (this PC — AI-CODING browser)
+### Optional later
 
-1. In the E*TRADE authorize browser tab: sign in → **Accept**
-2. Copy the **verification code**
-3. Tell AI-CODING the code (or run locally):  
-   `cd C:\Users\Box One\Finance` → `.\.venv\Scripts\python.exe finish_etrade_login.py <CODE>`  
-   then `.\.venv\Scripts\python.exe recover_live_trading.py`  
-   then restart stack: `Start ETrade Background Service.vbs`
-4. **Do not** paste codes into git commits. Chat OK for one-shot finish.
-
-### After API Connected
-
-- Fresh `account_snapshot.fetched_at` = today
-- Write LIVE markers / force phone pack
-- Optional later: restore Role flip B (BOXONE=broker only) once BOXONE has API OAuth + remote publish
-
-### Why BOXONE website login did not go live
-
-E*TRADE **API** tokens die past midnight ET. Website session ≠ OAuth API session. BOXONE last published snapshot still **2026-08-02**; quotes meta **2026-07-25**. AI-CODING cannot remote-exec on BOXONE without SSH/WinRM credentials.
+- Restore Role flip B (BOXONE=broker only) once BOXONE has API OAuth + publish path
+- gsw bus can still assign BOXONE residual if desired
+- Re-auth required again after next midnight ET
 
 ---
 ## Current goal
