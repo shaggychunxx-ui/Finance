@@ -1448,7 +1448,7 @@ def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
     # Always surface portfolio + Market Predictor ideas for the phone Market
     # Predictor tab. Live broker lots often have zero overlap with model targets
     # (transfers / current book vs agent picks), so TARGET rows must still ship
-    # when held positions already exist — not only when the book is empty.
+    # when held positions already exist - not only when the book is empty.
     positions = _append_prediction_target_rows(positions, portfolio)
 
     # Portfolio weight by market value if missing (held lots only)
