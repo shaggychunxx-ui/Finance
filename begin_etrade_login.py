@@ -1,28 +1,73 @@
 #!/usr/bin/env python3
-"""Step 1: Open E*TRADE sign-in and save session for finish_etrade_login.py."""
+"""Step 1: Open E*TRADE sign-in — always against the LIVE runtime root.
+
+Tokens are written where the headless worker reads them
+(%USERPROFILE%\\Finance or FINANCE_RUNTIME), never only into a GitHub clone.
+"""
 
 from __future__ import annotations
 
 import json
+import sys
 import webbrowser
 from pathlib import Path
 
-from etrade_api.config import load_config
-from etrade_api.oauth import start_authorization
+from etrade_runtime import (
+    assert_live_for_broker_action,
+    ensure_sys_path,
+    print_live_banner,
+    resolve_live_root,
+)
 
-ROOT = Path(__file__).resolve().parent
-PENDING_FILE = ROOT / "output" / "oauth_pending.json"
 
+def main(argv: list[str] | None = None) -> int:
+    args = list(argv if argv is not None else sys.argv[1:])
+    allow_non_live = "--allow-non-live" in args
+    if allow_non_live:
+        args = [a for a in args if a != "--allow-non-live"]
+        print("WARNING: --allow-non-live set. Do NOT use for production money path.")
 
-def main() -> int:
-    cfg = load_config()
+    try:
+        decision = resolve_live_root(allow_non_live=allow_non_live)
+    except FileNotFoundError as exc:
+        print(exc)
+        return 1
+
+    print_live_banner(decision)
+    if not allow_non_live:
+        try:
+            assert_live_for_broker_action(decision)
+        except RuntimeError as exc:
+            print(exc)
+            return 1
+
+    ensure_sys_path(decision.root)
+    # Prefer live tree's etrade_api after path insert.
+    if str(decision.root) not in sys.path:
+        sys.path.insert(0, str(decision.root))
+
+    from etrade_api.config import load_config
+    from etrade_api.oauth import start_authorization
+
+    config_path = decision.config_path
+    if not config_path.exists():
+        print(f"Missing E*TRADE config at {config_path}")
+        print("Copy etrade_config.example.json → etrade_config.json on the LIVE runtime and add keys.")
+        return 1
+
+    cfg = load_config(config_path)
+    # Force token file onto the live root (absolute) so finish + worker agree.
+    live_token = decision.token_path
+    cfg.token_path = live_token
+
     pending = start_authorization(cfg)
     oauth = pending.oauth
     token = getattr(oauth, "resource_owner_key", None) or oauth.token.get("oauth_token", "")
     secret = getattr(oauth, "resource_owner_secret", None) or oauth.token.get("oauth_token_secret", "")
 
-    PENDING_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PENDING_FILE.write_text(
+    pending_file = decision.pending_oauth_path
+    pending_file.parent.mkdir(parents=True, exist_ok=True)
+    pending_file.write_text(
         json.dumps(
             {
                 "request_token": token,
@@ -33,7 +78,9 @@ def main() -> int:
                 "consumer_key": cfg.consumer_key,
                 "consumer_secret": cfg.consumer_secret,
                 "callback_url": cfg.callback_url,
-                "token_path": str(cfg.token_path),
+                "token_path": str(live_token),
+                "live_root": str(decision.root),
+                "config_path": str(config_path),
             },
             indent=2,
         ),
@@ -43,8 +90,13 @@ def main() -> int:
     print(pending.authorize_url)
     webbrowser.open(pending.authorize_url)
     print("Browser opened.")
+    print(f"Pending session: {pending_file}")
+    print(f"Tokens will be saved to: {live_token}")
     print("After you sign in and click Accept, copy the verification code from E*TRADE.")
-    print("Then run: finish_etrade_login.py <CODE>")
+    print(f"Then run (from any dir):")
+    print(f"  python \"{decision.root / 'finish_etrade_login.py'}\" <CODE>")
+    print("Or from this clone (it will redirect to live root):")
+    print("  python finish_etrade_login.py <CODE>")
     return 0
 
 

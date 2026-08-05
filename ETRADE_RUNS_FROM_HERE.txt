@@ -24,3 +24,9 @@ Secrets stay local (gitignored):
 
 Old separate install (optional delete after testing):
   %LOCALAPPDATA%\Programs\ETrade Unified Trader
+
+==== MONEY PATH (do not ignore) ====
+Live broker host is THIS machine's %USERPROFILE%\Finance (not Documents\GitHub\Finance).
+OAuth: begin_etrade_login.py / finish_etrade_login.py (auto-redirect tokens to live root).
+Status: python check_etrade_live_status.py  ? only trust LIVE STATUS: OK
+Never claim logged-in/live from a GitHub-clone-only token file.

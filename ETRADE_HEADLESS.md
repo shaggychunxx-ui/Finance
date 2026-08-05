@@ -8,10 +8,17 @@ Desktop **ETrade Trader** / **ETrade Unified Trader** GUIs have been **removed**
 | Need | How |
 |------|-----|
 | Agent research UI | `Finance Agents.bat` / `finance_agents_gui.py` |
-| Connect OAuth | `begin_etrade_login.py` then `finish_etrade_login.py <CODE>` |
+| Connect OAuth | `begin_etrade_login.py` then `finish_etrade_login.py <CODE>` — **always targets live runtime** (`%USERPROFILE%\Finance`), even if you run the script from a GitHub clone |
+| Verify live (required) | `python check_etrade_live_status.py` → must print `LIVE STATUS: OK` |
 | Headless trading worker | `Install ETrade Background.bat` or `Start ETrade Background Service.vbs` |
 | Quiet pipeline/worker | `Start Silent Worker Only.vbs` |
 | Phone monitor | `phone_bridge.py` (LAN) |
+
+### Live runtime (do not confuse with git clone)
+
+- **Live (tokens + worker):** `%USERPROFILE%\Finance` (this PC: `C:\Users\Box One\Finance`), or `FINANCE_RUNTIME`
+- **Git clone:** `Documents\GitHub\Finance` — code/bus only; logging in *only* there does **not** feed the worker
+- Tokens die at **midnight US/Eastern**; full browser OAuth again next day
 
 ## Standalone short worker — retired
 

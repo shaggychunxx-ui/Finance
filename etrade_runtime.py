@@ -157,30 +157,26 @@ def resolve_live_root(
         if clone and not allow_non_live:
             continue
         redirected = None if root == self_root else self_root
-        is_live = (not clone) and (
-            source in {"env", "home_finance", "explicit"}
-            or root == home
-            or (env is not None and root == env)
-        )
-        # home Finance or env is always "live" when it exists
-        if source in {"env", "home_finance"} or (env is not None and root == env):
-            is_live = True
-        if source == "home_finance" or (env is not None and root == env):
-            is_live = True
-        # Explicit non-clone preferred root counts as live.
-        if source == "explicit" and not clone:
-            is_live = True
-        # Self only counts as live when it is the home Finance tree (or env).
-        if source == "self":
-            is_live = (not clone) and (
-                root == home or (env is not None and root == env)
-            )
-            if not is_live and not allow_non_live:
+
+        # Live = non-clone tree from env, %USERPROFILE%\Finance, or explicit.
+        if clone:
+            if not allow_non_live:
                 continue
+            is_live = False
+        elif source in {"env", "home_finance"}:
+            is_live = True
+        elif source == "explicit":
+            is_live = True
+        else:  # self
+            is_live = root == home or (env is not None and root == env)
+            if not is_live and not allow_non_live:
+                # Prefer waiting for a better candidate; if only self remains, fall through last-resort.
+                continue
+
         return LiveRootDecision(
             root=root,
             source=source,
-            is_live=is_live or (allow_non_live and not clone),
+            is_live=is_live,
             is_github_clone=clone,
             redirected_from=redirected if redirected != root else None,
         )

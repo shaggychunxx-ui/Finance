@@ -106,11 +106,31 @@ def main() -> int:
         print(f"    python {decision.root / 'begin_etrade_login.py'}")
         return 1
 
-    if is_expired_for_day(tokens):
+    try:
+        day_expired = is_expired_for_day(tokens)
+    except Exception as exc:
+        # System Python without tzdata must not crash status — approximate ET (UTC-4 summer / -5 winter not perfect).
+        print(f"NOTE: timezone helper failed ({exc}); using UTC-4 day check fallback")
+        from datetime import datetime, timezone, timedelta
+
+        et = timezone(timedelta(hours=-4))
+        ca = float(getattr(tokens, "created_at", 0) or 0)
+        day_expired = (
+            datetime.fromtimestamp(ca, tz=et).date()
+            < datetime.now(tz=et).date()
+            if ca
+            else True
+        )
+
+    if day_expired:
         print("LIVE STATUS: FAIL — token past midnight ET (full re-login required)")
         return 1
 
-    if needs_renewal(tokens):
+    try:
+        needs = needs_renewal(tokens)
+    except Exception:
+        needs = False
+    if needs:
         try:
             tokens = renew_access_token(config, tokens)
             print("token: renewed (idle timer)")

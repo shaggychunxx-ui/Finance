@@ -58,3 +58,14 @@ All intentional commits need a **subject + Notes body** (why / paths / verify). 
 
 - Prefer report / config / UI-bridge work over live trading actions unless STATUS/Next explicitly asks for a trade action and policy allows it.
 - Runtime trading stack may live outside this clone (e.g. `C:\Users\Box One\Finance`); do not commit secrets from runtime into this public repo.
+
+## 6. Live runtime vs Git clone (money path)
+
+| Tree | Role |
+|------|------|
+| `%USERPROFILE%\Finance` (e.g. `C:\Users\Box One\Finance`) | **Live** — worker, OAuth tokens, orders |
+| `Documents\GitHub\Finance` | Bus / code only — **not** the broker host |
+
+- OAuth CLIs **must** write tokens to the live root (`etrade_runtime.resolve_live_root`).
+- Agents **must not** claim “logged in” or “trading live” without `check_etrade_live_status.py` OK on the live root + worker log `Connected to E*TRADE (production)`.
+- False green on login/live status is a **critical** defect (real money risk).
