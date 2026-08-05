@@ -12,7 +12,7 @@ Endpoints (all JSON; require X-Bridge-Token except /health):
   GET  /api/agents         # specialist agents + analysis/findings/projections
   GET  /api/auth/status
   POST /api/oauth/start
-  POST /api/oauth/finish   body: {"verifier": "..."}
+  POST /api/oauth/finish   body: {"verifier"|"oauth_verifier"|"code": "..."}
   POST /api/controls       body: {"side":"long|short|all", "dry_run"?, "auto_execute"?, "paused"?}
   POST /api/stop_all
   POST /api/resume_all
@@ -50,7 +50,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.7"
+BRIDGE_VERSION = "1.5.8"
 
 # Auto-publish phone dashboard/agents during RTH (config can override).
 DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 30
@@ -2958,9 +2958,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 self._send(200, auth_status())
                 return
             if path in ("/api/app_update", "/api/apk"):
-                # Prefer latest published phone APK next to the Oxygen-OS checkout, then Desktop copy.
+                # Prefer latest published APK: Oxygen-OS (update channel), then Moto, Desktop, runtime.
                 candidates = [
                     Path.home() / "Documents" / "GitHub" / "Oxygen-OS" / "etrade-app" / "dist" / "ETradeTrader.apk",
+                    Path.home() / "Documents" / "GitHub" / "Moto" / "etrade-app" / "dist" / "ETradeTrader.apk",
                     Path.home() / "Desktop" / "ETradeTrader.apk",
                     ROOT / "ETradeTrader.apk",
                 ]
@@ -2997,7 +2998,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 self._send(200, oauth_start())
                 return
             if path == "/api/oauth/finish":
-                self._send(200, oauth_finish(str(body.get("verifier") or "")))
+                verifier = (
+                    body.get("verifier")
+                    or body.get("oauth_verifier")
+                    or body.get("code")
+                    or body.get("verification_code")
+                    or ""
+                )
+                self._send(200, oauth_finish(str(verifier)))
                 return
             if path in ("/api/accounts/select", "/api/select_account"):
                 self._send(

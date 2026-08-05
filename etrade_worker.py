@@ -548,8 +548,11 @@ def _read_service_lock_pid() -> int:
     if not LOCK_FILE.exists():
         return 0
     try:
-        return int(LOCK_FILE.read_text(encoding="utf-8").strip().split()[0])
-    except (OSError, ValueError):
+        parts = LOCK_FILE.read_text(encoding="utf-8").strip().split()
+        if not parts:
+            return 0
+        return int(parts[0])
+    except (OSError, ValueError, IndexError):
         return 0
 
 
