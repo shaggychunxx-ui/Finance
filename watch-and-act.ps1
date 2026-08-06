@@ -53,10 +53,35 @@ function Invoke-Git {
     if (-not $script:GitExe) {
         return @{ Code = 127; Text = "git not found (install Git for Windows or GitHub Desktop)" }
     }
-    $output = & $script:GitExe @GitArgs 2>&1 | ForEach-Object { "$_" }
-    return @{
-        Code = $LASTEXITCODE
-        Text = ($output -join " | ")
+    # git.exe is CUI — call-operator can flash a console under Win11. Use CreateNoWindow.
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $script:GitExe
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.WorkingDirectory = $repo
+        $quoted = foreach ($a in $GitArgs) {
+            if ($null -eq $a) { '""' }
+            elseif ($a -match '[\s"]') { '"' + ($a -replace '"', '\"') + '"' }
+            else { $a }
+        }
+        $psi.Arguments = [string]::Join(" ", $quoted)
+        $p = New-Object System.Diagnostics.Process
+        $p.StartInfo = $psi
+        $null = $p.Start()
+        $stdout = $p.StandardOutput.ReadToEnd()
+        $stderr = $p.StandardError.ReadToEnd()
+        $p.WaitForExit()
+        $combined = @($stdout, $stderr) | ForEach-Object { $_ -split "`r?`n" } | Where-Object { $_ -ne "" }
+        return @{
+            Code = $p.ExitCode
+            Text = ($combined -join " | ")
+        }
+    }
+    catch {
+        return @{ Code = 1; Text = "git launch failed: $($_.Exception.Message)" }
     }
 }
 
