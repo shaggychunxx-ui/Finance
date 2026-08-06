@@ -807,6 +807,57 @@ def _execute_due(state: dict[str, Any], settings: dict[str, Any], sig: str) -> b
     return (time.time() - float(last)) >= interval
 
 
+def _live_blocker_path() -> Path:
+    return OUTPUT / "LIVE_BLOCKER.txt"
+
+
+def _write_live_blocker(reason: str) -> None:
+    """Surface session death so open-RTH failure is obvious (not only buried in log)."""
+    path = _live_blocker_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"LIVE BLOCKER\n"
+            f"time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"machine: {os.environ.get('COMPUTERNAME', '')}\n"
+            f"reason: {reason}\n"
+            f"fix: python begin_etrade_login.py then finish_etrade_login.py <CODE>\n"
+            f"verify: python check_etrade_live_status.py\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _clear_live_blocker() -> None:
+    path = _live_blocker_path()
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _keepalive_session(client: ETradeClient | None, config_path: Path = CONFIG_PATH) -> ETradeClient | None:
+    """Hit a cheap API path every cycle so the 2h idle timer never trips during RTH.
+
+    This is mandatory for live trading: if the token goes inactive and renew
+    fails, the market can open with live flags on but zero ability to trade.
+    """
+    if client is None:
+        return _connect_client(config_path)
+    try:
+        client.list_accounts()
+        _clear_live_blocker()
+        return client
+    except Exception as exc:
+        msg = str(exc)
+        _log(f"E*TRADE keepalive failed: {msg}")
+        if "session expired" in msg.lower() or "401" in msg or "expired" in msg.lower():
+            _write_live_blocker(msg)
+        return _connect_client(config_path)
+
+
 def _connect_client(config_path: Path = CONFIG_PATH) -> ETradeClient | None:
     try:
         config = load_config(config_path)
@@ -817,15 +868,18 @@ def _connect_client(config_path: Path = CONFIG_PATH) -> ETradeClient | None:
     tokens = load_tokens(config.token_path, config.sandbox)
     if not tokens:
         _log("No saved E*TRADE token - connect via the GUI once.")
+        _write_live_blocker("No saved E*TRADE token")
         return None
 
     if is_expired_for_day(tokens):
         _log("E*TRADE token expired (past midnight ET). Reconnect in the GUI.")
+        _write_live_blocker("Token expired past midnight US/Eastern — full browser OAuth required")
         return None
 
     if needs_renewal(tokens):
         try:
             tokens = renew_access_token(config, tokens)
+            _log("Token renewed (idle timer reset).")
         except Exception as exc:
             _log(f"Token renewal skipped ({exc}); using existing token.")
 
@@ -833,9 +887,11 @@ def _connect_client(config_path: Path = CONFIG_PATH) -> ETradeClient | None:
         client = ETradeClient(config, tokens)
         client.list_accounts()
         _log(f"Connected to E*TRADE ({'sandbox' if config.sandbox else 'production'}).")
+        _clear_live_blocker()
         return client
     except Exception as exc:
         _log(f"E*TRADE connection failed: {exc}")
+        _write_live_blocker(str(exc))
         return None
 
 
@@ -2147,6 +2203,7 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
                         _log(f"Broker pipeline fallback note: {exc}")
 
                 if role in {"broker", "all"}:
+                    # Keepalive every cycle (not every 30 min) — 2h idle kills live at open.
                     if not client or (time.time() - client_refreshed_at) > 1800:
                         try:
                             client = _connect_client(config_path)
@@ -2154,6 +2211,10 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
                         except Exception as exc:
                             _log(f"E*TRADE connect failed (will retry): {exc}")
                             client = None
+                    else:
+                        client = _keepalive_session(client, config_path)
+                        if client is None:
+                            client_refreshed_at = 0.0
 
                     if client:
                         if (time.time() - last_quote_publish) >= max(15.0, quote_every):

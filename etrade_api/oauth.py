@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import webbrowser
@@ -431,10 +432,20 @@ def revoke_access_token(config: ETradeConfig, tokens: ETradeTokens) -> None:
 
 
 def _save_tokens(token_path: str | Path, tokens: ETradeTokens) -> None:
+    """Atomic write so concurrent worker/bridge touches never corrupt the file."""
     path = Path(token_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(asdict(tokens), handle, indent=2)
+    payload = json.dumps(asdict(tokens), indent=2) + "\n"
+    tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
+    try:
+        tmp.write_text(payload, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def load_tokens(token_path: str | Path, sandbox: bool | None = None) -> ETradeTokens | None:

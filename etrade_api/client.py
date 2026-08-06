@@ -70,12 +70,25 @@ class ETradeClient:
         response = self._session().request(method, url, timeout=30, **kwargs)
         if response.status_code == 401:
             try:
-                self.tokens = renew_access_token(self.config, self.tokens)
+                # Reload from disk first — another process may have renewed already.
+                fresh = load_tokens(self.config.token_path, self.config.sandbox)
+                if fresh and (
+                    fresh.oauth_token != self.tokens.oauth_token
+                    or fresh.oauth_token_secret != self.tokens.oauth_token_secret
+                    or (fresh.last_used_at or 0) > (self.tokens.last_used_at or 0)
+                ):
+                    self.tokens = fresh
+                else:
+                    self.tokens = renew_access_token(self.config, self.tokens)
                 response = self._session().request(method, url, timeout=30, **kwargs)
             except Exception as exc:
                 raise RuntimeError(
                     "E*TRADE session expired. Disconnect and click Connect to sign in again."
                 ) from exc
+            if response.status_code == 401:
+                raise RuntimeError(
+                    "E*TRADE session expired. Disconnect and click Connect to sign in again."
+                )
         response.raise_for_status()
         self.tokens = touch_tokens(self.config, self.tokens)
         if not response.text:
