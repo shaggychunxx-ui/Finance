@@ -1462,7 +1462,20 @@ def main() -> int:
     if args.json:
         print(json.dumps(result, indent=2))
     else:
-        PRINTERS[args.agent](result)
+        printer = PRINTERS.get(args.agent)
+        if printer:
+            printer(result)
+        else:
+            # Agents without a dedicated console printer still run successfully
+            summary = (result or {}).get("summary") or {}
+            meta = (result or {}).get("meta") or {}
+            print(f"  {meta.get('agent') or args.agent}")
+            if summary:
+                for k, v in list(summary.items())[:12]:
+                    print(f"    • {k}: {v}")
+            recs = (result or {}).get("recommendations") or []
+            for r in recs[:5]:
+                print(f"    • {r}")
         if args.output:
             print(f"  Full report saved to {args.output}")
             if args.agent == "agriculture":

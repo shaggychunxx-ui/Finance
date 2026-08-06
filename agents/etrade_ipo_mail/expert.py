@@ -33,6 +33,8 @@ from agents.base import BaseExpert
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT = ROOT / "output" / "etrade_ipo_mail.json"
 DEFAULT_INBOX = ROOT / "output" / "etrade_ipo_mail_inbox.json"
+# Written by Grok Gmail MCP / Sync-GmailIpoInbox so agents share the same mailbox view
+GMAIL_CACHE = Path.home() / ".gmail-link" / "ipo_inbox_cache.json"
 GMAIL_POLL_CANDIDATES = [
     Path.home() / "Documents" / "GitHub" / "grok-shared-workspace" / "work" / "gmail-api" / "poll_etrade_ipo.py",
 ]
@@ -97,23 +99,55 @@ def _try_gmail_api_poll() -> list[dict[str, Any]]:
         if not script.is_file():
             continue
         try:
+            report = script.parent / "reports" / "poll-latest.json"
             proc = subprocess.run(
-                [sys.executable, str(script), "--json"],
+                [sys.executable, str(script), "--out", str(report)],
                 capture_output=True,
                 text=True,
-                timeout=90,
+                timeout=120,
                 cwd=str(script.parent),
                 check=False,
             )
-            if proc.returncode != 0 or not proc.stdout.strip():
+            if proc.returncode != 0 and not report.is_file():
                 continue
-            data = json.loads(proc.stdout)
+            # Prefer structured report written by poll_etrade_ipo.py
+            data: dict[str, Any] | list[Any] | None = None
+            if report.is_file():
+                try:
+                    data = json.loads(report.read_text(encoding="utf-8"))
+                except Exception:
+                    data = None
+            if data is None and proc.stdout.strip():
+                try:
+                    data = json.loads(proc.stdout)
+                except Exception:
+                    continue
             if isinstance(data, dict) and data.get("ok") is False:
                 continue
             if isinstance(data, dict):
-                msgs = data.get("messages") or data.get("hits") or []
-                if isinstance(msgs, list):
-                    return [m for m in msgs if isinstance(m, dict)]
+                msgs = (
+                    data.get("real_ipo_mail")
+                    or data.get("candidates_sample")
+                    or data.get("messages")
+                    or data.get("hits")
+                    or []
+                )
+                if isinstance(msgs, list) and msgs:
+                    # normalize id fields for parse_messages
+                    out: list[dict[str, Any]] = []
+                    for m in msgs:
+                        if not isinstance(m, dict):
+                            continue
+                        mid = m.get("id") or m.get("message_id")
+                        out.append(
+                            {
+                                **m,
+                                "message_id": mid,
+                                "id": mid,
+                                "from": m.get("from") or m.get("from_addr") or "",
+                            }
+                        )
+                    return out
             if isinstance(data, list):
                 return [m for m in data if isinstance(m, dict)]
         except Exception:
@@ -195,12 +229,18 @@ class EtradeIpoMailAnalyst(BaseExpert):
         super().__init__(pipeline_context=pipeline_context, agent_id="etrade-ipo-mail")
 
     def collect_raw(self) -> tuple[list[dict[str, Any]], str]:
+        # 1) Durable Gmail API (token.json) — preferred for unattended worker
         api_msgs = _try_gmail_api_poll()
         if api_msgs:
             return api_msgs, "gmail-api-poll"
-        inbox = _load_inbox_file(DEFAULT_INBOX)
-        if inbox:
-            return inbox, "seed-inbox-file"
+        # 2) Grok Gmail MCP / session bridge (same mailbox Grok can read)
+        for cache, label in (
+            (GMAIL_CACHE, "gmail-mcp-cache"),
+            (DEFAULT_INBOX, "seed-inbox-file"),
+        ):
+            inbox = _load_inbox_file(cache)
+            if inbox:
+                return inbox, label
         return [], "none"
 
     def analyze(self) -> dict[str, Any]:
@@ -242,8 +282,10 @@ class EtradeIpoMailAnalyst(BaseExpert):
                 "analyzed_at": _utc_now(),
                 "data_sources": [source],
                 "mail_source_note": (
-                    "Gmail forward path (e.g. IPO mailbox -> shaggychunxx@gmail.com). "
-                    "Unattended: work/gmail-api + ~/.gmail-link. Interactive MCP is session-only."
+                    "Gmail path: (1) ~/.gmail-link/token.json + poll_etrade_ipo.py, "
+                    "(2) ~/.gmail-link/ipo_inbox_cache.json synced from Grok Gmail MCP, "
+                    "(3) output/etrade_ipo_mail_inbox.json seed. "
+                    "If Grok can read Gmail, agents use the MCP cache bridge."
                 ),
                 "new_offerings_count": len(offerings),
                 "temperature": self.temperature,
