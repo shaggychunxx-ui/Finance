@@ -43,25 +43,33 @@ class ETradeClient:
         session.headers.update({"Accept": "application/json"})
         return session
 
+    def _reload_tokens_from_disk(self) -> None:
+        """Always prefer the on-disk token — phone/worker/bridge share one file."""
+        fresh = load_tokens(self.config.token_path, sandbox=None)
+        if fresh:
+            self.tokens = fresh
+
     def _ensure_fresh_token(self) -> None:
-        """Refresh the access token proactively, as soon as it expires.
+        """Reload disk tokens, then renew only if idle (inactive), not if still active.
 
-        E*TRADE access tokens go inactive after ~2 hours without use and die
-        outright at midnight US/Eastern. Rather than waiting for a 401 from
-        the API, check both conditions before every request and renew
-        immediately so agents polling E*TRADE never hit a stale token.
+        E*TRADE: renew is for *inactive* tokens (2h idle). Calling renew on a still-
+        active token can yield oauth_problem=token_rejected and kill the session.
         """
-
+        self._reload_tokens_from_disk()
+        if not self.tokens:
+            raise RuntimeError(
+                "No E*TRADE access token found. Run: python begin_etrade_login.py"
+            )
         if is_expired_for_day(self.tokens):
             raise RuntimeError(
                 "E*TRADE access token expired (past midnight US/Eastern). "
-                "Run: python -m etrade_api auth"
+                "Run: python begin_etrade_login.py"
             )
         if needs_renewal(self.tokens):
             try:
                 self.tokens = renew_access_token(self.config, self.tokens)
             except Exception:
-                # Token may still be active; proceed and let the API request decide.
+                # Still try the request — token may remain active until true reject.
                 pass
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
@@ -69,26 +77,28 @@ class ETradeClient:
         url = f"{self.config.api_base}{path}"
         response = self._session().request(method, url, timeout=30, **kwargs)
         if response.status_code == 401:
+            # 1) Another process may have written newer tokens (phone OAuth finish).
+            self._reload_tokens_from_disk()
+            response = self._session().request(method, url, timeout=30, **kwargs)
+        if response.status_code == 401:
+            # 2) Inactive token — renew once (do not renew on every 401 blindly first).
             try:
-                # Reload from disk first — another process may have renewed already.
-                fresh = load_tokens(self.config.token_path, self.config.sandbox)
-                if fresh and (
-                    fresh.oauth_token != self.tokens.oauth_token
-                    or fresh.oauth_token_secret != self.tokens.oauth_token_secret
-                    or (fresh.last_used_at or 0) > (self.tokens.last_used_at or 0)
-                ):
-                    self.tokens = fresh
-                else:
-                    self.tokens = renew_access_token(self.config, self.tokens)
+                self.tokens = renew_access_token(self.config, self.tokens)
                 response = self._session().request(method, url, timeout=30, **kwargs)
             except Exception as exc:
+                body = ""
+                try:
+                    body = (response.text or "")[:200]
+                except Exception:
+                    pass
                 raise RuntimeError(
                     "E*TRADE session expired. Disconnect and click Connect to sign in again."
+                    + (f" ({body})" if body else "")
                 ) from exc
-            if response.status_code == 401:
-                raise RuntimeError(
-                    "E*TRADE session expired. Disconnect and click Connect to sign in again."
-                )
+        if response.status_code == 401:
+            raise RuntimeError(
+                "E*TRADE session expired. Disconnect and click Connect to sign in again."
+            )
         response.raise_for_status()
         self.tokens = touch_tokens(self.config, self.tokens)
         if not response.text:

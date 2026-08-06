@@ -60,6 +60,28 @@ def main(argv: list[str] | None = None) -> int:
     live_token = decision.token_path
     cfg.token_path = live_token
 
+    force = "--force" in args
+    if force:
+        args = [a for a in args if a != "--force"]
+
+    # CRITICAL: starting a new OAuth Accept can invalidate the current access token
+    # (phone + PC share one consumer key). Never begin while session is still live.
+    if not force:
+        try:
+            from etrade_api.oauth import session_is_live
+
+            live_ok, detail = session_is_live(cfg)
+            if live_ok:
+                print("E*TRADE session is already LIVE — not starting a new OAuth.")
+                print(f"  detail: {detail}")
+                print("  Starting a new login can invalidate the working token (phone + PC).")
+                print("  Use --force only if you intentionally want to re-auth.")
+                print(f"  Verify: python \"{decision.root / 'check_etrade_live_status.py'}\"")
+                return 0
+            print(f"Session not live ({detail}) — starting OAuth...")
+        except Exception as exc:
+            print(f"Live probe failed ({exc}) — starting OAuth...")
+
     pending = start_authorization(cfg)
     oauth = pending.oauth
     token = getattr(oauth, "resource_owner_key", None) or oauth.token.get("oauth_token", "")

@@ -50,7 +50,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.9"
+BRIDGE_VERSION = "1.6.0"
 
 # Auto-publish phone dashboard/agents during RTH (config can override).
 DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 30
@@ -2544,11 +2544,26 @@ def auth_status() -> dict[str, Any]:
 
 def oauth_start() -> dict[str, Any]:
     from etrade_api.config import load_config
-    from etrade_api.oauth import start_authorization
+    from etrade_api.oauth import session_is_live, start_authorization
 
     cfg = load_config(LONG_CONFIG)
     if not cfg.consumer_key or not cfg.consumer_secret:
         raise RuntimeError("Missing consumer key/secret in etrade_config.json on the PC")
+    # CRITICAL: phone + PC share one E*TRADE access token. Starting a new OAuth
+    # from the phone and Accept-ing invalidates the PC worker session (token_rejected).
+    live_ok, detail = session_is_live(cfg)
+    if live_ok:
+        return {
+            "ok": True,
+            "already_connected": True,
+            "authorize_url": None,
+            "sandbox": cfg.sandbox,
+            "message": (
+                "PC already has a live E*TRADE session — no new login needed. "
+                "Use Refresh for account data. Starting OAuth here would disconnect the PC."
+            ),
+            "detail": detail,
+        }
     pending = start_authorization(cfg)
     oauth = pending.oauth
     token = getattr(oauth, "resource_owner_key", None) or oauth.token.get("oauth_token", "")

@@ -24,9 +24,13 @@ from .config import AUTHORIZE_URL, ETradeConfig, credential_hint
 # minutes without a request. Renewal is attempted a little before the
 # official 2-hour inactivity limit to avoid ever hitting a 401 in practice.
 INACTIVITY_LIMIT_MINUTES = 120
-RENEW_BEFORE_MINUTES = 10
+# Renew well before 2h idle — keep-alive should hit API every ~10–15 min so this rarely fires.
+RENEW_BEFORE_MINUTES = 30
 OAUTH_HTTP_TIMEOUT = 20
+# Proactive keep-alive interval used by worker / keepalive script (seconds).
+KEEPALIVE_INTERVAL_SEC = 10 * 60
 _ETRADE_TIMEZONE: ZoneInfo | None = None
+_TOKEN_LOCK_TIMEOUT_SEC = 8.0
 
 
 def etrade_timezone() -> ZoneInfo:
@@ -431,13 +435,58 @@ def revoke_access_token(config: ETradeConfig, tokens: ETradeTokens) -> None:
         token_path.unlink()
 
 
+def _token_lock_path(token_path: Path) -> Path:
+    return token_path.with_suffix(token_path.suffix + ".lock")
+
+
+def _acquire_token_lock(token_path: Path, timeout_sec: float = _TOKEN_LOCK_TIMEOUT_SEC):
+    """Cross-process exclusive lock (Windows msvcrt). Returns open lock file handle."""
+    import msvcrt
+
+    lock_path = _token_lock_path(token_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+b")
+    deadline = time.time() + timeout_sec
+    while True:
+        try:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            return handle
+        except OSError:
+            if time.time() >= deadline:
+                try:
+                    handle.close()
+                except OSError:
+                    pass
+                raise TimeoutError(f"Token lock timeout: {lock_path}")
+            time.sleep(0.05)
+
+
+def _release_token_lock(handle) -> None:
+    import msvcrt
+
+    if handle is None:
+        return
+    try:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass
+    try:
+        handle.close()
+    except OSError:
+        pass
+
+
 def _save_tokens(token_path: str | Path, tokens: ETradeTokens) -> None:
-    """Atomic write so concurrent worker/bridge touches never corrupt the file."""
+    """Atomic + locked write so worker/bridge/phone never corrupt tokens."""
     path = Path(token_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(asdict(tokens), indent=2) + "\n"
+    lock = None
     tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
     try:
+        lock = _acquire_token_lock(path)
         tmp.write_text(payload, encoding="utf-8")
         os.replace(tmp, path)
     finally:
@@ -446,6 +495,7 @@ def _save_tokens(token_path: str | Path, tokens: ETradeTokens) -> None:
                 tmp.unlink()
             except OSError:
                 pass
+        _release_token_lock(lock)
 
 
 def load_tokens(token_path: str | Path, sandbox: bool | None = None) -> ETradeTokens | None:
@@ -453,8 +503,18 @@ def load_tokens(token_path: str | Path, sandbox: bool | None = None) -> ETradeTo
     if not path.exists():
         return None
 
-    with path.open(encoding="utf-8") as handle:
-        raw = json.load(handle)
+    lock = None
+    try:
+        try:
+            lock = _acquire_token_lock(path)
+        except TimeoutError:
+            lock = None  # best-effort read if lock busy
+        with path.open(encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    finally:
+        _release_token_lock(lock)
 
     tokens = ETradeTokens(
         oauth_token=raw.get("oauth_token", ""),
@@ -468,3 +528,48 @@ def load_tokens(token_path: str | Path, sandbox: bool | None = None) -> ETradeTo
     if not tokens.oauth_token or not tokens.oauth_token_secret:
         return None
     return tokens
+
+
+def session_is_live(config: ETradeConfig) -> tuple[bool, str]:
+    """True if saved tokens work against list-accounts right now (cheap probe)."""
+    tokens = load_tokens(config.token_path, sandbox=None)
+    if not tokens:
+        return False, "no_tokens"
+    if is_expired_for_day(tokens):
+        return False, "past_midnight_et"
+    try:
+        oauth = OAuth1Session(
+            client_key=config.consumer_key,
+            client_secret=config.consumer_secret,
+            resource_owner_key=tokens.oauth_token,
+            resource_owner_secret=tokens.oauth_token_secret,
+            signature_method="HMAC-SHA1",
+        )
+        url = f"{config.api_base}/v1/accounts/list.json"
+        resp = oauth.get(url, timeout=OAUTH_HTTP_TIMEOUT, headers={"Accept": "application/json"})
+        if resp.status_code == 401:
+            # Only renew if idle — renew on active tokens can token_rejected.
+            if needs_renewal(tokens):
+                try:
+                    tokens = renew_access_token(config, tokens)
+                    oauth = OAuth1Session(
+                        client_key=config.consumer_key,
+                        client_secret=config.consumer_secret,
+                        resource_owner_key=tokens.oauth_token,
+                        resource_owner_secret=tokens.oauth_token_secret,
+                        signature_method="HMAC-SHA1",
+                    )
+                    resp = oauth.get(
+                        url, timeout=OAUTH_HTTP_TIMEOUT, headers={"Accept": "application/json"}
+                    )
+                except Exception as exc:
+                    return False, f"renew_failed: {exc}"
+            else:
+                return False, f"token_rejected: {(resp.text or '')[:120]}"
+        if resp.status_code >= 400:
+            return False, f"http_{resp.status_code}: {(resp.text or '')[:120]}"
+        tokens.last_used_at = time.time()
+        _save_tokens(config.token_path, tokens)
+        return True, "ok"
+    except Exception as exc:
+        return False, str(exc)
