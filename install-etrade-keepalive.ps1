@@ -1,4 +1,4 @@
-# install-etrade-keepalive.ps1 — keep E*TRADE session alive all RTH day
+﻿# install-etrade-keepalive.ps1 â€” keep E*TRADE session alive all RTH day
 # powershell -ExecutionPolicy Bypass -File .\install-etrade-keepalive.ps1
 
 $ErrorActionPreference = "Stop"
@@ -17,7 +17,7 @@ Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Silent
 
 $action = New-ScheduledTaskAction -Execute $py -Argument "`"$script`"" -WorkingDirectory $live
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
-    -RepetitionInterval (New-TimeSpan -Minutes 10) `
+    -RepetitionInterval (New-TimeSpan -Minutes 5) `
     -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
@@ -26,9 +26,10 @@ $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interac
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
     -Settings $settings -Principal $principal `
-    -Description "Every 10 min: probe E*TRADE list-accounts to prevent 2h idle disconnect" `
+    -Description "every 5 min: probe E*TRADE list-accounts to prevent 2h idle disconnect" `
     -Force | Out-Null
 
-Write-Host "Installed $taskName (every 10 minutes)"
+Write-Host "Installed $taskName (every 5 minutes)"
 Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 & $py $script
+
