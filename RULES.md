@@ -1,18 +1,23 @@
 # Team rules — Finance phone bus
 
-**Applies to:** GROMIT (main / default background) · BOXONE (helper / broker host) · AI-CODING (helper spare) · PHONE-OXYGEN (human mobile) · unattended agents in this repo
+**Applies to:** GROMIT (sole Finance host) · PHONE-OXYGEN (human mobile) · unattended agents  
+**Does not apply Finance work to:** BOXONE · LAPTOP · AI-CODING (unless human overrides)
 
-This repo is a **GitStatus phone bus** plus trading code. Phone writes `STATUS.md`; PC watchers wake headless Grok when assigned.
+This repo is a **GitStatus phone bus** plus trading code. Phone writes `STATUS.md`; GROMIT watchers wake headless Grok when assigned.
 
-### Background / unattended work
+### Host policy (human 2026-08-06)
 
-**GROMIT (Gromit) runs all background tasks** for this repo by default (phone Send, agents, pipeline code work, automation).
+**All Finance is off BOXONE.** Dual-PC broker/pipeline split is **retired**.
 
 | Work | Who |
 |------|-----|
-| Default agent / phone / coding / pipeline config | **GROMIT** |
-| Broker host, live Finance runtime on BOXONE, must-run-there | **BOXONE** only when `Act on: BOXONE` / `target: BOXONE` |
-| Explicit spare-seat assign | **AI-CODING** only when assigned |
+| Broker (E*TRADE OAuth, worker, orders, quotes) | **GROMIT only** |
+| Pipeline (agents, fusion, backtests) | **GROMIT only** |
+| Phone bus / STATUS / tasks | **GROMIT** (`Act on: GROMIT`) |
+| BOXONE / LAPTOP / AI-CODING | **No Finance** — do not assign `target: BOXONE` for Finance |
+
+Live runtime root on GROMIT: `%USERPROFILE%\Finance` (or `FINANCE_RUNTIME`).  
+Git clone `Documents\GitHub\Finance` = bus/code only.
 
 ---
 
@@ -20,9 +25,7 @@ This repo is a **GitStatus phone bus** plus trading code. Phone writes `STATUS.m
 
 | Role | Machine | Authority |
 |------|---------|-----------|
-| **Main / background default** | **GROMIT** | Default home for Finance agent work and unattended Grok. Plans; may assign host-local work to BOXONE. |
-| **Helper / broker host** | **BOXONE** | Executes only assigned work (especially broker / live runtime). Does not invent tasks for main. |
-| **Helper / spare** | **AI-CODING** | Only when explicitly assigned. |
+| **Sole Finance host** | **GROMIT** | All trading runtime, agents, automation, phone bus execution. |
 | **Mobile** | **PHONE-OXYGEN** | Human via GitStatus / GitHub. Never `Act on: PHONE`. Default **`Act on: GROMIT`**. |
 
 Human overrides everything.
@@ -37,19 +40,15 @@ Human overrides everything.
 2. Update `STATUS.md`:
    - **Done** — one clear line
    - **Active owner:** `none`
-   - **Act on:** **GROMIT** when main should see result; **BOXONE** when broker host must act; else **`none`** if human-only / quiet
-   - **`NOTIFY:`** when notifying a peer
+   - **Act on:** **`none`** when quiet; **`GROMIT`** only if more GROMIT work remains
+   - **`NOTIFY:`** rare (phone reads STATUS)
 3. Clear completed items from **Next**.
 4. No secrets in git (keys, tokens, account numbers, bridge tokens).
 
-### When you receive a peer NOTIFY
-
-1. Ack once under **Done**.
-2. Set **Act on: none**. Do **not** notify back.
-
 ### Idle
 
-If **Act on** is not you and no pending `target:` matches you → **exit without editing STATUS**. Do not claim unassigned background work (that is GROMIT’s job).
+If **Act on** is not you → **exit without editing STATUS**.  
+BOXONE / LAPTOP / AI-CODING: if woken on Finance bus by mistake → **exit**; do not claim Finance work.
 
 ---
 
@@ -57,7 +56,7 @@ If **Act on** is not you and no pending `target:` matches you → **exit without
 
 - No heartbeat STATUS edits when idle.
 - One owner at a time (`Active owner`).
-- Handoff cap default **2**.
+- Handoff cap default **2** (should not apply dual-PC Finance anymore).
 - One heavy job at a time.
 - No force-push, no disabling watchers, no secrets in commits.
 
@@ -68,19 +67,19 @@ All intentional commits need a **subject + Notes body** (why / paths / verify). 
 ## 5. Scope
 
 - Prefer report / config / UI-bridge work over live trading actions unless STATUS/Next explicitly asks for a trade action and policy allows it.
-- Runtime trading stack may live outside this clone (e.g. `C:\Users\Box One\Finance`); do not commit secrets from runtime into this public repo.
+- Do not commit secrets from runtime into this public repo.
 
 ## 6. Live runtime vs Git clone (money path)
 
 | Tree | Role |
 |------|------|
-| `%USERPROFILE%\Finance` (e.g. `C:\Users\Box One\Finance`) | **Live** — worker, OAuth tokens, orders (usually **BOXONE** broker host) |
+| `%USERPROFILE%\Finance` on **GROMIT** | **Live** — worker, OAuth tokens, orders |
 | `Documents\GitHub\Finance` | Bus / code only — **not** the broker host |
 
 - OAuth CLIs **must** write tokens to the live root (`etrade_runtime.resolve_live_root`).
 - Agents **must not** claim “logged in” or “trading live” without `check_etrade_live_status.py` OK on the live root + worker log `Connected to E*TRADE (production)`.
 - False green on login/live status is a **critical** defect (real money risk).
 
-## 7. Fleet pointer
+## 7. Dual-PC docs
 
-Canonical multi-PC background policy: `grok-shared-workspace/work/fleet/GROMIT-BACKGROUND.md`.
+Historical dual-PC files (`DUAL_PC_*.md`, Role flip B) are **obsolete for ops**. See `SINGLE_HOST_GROMIT.md`.

@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Dual-PC deployment: BOXONE = pipeline, AI-CODING = UI + E*TRADE broker.
+"""Finance deployment roles.
+
+Active ops (2026-08-06): **GROMIT only**, ``role=all``. **BOXONE has no Finance role.**
 
 Roles
 -----
-- ``pipeline`` — agent research, fusion, accuracy/backtests; no order placement.
-- ``broker``   — UI host, E*TRADE OAuth, plan build, order placement, quote feed.
-- ``all``      — legacy single-machine (default when deployment section missing).
+- ``all``      — single machine (broker + pipeline) — **use on GROMIT**.
+- ``pipeline`` — agent research only (legacy dual-PC; unused in single-host mode).
+- ``broker``   — E*TRADE OAuth / orders only (legacy dual-PC; unused in single-host mode).
 
-Shared data (SMB)
------------------
-Recommended share on AI-CODING (10.10.10.1)::
+Shared data (SMB) — optional legacy
+------------------------------------
+When ``shared_root`` is set::
 
-    \\\\10.10.10.1\\FinanceShare
-        pipeline\\   # BOXONE sole writer (agent JSON, portfolio, status)
-        broker\\     # AI-CODING sole writer (live quotes, account snapshot)
+    FinanceShare\\
+        pipeline\\   # research JSON
+        broker\\     # live quotes, account snapshot
 
-Secrets (tokens, consumer keys) stay local on the broker machine only.
+Secrets (tokens, consumer keys) stay local on the host only — never on share/git.
 """
 
 from __future__ import annotations
@@ -176,8 +178,8 @@ def ensure_shared_layout(config_path: Path | None = None) -> dict[str, Any]:
         if not marker.exists():
             marker.write_text(
                 "Finance dual-PC share\n"
-                "  pipeline/  — written by BOXONE (agent research)\n"
-                "  broker/    — written by AI-CODING (quotes, account snapshot)\n"
+                "  pipeline/  — research JSON (legacy dual-PC)\n"
+                "  broker/    — quotes, account snapshot (legacy dual-PC)\n"
                 "Do not put etrade tokens or consumer secrets here.\n",
                 encoding="utf-8",
             )

@@ -1,10 +1,10 @@
 {
-  "role": "broker",
-  "shared_root": "\\\\10.10.10.1\\HelperDrop\\FinanceShare",
+  "role": "all",
+  "shared_root": "",
   "quote_publish_interval_seconds": 60,
   "sync_interval_seconds": 30,
-  "publish_quotes": true,
-  "consume_shared_quotes": true,
+  "publish_quotes": false,
+  "consume_shared_quotes": false,
   "prefer_dry_run": true,
-  "_comment": "Copy to deployment.json. Roles: broker (AI-CODING UI+E*TRADE), pipeline (BOXONE research), all (single machine)."
+  "_comment": "GROMIT single-host (2026-08-06). role=all only. BOXONE has no Finance. shared_root empty = local-only."
 }

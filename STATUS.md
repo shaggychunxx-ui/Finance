@@ -1,54 +1,45 @@
-﻿# Status / Handoff â€” Finance
+# Status / Handoff — Finance
 
-**Last updated:** 2026-08-04
-**Updated by:** AI-CODING
+**Last updated:** 2026-08-06
+**Updated by:** GROMIT
 **Active owner:** none
 **Act on:** none
 
 ## NOTIFY
 
-_(none)_
+- **NOTIFY (seen on Finance bus):** Decommission BOXONE Finance via **gsw** task **061** (`Act on: BOXONE` on grok-shared-workspace). Finance bus stays quiet on BOXONE.
 
 ---
 
-## >>> LIVE ON AI-CODING (2026-08-04) â€” PIPELINE REPAIR CONTINUED <<<
+## >>> FINANCE HOST: GROMIT ONLY (2026-08-06) <<<
 
-| Machine | Role now | Status |
-|---------|----------|--------|
-| **AI-CODING** | **`all`** (pipeline + broker emergency) | **LIVE** â€” Connected production; dry_run off; auto/live/day on; snapshot **today** #8804 **14** pos; phone live pull fixed; trading gate unblocked |
-| **BOXONE** | intended long-term broker (flip B) | Not driving orders right now. Can reclaim broker later after its own API OAuth. |
+| Machine | Role | Status |
+|---------|------|--------|
+| **GROMIT** | **`all`** (broker + pipeline) | **Sole Finance host** — phone bus + runtime target |
+| **BOXONE** | **none** | **Finance OFF** — decommission when task 061 runs |
+| **AI-CODING / LAPTOP** | **none** for Finance | Do not assign Finance trading |
 
-### Verified live (runtime)
+Docs: `SINGLE_HOST_GROMIT.md`. Dual-PC Role flip B **retired**.
 
-- Worker: **Connected to E*TRADE (production)**; role=all; quotes publishing
-- `account_snapshot` **#8804** **14** positions (selected_account; not secondary #6854)
-- Phone bridge **v1.5.6**: live pull uses `selected_account` â†’ **14 lots OK** (was wrongly using accounts[0]=#6854 â†’ 1 lot / thinner gate)
-- Trading gate: **12** agents eligible (was **0/72**); plan rebuild **15 proposed** (0 blocked)
-- Force pipeline eco: **critical+quant 10/10** PIPELINE_OK; Market Predictor ok
-- Flags: role=all, prefer_dry_run=false, dry_run=false, auto_execute/live_trading/day_trading on
-- Orders still wait for **US market hours** (off-RTH now)
+### Fleet policy (standing)
 
-### Optional later
+**GROMIT runs all Finance** (trading + agents + phone bus). **Never** `Act on: BOXONE` for Finance. Never Act on PHONE.
 
-- Restore Role flip B (BOXONE=broker only) once BOXONE has API OAuth + publish path
-- gsw bus can still assign BOXONE residual if desired
-- Re-auth required again after next midnight ET
-
----
-
-## Fleet policy (standing)
-
-**GROMIT runs all background / unattended tasks** for Finance (phone Send, agents, pipeline code). **BOXONE** only for host-local broker/runtime when Act on/target says so. Never Act on PHONE.
 ## Current goal
 
-Finance phone bus live: GitStatus Send â†’ STATUS.md â†’ watchers â†’ agents. **Dropshipping** canonical under `dropshipping/`. **Primary trading goal:** raise daily and total average P/L; groups earn role-scaled points per full 1.0% total P/L.
+Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping/`. **Primary trading goal:** raise daily and total average P/L.
 
-**Role (emergency 2026-08-04):** AI-CODING **role=all** until API live; intended long-term still **Role flip B** (BOXONE broker Â· AI-CODING pipeline).
+**Host:** GROMIT single-machine `role=all`. Live root: `%USERPROFILE%\Finance` on GROMIT (create/OAuth when ready). Git clone is bus/code only.
 
-**AI workstation hardware (gsw):** ABS tower + UPS ordered. Finance goals/rules and E*TRADE P0 always win over workstation cutover. See Notes + gsw `PAYOFF-ROADMAP.md`.
+## Next
+
+- [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
+- [ ] **GROMIT / human:** Ensure live runtime at `%USERPROFILE%\Finance` with `deployment.role=all`; E*TRADE OAuth once if tokens missing; dry_run policy human choice.
+- [ ] **PHONE (GitStatus):** Optional data-connection verify after GROMIT runtime is up. Never Act on PHONE.
 
 ## Done
 
+- [x] **GROMIT (human):** **All Finance off BOXONE** — single-host GROMIT only. RULES/AGENTS/SINGLE_HOST_GROMIT; dual-PC docs retired. BOXONE decommission task armed. **Act on: BOXONE** for stop stack only.
 - [x] **AI-CODING (human: continue pipeline repair):** Fixed phone live pull wrong account (`accounts[0]`=#6854 1-lot vs selected #8804 14-lot) in `phone_bridge.py` v1.5.6. Fixed trading gate zero-eligibility (`trading_gate.py`: preferred-horizon accuracy + floor 35%; was 0/72 agents at 40% combined). Deployed runtime; force eco pipeline **10/10**; plan **15 proposed / 0 blocked**; gate 19/19 candidates. Market closed â€” live orders resume RTH. **Act on: none**.
 - [x] **AI-CODING:** ack BOXONE **NOTIFY 047 partial** â€” LIVE flags on broker; E*TRADE OAuth still blocked; snapshot **2026-08-02**; no `BOXONE_LIVE_TRADING_ON.txt`. NOTIFY cleared. Surfaced human OAuth + stale snapshot for phone. **Act on: none**. No notify-back. After human re-auth on BOXONE â†’ re-pull broker + force phone pack.
 - [x] **BOXONE (047 partial):** LIVE flags applied on broker runtime (dry_run off, auto/live/day on, prefer_dry_run false, role=broker). SMB apply script unreachable â€” local apply. E*TRADE **session expired** (human OAuth needed). Snapshot still **2026-08-02**. No `BOXONE_LIVE_TRADING_ON.txt`. SFTP marker `BOXONE_LIVE_FLAGS_APPLIED.txt`. Task â†’ `tasks/done/047-boxone-live-and-fresh-broker-push.md`. **NOTIFY AI-CODING**.
