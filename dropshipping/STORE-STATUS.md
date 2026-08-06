@@ -44,8 +44,10 @@
 
 | Piece | State |
 |-------|--------|
+| **API / process host** | **GROMIT** (cutover 2026-08-06; was AI-CODING) |
 | ShopifyDS agent automation | **PAUSED** (human 2026-07-30) |
-| Daily catalog job | Disabled while paused |
+| Daily catalog job | Installed on GROMIT; Disabled while paused / until secrets imported |
+| Secrets | Pending offline copy AI-CODING → GROMIT (`Migrate-ApiSecrets.ps1`) |
 | Unattended bus for ShopifyDS | No auto claim until human unpauses |
 
 Resume steps: see ShopifyDS `STATUS.md` § How to resume automation.
