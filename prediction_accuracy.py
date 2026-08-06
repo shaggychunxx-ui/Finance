@@ -497,6 +497,19 @@ def record_cycle_predictions(*, cycle_id: str | None = None) -> int:
                     event_day=event_day,
                 )
 
+    # Always stamp start prices so matured scoring is not blocked (quotes fill gaps).
+    for pred in pending:
+        if not isinstance(pred, dict):
+            continue
+        if pred.get("price_at_prediction") is not None:
+            continue
+        sym = str(pred.get("symbol") or "").upper()
+        if sym and quotes.get(sym):
+            try:
+                pred["price_at_prediction"] = float(quotes[sym])
+            except (TypeError, ValueError):
+                pass
+
     pending = _cap_pending_by_horizon(pending)
     store["predictions"] = pending[-MAX_PENDING:]
     store["updated_at"] = recorded_at
