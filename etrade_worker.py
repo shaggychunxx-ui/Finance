@@ -1427,6 +1427,9 @@ def _run_plan_build(client: ETradeClient, *, force: bool = False, config_path: P
 
     acct = _resolve_account(client, config_path)
     if not acct:
+        # Still stamp attempt so a missing account does not hot-loop the broker API.
+        state["last_plan_at"] = time.time()
+        save_worker_state(state)
         return None
 
     _log(
@@ -1436,13 +1439,26 @@ def _run_plan_build(client: ETradeClient, *, force: bool = False, config_path: P
     from portfolio_generator import generate_portfolio, save_portfolio
     from strategy_engine import PORTFOLIO_FILE
 
-    balance = client.get_balance(acct["account_id_key"])
-    notional = balance.get("total_account_value") or None
     try:
+        balance = client.get_balance(acct["account_id_key"])
+        notional = balance.get("total_account_value") or None
         portfolio = generate_portfolio(OUTPUT, notional_usd=notional)
     except ValueError as exc:
+        # CRITICAL: stamp last_plan_at on soft failure. Previously a "not enough
+        # bullish signals" path returned without stamping, so plan re-ran every
+        # ~15s service loop and hammered E*TRADE (GROMIT cutover regression).
         _log(f"Strategy plan skipped — {exc}")
+        state["last_plan_at"] = time.time()
+        state["last_plan_error"] = str(exc)[:300]
+        save_worker_state(state)
         return None
+    except Exception as exc:
+        _log(f"Strategy plan error — {exc}")
+        state["last_plan_at"] = time.time()
+        state["last_plan_error"] = str(exc)[:300]
+        save_worker_state(state)
+        return None
+
     save_portfolio(portfolio, PORTFOLIO_FILE)
     plan = build_strategy_plan(
         client,
@@ -1452,6 +1468,7 @@ def _run_plan_build(client: ETradeClient, *, force: bool = False, config_path: P
     )
     save_strategy_plan(plan)
     state["last_plan_at"] = time.time()
+    state.pop("last_plan_error", None)
     save_worker_state(state)
     _log(f"Strategy plan ready - {len(plan.orders)} proposed orders.")
     return plan
