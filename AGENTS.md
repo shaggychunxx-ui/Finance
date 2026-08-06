@@ -6,9 +6,10 @@ You are an **unattended worker** on the Finance phone bus. Follow **`RULES.md`**
 
 | Machine | Role |
 |---------|------|
-| **AI-CODING** | Main. Plans; heavy work; decides BOXONE sends. |
-| **BOXONE** | Helper only. |
-| **PHONE-OXYGEN** | Human mobile. `origin: PHONE` = human request. Never Act on phone. |
+| **GROMIT** | **Main.** **Runs all background / unattended tasks** by default. Plans; heavy agent work; assigns BOXONE only for host-local broker/runtime. |
+| **BOXONE** | Helper / broker host only when assigned. |
+| **AI-CODING** | Helper spare only when explicitly assigned. |
+| **PHONE-OXYGEN** | Human mobile. `origin: PHONE` = human request → default **`Act on: GROMIT`**. Never Act on phone. |
 
 ## Always do first
 
@@ -22,7 +23,8 @@ You are an **unattended worker** on the Finance phone bus. Follow **`RULES.md`**
 
 - **`Act on:`** must match this `COMPUTERNAME` (or pending `target:`) to start.
 - **`Act on: none`** → do nothing; no “checked, no work” STATUS spam.
-- **`Act on: ALL` / `either`** → only **AI-CODING** may claim. BOXONE ignores.
+- **`Act on: ALL` / `either`** → only **GROMIT** may claim. Helpers ignore.
+- Default background work is **GROMIT** — helpers do not claim it.
 
 ## Completing work
 
@@ -30,13 +32,13 @@ You are an **unattended worker** on the Finance phone bus. Follow **`RULES.md`**
 2. Do the work. Process **all** open **Next** lines for this machine before going idle.
 3. Task file → `tasks/done/` + **Result** when applicable.
 4. Update **Done**; clear finished **Next** items.
-5. Notify other PC when peer needs to know: **Act on:** other + **NOTIFY:**.
+5. Notify peer when needed: helper done → **`Act on: GROMIT`** + **NOTIFY:**; GROMIT done → assign host-local helper or **none**.
 6. **Active owner:** `none` when you stop.
 7. No secrets in git.
 
 ## Phone (GitStatus)
 
-Phone **Send** sets **Act on: AI-CODING** and appends `- [ ] **AI-CODING** <message>` under **Next**. Treat those as human requests.
+Phone **Send** should set **Act on: GROMIT** and append `- [ ] **GROMIT** <message>` under **Next**. Treat those as human requests.
 
 ## Anti-thrash
 
@@ -51,24 +53,11 @@ Mistakes here cost money. **False “logged in / live” is a critical failure.*
 
 | | Path |
 |--|------|
-| **Live runtime (worker + tokens)** | `%USERPROFILE%\Finance` → on this PC: `C:\Users\Box One\Finance` |
+| **Live runtime (worker + tokens)** | `%USERPROFILE%\Finance` → on BOXONE typically `C:\Users\Box One\Finance` |
 | **Override** | env `FINANCE_RUNTIME` |
 | **Git clone (bus / code only)** | `Documents\GitHub\Finance` — **never** treat as broker host |
 
 ### Hard rules
 
 1. **OAuth** only via live root: `begin_etrade_login.py` / `finish_etrade_login.py` (they redirect tokens to live runtime).
-2. **Never** say login is good, trading is live, or orders will work from a GitHub-clone-only success.
-3. **Only** report live status after:  
-   `python check_etrade_live_status.py` → exit 0 / `LIVE STATUS: OK`  
-   against **`C:\Users\Box One\Finance`** (or `FINANCE_RUNTIME`), **and** worker log shows `Connected to E*TRADE (production)` when claiming the worker is live.
-4. Tokens expire **midnight US/Eastern** daily — re-login is expected; restarts do not wipe same-day tokens.
-5. No secrets in git (`etrade_config.json`, `etrade_tokens.json`).
-
-### After any OAuth
-
-Run `check_etrade_live_status.py` on the live tree. If it fails, say **not live** with the blocker — never soft-pass.
-
-## Idle
-
-If assigned nothing: **exit cleanly. Zero STATUS changes.**
+2. Broker host-local work stays on **BOXONE** when assigned; pipeline/agent defaults stay on **GROMIT**.
