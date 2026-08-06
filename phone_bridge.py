@@ -50,7 +50,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.5.8"
+BRIDGE_VERSION = "1.5.9"
 
 # Auto-publish phone dashboard/agents during RTH (config can override).
 DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 30
@@ -1046,11 +1046,19 @@ def build_account_summary() -> dict[str, Any]:
             out["account_name"] = label
         bal_block = snap.get("balance") if isinstance(snap.get("balance"), dict) else {}
         snap_bal = _f(bal_block.get("total_account_value"))
-        if snap_bal is not None and out.get("balance") is None:
+        # Prefer live broker equity over missing/zero/stale history (0 must not stick).
+        cur_bal = _f(out.get("balance"))
+        if snap_bal is not None and snap_bal > 0:
+            if cur_bal is None or cur_bal <= 0 or snap_bal >= cur_bal:
+                out["balance"] = snap_bal
+        elif snap_bal is not None and out.get("balance") is None:
             out["balance"] = snap_bal
         snap_cash = _f(bal_block.get("cash_buying_power") or bal_block.get("cash"))
-        if out.get("cash") is None and snap_cash is not None:
+        if snap_cash is not None and (out.get("cash") is None or _f(out.get("cash"), 0) <= 0):
             out["cash"] = snap_cash
+        # If history never seeded invested capital, use cash+positions book as usable.
+        if out.get("usable_capital") is None and out.get("balance") is not None:
+            out["usable_capital"] = out.get("balance")
 
     # Re-apply formula after balance merges (stale plan must not invent P/L).
     bal = out.get("balance")
@@ -1059,6 +1067,10 @@ def build_account_summary() -> dict[str, Any]:
         out["total_pl"] = round(bal - invested, 2)
         out["total_pl_pct"] = round(out["total_pl"] / invested * 100.0, 2)
         out["trend"] = "up" if out["total_pl"] >= 0 else "down"
+    elif bal is not None and (invested is None or invested <= 0):
+        # No invested basis yet — still show live equity; leave P/L blank (not $0 fake).
+        out["total_pl"] = None
+        out["total_pl_pct"] = None
 
     day_pl = out.get("day_pl")
     day_pl_pct = out.get("day_pl_pct")
@@ -1857,8 +1869,41 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
         {"item": "Shared capital", "long": "Yes", "short": "Yes"},
     ]
 
+    # Live equity/lots first when phone asks for refresh — account summary must not
+    # run against an empty snapshot and then stick balance=0 forever.
+    if force_refresh:
+        try:
+            try_refresh_account_snapshot(max_age_sec=0.0, force=True)
+        except Exception as exc:
+            _log(f"pre-dashboard live snapshot pull failed: {exc}")
+
     account = build_account_summary()
     positions = build_positions(force_refresh=force_refresh)
+    # Re-merge account from snapshot after positions refresh (snapshot may be newer).
+    snap_after = _load_account_snapshot()
+    if isinstance(snap_after, dict) and snap_after:
+        bal_block = snap_after.get("balance") if isinstance(snap_after.get("balance"), dict) else {}
+        snap_bal = _f(bal_block.get("total_account_value"))
+        cur_bal = _f(account.get("balance"))
+        if snap_bal is not None and snap_bal > 0 and (cur_bal is None or cur_bal <= 0 or snap_bal >= cur_bal):
+            account["balance"] = snap_bal
+            account["usable_capital"] = account.get("usable_capital") or snap_bal
+        snap_cash = _f(bal_block.get("cash_buying_power") or bal_block.get("cash"))
+        if snap_cash is not None and (_f(account.get("cash")) is None or _f(account.get("cash"), 0) <= 0):
+            account["cash"] = snap_cash
+        label = str(snap_after.get("display_label") or "").strip()
+        key = str(snap_after.get("account_id_key") or "").strip()
+        if key:
+            account["account_id_key"] = key
+        if label:
+            account["account_name"] = label
+        # Refresh display money strings after merge
+        account["display"] = {
+            **(account.get("display") if isinstance(account.get("display"), dict) else {}),
+            "balance": _money(account.get("balance")) if account.get("balance") is not None else "-",
+            "cash": _money(account.get("cash")) if account.get("cash") is not None else "-",
+            "invested": _money(account.get("invested_capital")) if account.get("invested_capital") is not None else "-",
+        }
     # Mark known transfer lots (cost-only deposit capital; never MTM).
     transfer_symbols = _load_transfer_deposit_symbols()
     transfer_deposit = 0.0
@@ -1918,12 +1963,20 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
     if learned:
         remember_transfer_deposit_symbols(learned)
 
-    # Portfolio open P/L = trading lots only (transfer lots display $0 book-in open)
+    held_positions = [
+        p
+        for p in positions
+        if str(p.get("side") or "").upper() != "TARGET"
+        and (_f(p.get("quantity")) or 0) != 0
+    ]
+    # Portfolio open P/L = held trading lots only (not TARGET ideas; transfer lots $0 book-in)
     pos_pl = sum(
         _f(p.get("unrealized_pl"))
-        for p in positions
+        for p in held_positions
         if not p.get("transfer_as_deposit") and p.get("unrealized_pl") is not None
     )
+    # Book MV from held lots only (exclude TARGET idea rows)
+    pos_mv = sum(abs(_f(p.get("market_value")) or 0.0) for p in held_positions)
 
     # Transfer MTM (mv - cost) for diagnostics only. Do NOT subtract from total P/L:
     # invested_capital already includes deposit/ACATS at book-in, and latest equity
@@ -1931,7 +1984,7 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
     # true deposit-aware total. Subtracting transfer_open_mtm when it is negative
     # *adds back* transfer losses as fake profit (~+$1.1k bug).
     transfer_open_mtm = 0.0
-    for p in positions:
+    for p in held_positions:
         if not p.get("transfer_as_deposit"):
             continue
         mv = _f(p.get("market_value"))
@@ -1953,8 +2006,6 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
         adisp["total_pl"] = _money(capital_pl)
         adisp["total_pl_pct"] = _pct(account["total_pl_pct"])
         account["display"] = adisp
-
-    pos_mv = sum(abs(_f(p.get("market_value"))) for p in positions)
 
     dep = _f(account.get("deposits_total"))
     dep_note = ""
@@ -2013,10 +2064,12 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
 
     pull_meta = dict(_last_pull_meta())
     if not pull_meta.get("position_count"):
-        pull_meta["position_count"] = len(positions)
+        pull_meta["position_count"] = len(held_positions)
     if pull_meta.get("source") in (None, "", "building"):
-        pull_meta["source"] = "account_snapshot" if positions else "empty"
+        pull_meta["source"] = "account_snapshot" if held_positions else "empty"
     pull_meta["force_refresh"] = bool(force_refresh)
+    pull_meta["held_position_count"] = len(held_positions)
+    pull_meta["row_count"] = len(positions)
     pull_meta["full_pc_pull"] = True
 
     payload = {
@@ -2033,7 +2086,11 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
         "positions": positions,
         "performance": performance,
         "portfolio": {
-            "position_count": len(positions),
+            # Held broker lots (not TARGET idea rows)
+            "position_count": len(held_positions),
+            "held_position_count": len(held_positions),
+            "target_idea_count": max(0, len(positions) - len(held_positions)),
+            "row_count": len(positions),
             "market_value": pos_mv,
             "unrealized_pl": pos_pl,
             "transfer_deposit": round(transfer_deposit, 2),
@@ -2045,7 +2102,7 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
             "display": {
                 "market_value": _money(pos_mv),
                 "unrealized_pl": _money(pos_pl),
-                "position_count": str(len(positions)),
+                "position_count": str(len(held_positions)),
             },
         },
         "pl_excludes_deposits": True,
