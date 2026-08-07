@@ -138,18 +138,18 @@ def main(argv: list[str] | None = None) -> int:
         print("Browser NOT opened (--no-browser). Caller controls single open.")
         print(f"URL file: {url_file}")
     else:
-        # Shell-level Chrome open (wscript Run style=1). Not raw Popen — that was unreliable.
+        # ONE open in the user's normal Chrome profile (taskbar / logged-in session).
+        # Never --user-data-dir (blank profile). Never --new-window (extra windows).
         try:
             from open_chrome_url import open_url_chrome
 
-            profile = decision.root / "output" / "chrome-oauth-profile"
-            proof = open_url_chrome(pending.authorize_url, profile_dir=profile)
+            proof = open_url_chrome(pending.authorize_url)
             print(f"Browser launch proof: {proof}")
             if not proof.get("ok"):
-                print("AUTO-OPEN did not keep a Chrome process. Use Desktop ETrade-Authorize.url")
+                print("AUTO-OPEN: Chrome not running after launch. Use Desktop ETrade-Authorize.url")
         except Exception as exc:
-            print(f"Chrome helper failed ({exc}); falling back to webbrowser")
-            webbrowser.open(pending.authorize_url, new=1, autoraise=True)
+            print(f"Chrome helper failed ({exc}); falling back to webbrowser default")
+            webbrowser.open(pending.authorize_url, new=0, autoraise=True)
     print(f"Pending session: {pending_file}")
     print(f"Tokens will be saved to: {live_token}")
     print("After you sign in and click Accept, copy the verification code from E*TRADE.")

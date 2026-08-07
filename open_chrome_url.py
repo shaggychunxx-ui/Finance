@@ -1,8 +1,11 @@
-"""Open a URL in Google Chrome on the interactive desktop (Windows).
+"""Open a URL in the user's normal Google Chrome profile (taskbar session).
 
-Uses wscript + WScript.Shell.Run with window style 1 (normal/focused).
-Plain subprocess.Popen of chrome.exe from automation often fails to keep a
-window the user can see; shell Run matches double-click / Task Scheduler UX.
+CRITICAL:
+  - Never use --user-data-dir (that is a blank profile with no logins).
+  - Never use --new-window (spawns extra windows).
+  - If Chrome is already running, chrome.exe <url> hands off to that process
+    and opens a tab in the same profile the user is logged into.
+  - Open at most once per call.
 """
 from __future__ import annotations
 
@@ -27,24 +30,31 @@ def chrome_exe() -> Path | None:
     return None
 
 
-def open_url_chrome(url: str, *, profile_dir: Path | None = None) -> dict:
+def chrome_running() -> bool:
+    try:
+        out = subprocess.check_output(
+            ["tasklist", "/FI", "IMAGENAME eq chrome.exe", "/FO", "CSV", "/NH"],
+            text=True,
+            errors="ignore",
+            timeout=10,
+        )
+        return "chrome.exe" in out.lower() and "no tasks" not in out.lower()
+    except Exception:
+        return False
+
+
+def open_url_chrome(url: str, **_ignored) -> dict:
+    """Open url in DEFAULT Chrome profile only. profile_dir kwargs are ignored on purpose."""
     chrome = chrome_exe()
     if not chrome:
         return {"ok": False, "error": "chrome.exe not found", "url": url}
 
-    before = _chrome_pids()
-    if profile_dir is not None:
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        cmd = (
-            f'"{chrome}" --user-data-dir="{profile_dir}" '
-            f"--no-first-run --no-default-browser-check "
-            f'--new-window --start-maximized "{url}"'
-        )
-    else:
-        cmd = f'"{chrome}" --new-window --start-maximized "{url}"'
+    before_running = chrome_running()
 
-    method = None
-    launched = False
+    # Default profile only — same as double-clicking a link / yesterday's webbrowser path.
+    # No --user-data-dir, no --new-window, no --start-maximized profile fork.
+    cmd = f'"{chrome}" "{url}"'
+    method = "wscript.default_profile.once"
     try:
         vbs = Path(os.environ.get("TEMP", str(Path.home()))) / "finance_open_chrome_once.vbs"
         esc = cmd.replace('"', '""')
@@ -58,122 +68,36 @@ def open_url_chrome(url: str, *, profile_dir: Path | None = None) -> dict:
             check=False,
             timeout=20,
         )
-        launched = True
-        method = "wscript.shell.run.style1"
     except Exception as exc:
-        method = f"wscript_failed:{exc}"
-
-    if not launched:
         try:
-            subprocess.Popen(
-                [
-                    "cmd.exe",
-                    "/c",
-                    "start",
-                    "",
-                    str(chrome),
-                    "--new-window",
-                    "--start-maximized",
-                    url,
-                ],
-            )
-            launched = True
-            method = "cmd.start"
-        except Exception as exc:
-            return {"ok": False, "error": str(exc), "method": method, "url": url}
+            # Fallback: same default profile via cmd start
+            subprocess.Popen(["cmd.exe", "/c", "start", "", str(chrome), url])
+            method = f"cmd.start_fallback_after:{exc}"
+        except Exception as exc2:
+            return {"ok": False, "error": str(exc2), "method": method, "url": url}
 
-    visible_titles: list[str] = []
-    count = 0
-    for _ in range(24):
-        time.sleep(0.5)
-        count = len(_chrome_pids())
-        visible_titles = _visible_chrome_titles()
-        if any(
-            ("etrade" in t.lower())
-            or ("log on" in t.lower())
-            or ("authorize" in t.lower())
-            for t in visible_titles
-        ):
-            break
-
+    # Brief settle — existing Chrome reuses process quickly
+    time.sleep(2.0)
+    running = chrome_running()
     return {
-        "ok": bool(count > 0 or visible_titles),
+        "ok": running,
         "method": method,
         "chrome": str(chrome),
         "url": url,
-        "chrome_process_count": count,
-        "visible_titles": visible_titles,
-        "new_pids": sorted(_chrome_pids() - before),
-        "launched": launched,
+        "default_profile": True,
+        "new_window": False,
+        "user_data_dir": None,
+        "chrome_was_running_before": before_running,
+        "chrome_running_after": running,
+        "launched": True,
     }
-
-
-def _chrome_pids() -> set[int]:
-    try:
-        out = subprocess.check_output(
-            ["tasklist", "/FI", "IMAGENAME eq chrome.exe", "/FO", "CSV", "/NH"],
-            text=True,
-            errors="ignore",
-            timeout=10,
-        )
-        pids: set[int] = set()
-        for line in out.splitlines():
-            parts = [p.strip('"') for p in line.split(",")]
-            if len(parts) >= 2 and parts[0].lower() == "chrome.exe":
-                try:
-                    pids.add(int(parts[1]))
-                except ValueError:
-                    pass
-        return pids
-    except Exception:
-        return set()
-
-
-def _visible_chrome_titles() -> list[str]:
-    titles: list[str] = []
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        IsWindowVisible = user32.IsWindowVisible
-        GetWindowTextW = user32.GetWindowTextW
-        GetWindowTextLengthW = user32.GetWindowTextLengthW
-        GetWindowThreadProcessId = user32.GetWindowThreadProcessId
-        chrome_pids = _chrome_pids()
-        if not chrome_pids:
-            return []
-
-        @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-        def _cb(hwnd, _lparam):
-            if not IsWindowVisible(hwnd):
-                return True
-            proc_id = wintypes.DWORD()
-            GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
-            if int(proc_id.value) not in chrome_pids:
-                return True
-            n = GetWindowTextLengthW(hwnd)
-            if n <= 0:
-                return True
-            buf = ctypes.create_unicode_buffer(n + 1)
-            GetWindowTextW(hwnd, buf, n + 1)
-            t = buf.value.strip()
-            if t:
-                titles.append(t)
-            return True
-
-        user32.EnumWindows(_cb, 0)
-    except Exception:
-        pass
-    return titles
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: open_chrome_url.py <url> [profile_dir]")
+        print("Usage: open_chrome_url.py <url>")
         raise SystemExit(2)
-    u = sys.argv[1]
-    prof = Path(sys.argv[2]) if len(sys.argv) > 2 else None
-    result = open_url_chrome(u, profile_dir=prof)
+    # Ignore any legacy profile_dir arg so callers don't fork a blank profile.
+    result = open_url_chrome(sys.argv[1])
     print(result)
     raise SystemExit(0 if result.get("ok") else 1)

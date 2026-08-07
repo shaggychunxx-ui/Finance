@@ -373,19 +373,19 @@ def _open_browser_once(url: str) -> None:
     try:
         from open_chrome_url import open_url_chrome
 
-        profile = ROOT / "output" / "chrome-oauth-profile"
-        proof = open_url_chrome(url, profile_dir=profile)
+        # Default Chrome profile only (same as taskbar). No blank user-data-dir.
+        proof = open_url_chrome(url)
         opened = bool(proof.get("ok") or proof.get("launched"))
-        _log(f"OAUTH BROWSER proof={proof}")
+        _log(f"OAUTH BROWSER once default-profile proof={proof}")
     except Exception as exc:
         _log(f"open_chrome_url failed: {exc}")
 
     if not opened:
-        # Last resort: default handler.
         try:
-            webbrowser.open(url, new=1, autoraise=True)
+            # new=0 → try reuse existing browser window/tab behavior
+            webbrowser.open(url, new=0, autoraise=True)
             opened = True
-            _log(f"OAUTH BROWSER FALLBACK webbrowser: {url[:80]}...")
+            _log(f"OAUTH BROWSER FALLBACK webbrowser new=0: {url[:80]}...")
         except Exception as exc:
             _log(f"webbrowser.open failed: {exc}")
 
