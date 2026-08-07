@@ -61,8 +61,11 @@ def main(argv: list[str] | None = None) -> int:
     cfg.token_path = live_token
 
     force = "--force" in args
+    no_browser = "--no-browser" in args
     if force:
         args = [a for a in args if a != "--force"]
+    if no_browser:
+        args = [a for a in args if a != "--no-browser"]
 
     # CRITICAL: starting a new OAuth Accept can invalidate the current access token
     # (phone + PC share one consumer key). Never begin while session is still live.
@@ -110,8 +113,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print(pending.authorize_url)
-    webbrowser.open(pending.authorize_url)
-    print("Browser opened.")
+    if no_browser:
+        print("Browser NOT opened (--no-browser). Caller controls single open.")
+    else:
+        webbrowser.open(pending.authorize_url, new=0, autoraise=True)
+        print("Browser opened (once).")
     print(f"Pending session: {pending_file}")
     print(f"Tokens will be saved to: {live_token}")
     print("After you sign in and click Accept, copy the verification code from E*TRADE.")
