@@ -92,8 +92,8 @@ function Normalize-TargetLabel([string]$raw) {
     # Strip markdown bold / trailing punctuation from STATUS/task lines
     $t = $t -replace '^\*+', '' -replace '\*+$', ''
     $t = $t.Trim().TrimEnd('.').Trim()
-    # "BOXONE (NOW — ...)" → BOXONE; "PHONE (human...)" → PHONE
-    if ($t -match '^(?i)(AI-CODING|BOXONE|PHONE|OXYGEN|ALL|either|none)\b') {
+    # "BOXONE (NOW — ...)" → BOXONE; "PHONE (human...)" → PHONE; GROMIT sole host
+    if ($t -match '^(?i)(GROMIT|AI-CODING|BOXONE|PHONE|OXYGEN|ALL|either|none)\b') {
         return $Matches[1].ToUpper()
     }
     # COMPUTERNAME style
@@ -115,8 +115,8 @@ function Get-PendingTaskTargets {
         if ($content -match '(?im)^\s*\*{0,2}target\*{0,2}\s*:\s*\*{0,2}\s*(.+?)\s*\*{0,2}\s*$') {
             $targets += (Normalize-TargetLabel $Matches[1])
         } else {
-            # Unknown target → main only (never thrash helpers as ALL)
-            $targets += "AI-CODING"
+            # Unknown target → sole Finance host only (never thrash helpers)
+            $targets += "GROMIT"
         }
     }
     return $targets
@@ -128,8 +128,8 @@ function Test-IsPhoneTarget([string]$target) {
 }
 
 function Test-IsMainMachine {
-    # AI-CODING is main; tolerate hostname variants
-    return ($machine -match '^(?i)AI-CODING$')
+    # GROMIT is sole Finance host (2026-08-06). Legacy AI-CODING name only if hostname is still that.
+    return ($machine -match '^(?i)(GROMIT|AI-CODING)$')
 }
 
 function Test-TargetMatches([string]$target) {
@@ -138,19 +138,22 @@ function Test-TargetMatches([string]$target) {
     if ($t -eq "none" -or $t -eq "NONE") { return $false }
     # Never wake a PC for human/phone targets
     if (Test-IsPhoneTarget $t) { return $false }
-    # ALL / either → MAIN only (BOXONE must not invent work)
+    # ALL / either → sole host only (helpers must not invent work)
     if ($t -eq "ALL" -or $t -eq "EITHER") {
         return (Test-IsMainMachine)
     }
+    # Explicit GROMIT target always matches main host (hostname GROMIT)
+    if ($t -eq "GROMIT" -and ($machine -match '^(?i)GROMIT$')) { return $true }
     if ($t -ieq $machine) { return $true }
     return $false
 }
 
 function Test-InboxAddressedToMe([System.IO.FileInfo]$file) {
-    # Filename hints: 2026-08-02-boxone-....md or -ai-coding-
+    # Filename hints: 2026-08-02-boxone-....md or -gromit- / -ai-coding-
     $name = $file.Name.ToLowerInvariant()
     $me = $machine.ToLowerInvariant()
     if ($name -match [regex]::Escape($me.ToLowerInvariant())) { return $true }
+    if ($me -eq "gromit" -and $name -match 'gromit|ai-coding|aicoding|ai_coding') { return $true }
     if ($me -eq "boxone" -and $name -match 'boxone|box-one|box_one') { return $true }
     if ($me -eq "ai-coding" -and $name -match 'ai-coding|aicoding|ai_coding') { return $true }
 
@@ -163,8 +166,9 @@ function Test-InboxAddressedToMe([System.IO.FileInfo]$file) {
     if ($raw -match '(?im)^\s*\**\s*target\s*:\s*\**\s*(.+?)\s*\**\s*$') {
         return (Test-TargetMatches (Normalize-TargetLabel $Matches[1]))
     }
-    # Body mentions "To: BOXONE" style
+    # Body mentions "To: GROMIT" style
     if ($raw -match "(?i)\bTo:\s*$([regex]::Escape($machine))\b") { return $true }
+    if ($me -eq "gromit" -and $raw -match '(?i)\bTo:\s*(GROMIT|AI-CODING)\b') { return $true }
     if ($me -eq "boxone" -and $raw -match '(?i)\bTo:\s*BOXONE\b') { return $true }
     if ($me -eq "ai-coding" -and $raw -match '(?i)\bTo:\s*AI-CODING\b') { return $true }
     return $false
@@ -335,21 +339,22 @@ $commitSummary
 
 Follow RULES.md and AGENTS.md strictly.
 
-Team:
-- AI-CODING = MAIN computer (plans; decides what to send to BOXONE unless human asked).
-- BOXONE = HELPER (executes assigned work only; no inventing work for main).
-- PHONE-OXYGEN / OXYGEN-PHONE = human mobile only (never Act on phone).
+Team (2026-08-06 single-host Finance):
+- GROMIT = SOLE Finance host (broker + pipeline + phone bus). Default Act on: GROMIT.
+- BOXONE / AI-CODING / LAPTOP = no Finance work unless human explicitly overrides.
+- PHONE-OXYGEN / OXYGEN-PHONE = human mobile only (never Act on phone). Phone Send → Act on: GROMIT.
 
 Rules:
 1) Read RULES.md, STATUS.md, tasks/pending/.
-2) Only act if assigned to this machine ($machine). Ignore ALL/either on BOXONE.
-3) Do the work; on complete: tasks/done + NOTIFY line + Act on: the OTHER machine (always notify).
+2) Only act if assigned to this machine ($machine). Never Act on PHONE.
+3) Do the work on GROMIT; on complete: tasks/done + update Done; Act on: none when quiet (or GROMIT if more work).
 4) If woken only for a peer NOTIFY: ack once, set Act on: none, do NOT notify back.
 5) If nothing to do: EXIT without editing STATUS (no heartbeat notes).
 6) Need help/info: one Blockers or kind:help; bump handoff_count.
 7) Anti-thrash: no work ping-pong; handoff_count < max_handoffs (default 2); one NOTIFY per completion only.
-8) BOXONE must not invent chores for AI-CODING; help only when blocked.
+8) Do not assign Finance work to BOXONE/helpers unless human overrides.
 9) No secrets in git.
+10) Live trading runtime is %USERPROFILE%\Finance on GROMIT; this git clone is bus/code only.
 "@
     Set-Content -Path $promptPath -Value $prompt -Encoding UTF8
 

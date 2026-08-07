@@ -1,21 +1,22 @@
-# Dual-PC repo bus (AI-CODING ↔ BOXONE)
+# Finance phone bus (GitStatus → GROMIT)
 
-How the two PCs talk: **git only** (STATUS / tasks / inbox). SMB `FinanceShare` is for trading data, not agent assignment.
+**Host policy (2026-08-06):** Sole Finance host is **GROMIT**. Dual-PC AI-CODING ↔ BOXONE assignment is **retired**.
+
+How the phone talks to the PC: **git only** (STATUS / tasks / inbox) via GitStatus Send. Optional SMB `FinanceShare` is for trading data only (legacy).
 
 ## Protocol
 
 | Field | Meaning |
 |-------|---------|
-| **Act on:** `AI-CODING` / `BOXONE` / `none` | Which machine’s watcher may run headless Grok |
+| **Act on:** `GROMIT` / `none` | Which machine’s watcher may run headless Grok |
 | **Active owner:** | Who is currently working (set while claiming) |
-| **NOTIFY X:** | One-shot message for the other PC |
-| `tasks/pending/*.md` | Work items; **must** include `target: BOXONE` or `target: AI-CODING` |
-| `inbox/*-boxone-*.md` | Message **to BOXONE** (filename or `To: BOXONE`) |
-| `inbox/*-ai-coding-*.md` | Message **to AI-CODING** |
+| **NOTIFY X:** | One-shot message (rare; phone reads STATUS) |
+| `tasks/pending/*.md` | Work items; default **`target: GROMIT`** |
+| Phone Send | Human → STATUS **Next** line + **Act on: GROMIT** |
 
-**Never** `Act on: PHONE`. Phone uses GitStatus Send → STATUS Next lines for AI-CODING.
+**Never** `Act on: PHONE`. Phone uses GitStatus Send → STATUS Next lines for **GROMIT**.
 
-## Watcher (required on BOTH PCs)
+## Watcher (required on GROMIT)
 
 ```powershell
 cd $env:USERPROFILE\Documents\GitHub\Finance   # or your clone path
@@ -24,14 +25,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-watcher.ps1
 Get-ScheduledTask -TaskName FinanceWorkspaceWatch
 ```
 
-Task runs every ~2 minutes: `git pull` → if assigned → headless Grok → may `auto-sync: … from <MACHINE>` push.
+Task runs every ~2 minutes: `git pull` → if assigned → headless Grok → may `auto-sync: … from GROMIT` push.
 
 ### Proof the bus is alive
 
 | Machine | Healthy sign |
 |---------|----------------|
-| AI-CODING | `auto-sync: … from AI-CODING` commits; `.local/watch.log` updates |
-| BOXONE | **`auto-sync: … from BOXONE` commits** (if none ever, BOXONE watcher is dead) |
+| **GROMIT** | `auto-sync: … from GROMIT` commits; `.local/watch.log` updates; task `FinanceWorkspaceWatch` Ready/Running |
+| Phone | GitStatus Finance window shows fresh STATUS after GROMIT push |
 
 ## 2026-08-02 repair (AI-CODING)
 
