@@ -1,43 +1,47 @@
-﻿# 043 â€” OXYGEN GitStatus verify data connection (after role flip B)
+# 043 — OXYGEN GitStatus verify data connection (GROMIT sole host)
 
 **status:** pending  
 target: PHONE (human OXYGEN via GitStatus)  
 **kind:** verify  
-**depends_on:** 042 (BOXONE broker apply)  
+**depends_on:** GROMIT phone bus + bridge up  
 **handoff_count:** 0  
 **max_handoffs:** 1  
 **created:** 2026-08-01  
+**updated:** 2026-08-06  
 **created_by:** AI-CODING  
+**updated_by:** GROMIT  
 
 ## Goal
 
-After BOXONE finishes broker role flip, **PHONE-OXYGEN** confirms the Finance **data connection** through **GitStatus** (STATUS phone bus), not by `Act on: PHONE` (forbidden).
+**PHONE-OXYGEN** confirms the Finance **data connection** through **GitStatus** (STATUS phone bus) and optionally the E*TRADE Trader LAN bridge on **GROMIT**. Never `Act on: PHONE`.
 
 ## When to run
 
-Only after task **042** is Done (BOXONE broker applied, share `broker/` fresh).
+After GROMIT phone reconnect Done line is visible (watcher + bridge installed).
 
 ## Checklist (GitStatus app)
 
-1. Open **GitStatus** â†’ **Finance** repo.
-2. Refresh STATUS â€” read Act on / Next / Notes / role flip B.
-3. Confirm BOXONE Done line for **042** is visible.
-4. **Send** probe message: `gitstatus-data-probe-verify-role-B`
-5. Wait for AI-CODING **RECEIPT** under Done (watcher).
+1. Open **GitStatus** → **Finance** repo.
+2. Refresh STATUS — read Act on / Next / Notes / GROMIT host policy.
+3. Confirm GROMIT Done line for **phone reconnect** is visible.
+4. **Send** probe message: `gitstatus-data-probe-gromit`
+5. Wait for **GROMIT** RECEIPT under Done (watcher ~2 min).
 6. Send result: `data connection OK` or `data connection FAIL: <reason>`
+7. Optional: E*TRADE Trader Setup → `http://192.168.1.155:8787` + token from GROMIT config only.
 
 ## Pass criteria
 
 | Check | Required |
 |-------|----------|
 | Finance STATUS readable in GitStatus | Yes |
-| Role flip B / 042 completion visible | Yes |
-| Probe gets AI-CODING RECEIPT | Yes |
+| GROMIT phone reconnect Done visible | Yes |
+| Probe gets GROMIT RECEIPT | Yes |
 | No secrets leaked into STATUS | Yes |
 
-## Share copy
+## Docs
 
-`\\10.10.10.1\HelperDrop\FinanceShare\OXYGEN_GITSTATUS_VERIFY.md`
+- `OXYGEN_GITSTATUS_VERIFY.md`
+- `outbox/phone-bridge-pairing.md`
 
 ## Result
 

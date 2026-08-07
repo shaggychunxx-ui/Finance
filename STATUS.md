@@ -1,4 +1,4 @@
-# Status / Handoff â€” Finance
+# Status / Handoff — Finance
 
 **Last updated:** 2026-08-06
 **Updated by:** GROMIT
@@ -15,8 +15,8 @@
 
 | Machine | Role | Status |
 |---------|------|--------|
-| **GROMIT** | **`all`** (broker + pipeline) | **Sole Finance host** â€” phone bus + runtime target |
-| **BOXONE** | **none** | **Finance OFF** â€” decommission when task 061 runs |
+| **GROMIT** | **`all`** (broker + pipeline) | **Sole Finance host** — phone bus + runtime target |
+| **BOXONE** | **none** | **Finance OFF** — decommission when task 061 runs |
 | **AI-CODING / LAPTOP** | **none** for Finance | Do not assign Finance trading |
 
 Docs: `SINGLE_HOST_GROMIT.md`. Dual-PC Role flip B **retired**.
@@ -27,18 +27,20 @@ Docs: `SINGLE_HOST_GROMIT.md`. Dual-PC Role flip B **retired**.
 
 ## Current goal
 
-Finance phone bus â†’ **GROMIT**. **Dropshipping** canonical under `dropshipping/`. **Primary trading goal:** raise daily and total average P/L.
+Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping/`. **Primary trading goal:** raise daily and total average P/L.
 
 **Host:** GROMIT single-machine `role=all`. Live root: `%USERPROFILE%\Finance` on GROMIT (create/OAuth when ready). Git clone is bus/code only.
 
 ## Next
 
+- [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
+- [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [ ] **GROMIT / human:** Ensure live runtime at `%USERPROFILE%\Finance` with `deployment.role=all`; E*TRADE OAuth once if tokens missing; dry_run policy human choice.
-- [ ] **PHONE (GitStatus):** Optional data-connection verify after GROMIT runtime is up. Never Act on PHONE.
+- [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
 
 ## Done
 
+- [x] **GROMIT (human: fix connection with phone):** Phone bus + LAN bridge repaired on GROMIT. Installed `FinanceWorkspaceWatch` (GitStatus → GROMIT). `watch-and-act.ps1` main host = GROMIT (not AI-CODING). Started `phone_bridge` v1.5.8 on live root `:8787` (`http://192.168.1.155:8787` health ok); durable task `FinancePhoneBridge` + firewall allow 8787. Pairing: `outbox/phone-bridge-pairing.md` (token not in git). **Act on: none**.
 - [x] **GROMIT (human: test etrade + start pipeline):** Live root `C:\Users\shagg\Finance` role=all; venv OK; pipeline critical+quant **51/51** (cycle 20260806T184745Z); worker+ensure **running** dry_run ON; **LIVE STATUS FAIL** — need real consumer_key/secret + OAuth (placeholder config). Trading flags off until keys.
 - [x] **GROMIT (human):** **All Finance off BOXONE** â€” single-host GROMIT only. RULES/AGENTS/SINGLE_HOST_GROMIT; dual-PC docs retired. BOXONE decommission task armed. **Act on: BOXONE** for stop stack only.
 - [x] **AI-CODING (human: continue pipeline repair):** Fixed phone live pull wrong account (`accounts[0]`=#6854 1-lot vs selected #8804 14-lot) in `phone_bridge.py` v1.5.6. Fixed trading gate zero-eligibility (`trading_gate.py`: preferred-horizon accuracy + floor 35%; was 0/72 agents at 40% combined). Deployed runtime; force eco pipeline **10/10**; plan **15 proposed / 0 blocked**; gate 19/19 candidates. Market closed Ã¢â‚¬â€ live orders resume RTH. **Act on: none**.
