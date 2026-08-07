@@ -83,8 +83,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 ## Next
 
 - [x] **AI-CODING (human: continue pipeline repair):** phone live-account fix + trading-gate eligibility + force eco pipeline + plan rebuild Ã¢â‚¬â€ **done** (2026-08-04).
-- [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-verify-role-B`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + share `OXYGEN_GITSTATUS_VERIFY.md`. Never Act on PHONE.
-- [ ] **Human (later):** Optional Role flip B restore on BOXONE (broker OAuth + publish) when ready Ã¢â‚¬â€ AI-CODING currently **role=all** emergency and is LIVE.
+- [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-gromit`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + `OXYGEN_GITSTATUS_VERIFY.md`. Bridge URL `http://192.168.1.155:8787`. Never Act on PHONE.
+- [ ] **Human (later):** Optional dual-PC restore only if policy changes ? default is GROMIT sole host.
 - [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive Ã¢â‚¬â€ follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop live workers for cutover during RTH without a plan.
 - [ ] **Human (AI-CODING desktop, once):** Complete Gmail OAuth so unattended mail works: `powershell -ExecutionPolicy Bypass -File ~\Documents\GitHub\grok-shared-workspace\work\gmail-api\Invoke-GmailOAuthSetup.ps1` (sign in shaggychunxx@gmail.com). Then AI-CODING can re-read "attn AI-CODING" / Massive mail.
 - [x] **Human (key, secrets off-git):** Massive API key set on AI-CODING runtime (task **046**). Prefer not to re-paste keys into STATUS/git.
@@ -100,15 +100,15 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 
 - **AI workstation + UPS (2026-08-02):** Hardware order on gsw. Binding: Finance primary goal and Role flip B outrank workstation cutover. No RTH reboot that kills broker/pipeline. No live_trading / dry_run flips for hardware payoff. Secrets off-git.
 - **Role flip B (2026-08-01):** BOXONE=broker, AI-CODING=pipeline. Tokens stay on BOXONE only. See ROLE_FLIP_B.md / DUAL_PC_DEPLOYMENT.md.
-- **After BOXONE done Ã¢â‚¬â€ OXYGEN verify:** Human uses **GitStatus** (Finance window) for task **043**. Never `Act on: PHONE`. Probe: `gitstatus-data-probe-verify-role-B`.
-- **Full day backtest:** Continuous walk-forward from 2000-01-01 on AI-CODING. `python run_full_day_backtest.py` or `Start Full Day Backtest.bat`.
+- [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-gromit`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + `OXYGEN_GITSTATUS_VERIFY.md`. Bridge URL `http://192.168.1.155:8787`. Never Act on PHONE.
+- **Full day backtest:** Continuous walk-forward from 2000-01-01. `python run_full_day_backtest.py` or `Start Full Day Backtest.bat`.
 - **PL points:** Groups earn points per full 1.0% total trading P/L. See `agent_groups.ROLE_PL_POINTS_PER_PCT` and task **040**.
 - **Dropshipping:** Canonical path `dropshipping/README.md`. ShopifyDS keeps automation.
-- **Phone bus:** FinanceWorkspaceWatch every ~2 min. See `RULES.md` / `AGENTS.md`.
-- Runtime trading stack may be `C:\Users\Box One\Finance` (local); this clone is `Documents\GitHub\Finance` (git + phone bus). Do not commit secrets from runtime.
+- **Phone bus:** FinanceWorkspaceWatch every ~2 min on GROMIT. See `RULES.md` / `AGENTS.md` / `BUS-COMMS.md`.
+- Live runtime: `%USERPROFILE%\Finance` on GROMIT; this clone is `Documents\GitHub\Finance` (git + phone bus). Do not commit secrets from runtime.
 - Standing commit rules: subject + body; no secrets.
-- **Etrader UI info OFF:** set `phone_ui_info_enabled: true` in runtime `phone_bridge_config.json` to re-enable.
-- Armed for HUMAN GitStatus: Send any message from phone on Finance window Ã¢â€ â€™ AI-CODING should claim and respond.
+- **Etrader UI info:** `phone_ui_info_enabled: true` on GROMIT live bridge (v1.5.8).
+- Armed for HUMAN GitStatus: Send any message from phone on Finance window ? **GROMIT** claims and responds.
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
