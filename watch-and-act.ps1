@@ -62,6 +62,11 @@ function Invoke-Git {
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
         $psi.WorkingDirectory = $repo
+        try {
+            $psi.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0"
+            $psi.EnvironmentVariables["GCM_INTERACTIVE"] = "never"
+            $psi.EnvironmentVariables["GIT_OPTIONAL_LOCKS"] = "0"
+        } catch { }
         $quoted = foreach ($a in $GitArgs) {
             if ($null -eq $a) { '""' }
             elseif ($a -match '[\s"]') { '"' + ($a -replace '"', '\"') + '"' }
