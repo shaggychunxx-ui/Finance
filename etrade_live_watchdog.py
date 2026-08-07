@@ -300,8 +300,23 @@ def _mark_browser_opened() -> None:
         pass
 
 
+def _chrome_path() -> Path | None:
+    candidates = [
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
+        / "Google/Chrome/Application/chrome.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+        / "Google/Chrome/Application/chrome.exe",
+        Path(os.environ.get("LOCALAPPDATA", ""))
+        / "Google/Chrome/Application/chrome.exe",
+    ]
+    for p in candidates:
+        if p and p.is_file():
+            return p
+    return None
+
+
 def _open_browser_once(url: str) -> None:
-    """Open authorize URL at most once per cooldown. Never webbrowser + Chrome double-open."""
+    """Open authorize URL at most once per cooldown — Chrome only (user preference)."""
     age = _browser_opened_age_sec()
     if age is not None and age < BROWSER_OPEN_COOLDOWN_SEC:
         _log(
@@ -310,41 +325,35 @@ def _open_browser_once(url: str) -> None:
         )
         return
     opened = False
-    # Prefer a single browser open via the default handler (one window).
-    try:
-        webbrowser.open(url, new=0, autoraise=True)
-        opened = True
-    except Exception as exc:
-        _log(f"webbrowser.open failed: {exc}")
+    chrome = _chrome_path()
+    if chrome is not None:
+        try:
+            # Single new Chrome window — do not also call webbrowser (that opens Edge).
+            subprocess.Popen(
+                [str(chrome), "--new-window", "--start-maximized", url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                # Do NOT use CREATE_NO_WINDOW — browser must be visible to human.
+            )
+            opened = True
+            _log(f"OAUTH BROWSER CHROME: {url[:80]}...")
+        except Exception as exc:
+            _log(f"Chrome open failed: {exc}")
     if not opened:
-        chrome = (
-            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
-            / "Google/Chrome/Application/chrome.exe"
-        )
-        edge = (
-            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
-            / "Microsoft/Edge/Application/msedge.exe"
-        )
-        for browser in (chrome, edge):
-            if not browser.exists():
-                continue
-            try:
-                # No --new-window: attach to existing browser profile if possible.
-                subprocess.Popen(
-                    [str(browser), url],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-                    if os.name == "nt"
-                    else 0,
-                )
-                opened = True
-                break
-            except Exception:
-                continue
+        # Last resort: default handler (often Edge on this machine).
+        try:
+            webbrowser.open(url, new=1, autoraise=True)
+            opened = True
+            _log(f"OAUTH BROWSER FALLBACK webbrowser: {url[:80]}...")
+        except Exception as exc:
+            _log(f"webbrowser.open failed: {exc}")
     if opened:
         _mark_browser_opened()
-        _log(f"OAUTH BROWSER ONCE: {url[:80]}...")
+        # Persist URL for manual open / Open-EtradeAuthorize-Chrome.bat
+        try:
+            (ROOT / "output" / "last_authorize_url.txt").write_text(url + "\n", encoding="utf-8")
+        except OSError:
+            pass
     else:
         _log("OAUTH browser open failed — human must open authorize_url from pending json")
 
