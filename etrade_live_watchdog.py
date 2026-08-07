@@ -315,47 +315,84 @@ def _chrome_path() -> Path | None:
     return None
 
 
+def _chrome_running() -> bool:
+    """True if any chrome.exe process exists (not proof user sees a window)."""
+    try:
+        out = subprocess.check_output(
+            ["tasklist", "/FI", "IMAGENAME eq chrome.exe", "/FO", "CSV", "/NH"],
+            text=True,
+            errors="ignore",
+            timeout=10,
+        )
+        return "chrome.exe" in out.lower()
+    except Exception:
+        return False
+
+
 def _open_browser_once(url: str) -> None:
-    """Open authorize URL at most once per cooldown — Chrome only (user preference)."""
+    """Open authorize URL at most once per cooldown — Chrome via shell Run.
+
+    If the mark says we opened but Chrome is not running, clear the mark and
+    open again (fixes false-positive marks that blocked login all morning).
+    """
     age = _browser_opened_age_sec()
     if age is not None and age < BROWSER_OPEN_COOLDOWN_SEC:
-        _log(
-            f"OAUTH browser suppressed (opened {age:.0f}s ago; "
-            f"cooldown {BROWSER_OPEN_COOLDOWN_SEC}s) — reuse pending code"
-        )
-        return
-    opened = False
-    chrome = _chrome_path()
-    if chrome is not None:
-        try:
-            # Single new Chrome window — do not also call webbrowser (that opens Edge).
-            subprocess.Popen(
-                [str(chrome), "--new-window", "--start-maximized", url],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                # Do NOT use CREATE_NO_WINDOW — browser must be visible to human.
+        if _chrome_running():
+            _log(
+                f"OAUTH browser suppressed (opened {age:.0f}s ago; "
+                f"cooldown {BROWSER_OPEN_COOLDOWN_SEC}s; chrome still running)"
             )
-            opened = True
-            _log(f"OAUTH BROWSER CHROME: {url[:80]}...")
-        except Exception as exc:
-            _log(f"Chrome open failed: {exc}")
+            return
+        # Mark lied or user closed Chrome — allow one more open.
+        _log(
+            f"OAUTH mark age={age:.0f}s but chrome NOT running — clearing mark, re-open once"
+        )
+        try:
+            OAUTH_OPENED_MARK.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    try:
+        (ROOT / "output" / "last_authorize_url.txt").write_text(url + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    # Desktop shortcut always available for human double-click.
+    try:
+        desktop = Path.home() / "Desktop"
+        if desktop.is_dir():
+            (desktop / "ETrade-Authorize.url").write_text(
+                "[InternetShortcut]\n"
+                f"URL={url}\n"
+                "IconIndex=0\n",
+                encoding="utf-8",
+            )
+    except OSError:
+        pass
+
+    opened = False
+    try:
+        from open_chrome_url import open_url_chrome
+
+        profile = ROOT / "output" / "chrome-oauth-profile"
+        proof = open_url_chrome(url, profile_dir=profile)
+        opened = bool(proof.get("ok") or proof.get("launched"))
+        _log(f"OAUTH BROWSER proof={proof}")
+    except Exception as exc:
+        _log(f"open_chrome_url failed: {exc}")
+
     if not opened:
-        # Last resort: default handler (often Edge on this machine).
+        # Last resort: default handler.
         try:
             webbrowser.open(url, new=1, autoraise=True)
             opened = True
             _log(f"OAUTH BROWSER FALLBACK webbrowser: {url[:80]}...")
         except Exception as exc:
             _log(f"webbrowser.open failed: {exc}")
+
     if opened:
         _mark_browser_opened()
-        # Persist URL for manual open / Open-EtradeAuthorize-Chrome.bat
-        try:
-            (ROOT / "output" / "last_authorize_url.txt").write_text(url + "\n", encoding="utf-8")
-        except OSError:
-            pass
     else:
-        _log("OAUTH browser open failed — human must open authorize_url from pending json")
+        _log("OAUTH browser open failed — use Desktop ETrade-Authorize.url")
 
 
 def _open_oauth() -> str | None:

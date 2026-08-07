@@ -113,41 +113,43 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print(pending.authorize_url)
-    # Always leave URL on disk for manual Chrome open / bat helper.
+    # Always leave URL on disk for manual open / desktop shortcut.
+    url_file = decision.root / "output" / "last_authorize_url.txt"
     try:
-        url_file = decision.root / "output" / "last_authorize_url.txt"
         url_file.parent.mkdir(parents=True, exist_ok=True)
         url_file.write_text(pending.authorize_url + "\n", encoding="utf-8")
     except OSError:
-        url_file = None
+        pass
+    # Desktop InternetShortcut — double-click always works even if auto-open fails.
+    try:
+        desktop = Path.home() / "Desktop"
+        if desktop.is_dir():
+            (desktop / "ETrade-Authorize.url").write_text(
+                "[InternetShortcut]\n"
+                f"URL={pending.authorize_url}\n"
+                "IconIndex=0\n",
+                encoding="utf-8",
+            )
+            print(f"Desktop shortcut: {desktop / 'ETrade-Authorize.url'}")
+    except OSError:
+        pass
+
     if no_browser:
         print("Browser NOT opened (--no-browser). Caller controls single open.")
-        if url_file:
-            print(f"URL file: {url_file}")
+        print(f"URL file: {url_file}")
     else:
-        # Prefer Chrome (user requirement). Do not use default handler (Edge on this PC).
-        opened = False
-        chrome_candidates = [
-            Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
-            Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
-        ]
-        for chrome in chrome_candidates:
-            if not chrome.is_file():
-                continue
-            try:
-                import subprocess
+        # Shell-level Chrome open (wscript Run style=1). Not raw Popen — that was unreliable.
+        try:
+            from open_chrome_url import open_url_chrome
 
-                subprocess.Popen(
-                    [str(chrome), "--new-window", "--start-maximized", pending.authorize_url]
-                )
-                opened = True
-                print(f"Browser opened once in Chrome: {chrome}")
-                break
-            except Exception as exc:
-                print(f"Chrome open failed ({chrome}): {exc}")
-        if not opened:
+            profile = decision.root / "output" / "chrome-oauth-profile"
+            proof = open_url_chrome(pending.authorize_url, profile_dir=profile)
+            print(f"Browser launch proof: {proof}")
+            if not proof.get("ok"):
+                print("AUTO-OPEN did not keep a Chrome process. Use Desktop ETrade-Authorize.url")
+        except Exception as exc:
+            print(f"Chrome helper failed ({exc}); falling back to webbrowser")
             webbrowser.open(pending.authorize_url, new=1, autoraise=True)
-            print("Browser opened once via default handler (Chrome not found).")
     print(f"Pending session: {pending_file}")
     print(f"Tokens will be saved to: {live_token}")
     print("After you sign in and click Accept, copy the verification code from E*TRADE.")
