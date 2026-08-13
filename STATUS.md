@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-06
-**Updated by:** GROMIT
+**Last updated:** 2026-08-13
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -37,6 +37,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
+- [ ] **GROMIT** I placed sell orders for the positions the api can not sell and the orders were canceled. why?
 
 ## Done
 
@@ -82,13 +83,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 
 ## Next
 
-- [x] **AI-CODING (human: continue pipeline repair):** phone live-account fix + trading-gate eligibility + force eco pipeline + plan rebuild Ã¢â‚¬â€ **done** (2026-08-04).
-- [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-gromit`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + `OXYGEN_GITSTATUS_VERIFY.md`. Bridge URL `http://192.168.1.155:8787`. Never Act on PHONE.
-- [ ] **Human (later):** Optional dual-PC restore only if policy changes ? default is GROMIT sole host.
-- [ ] **Human (later, off-RTH / non-live):** When ABS tower + UPS arrive Ã¢â‚¬â€ follow gsw `PAYOFF-ROADMAP.md` **Finance-first** only. Do **not** stop live workers for cutover during RTH without a plan.
-- [ ] **Human (AI-CODING desktop, once):** Complete Gmail OAuth so unattended mail works: `powershell -ExecutionPolicy Bypass -File ~\Documents\GitHub\grok-shared-workspace\work\gmail-api\Invoke-GmailOAuthSetup.ps1` (sign in shaggychunxx@gmail.com). Then AI-CODING can re-read "attn AI-CODING" / Massive mail.
-- [x] **Human (key, secrets off-git):** Massive API key set on AI-CODING runtime (task **046**). Prefer not to re-paste keys into STATUS/git.
-- [x] **AI-CODING** Phone key / Massive / Gmail agent work Ã¢â‚¬â€ see Done 045Ã¢â‚¬â€œ046.
+- [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
+- [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
+- [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
+- [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
+- [ ] **GROMIT** I placed sell orders for the positions the api can not sell and the orders were canceled. why?
 
 ## Blockers
 
@@ -112,3 +111,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
+- PHONE: I placed sell orders for the positions the api can not sell and the orders were canceled. why? → Act on GROMIT (GROMIT delegates host-local work)
+
