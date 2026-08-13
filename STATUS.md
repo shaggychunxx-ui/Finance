@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-13
-**Updated by:** PHONE
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -37,9 +37,10 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
-- [ ] **GROMIT** I placed sell orders for the positions the api can not sell and the orders were canceled. why?
 
 ## Done
+
+- [x] **GROMIT (PHONE: why fund sells canceled):** Positions ETMUX/ETBOX/TAIBX/PHYZX/PRBLX are **mutual funds** — equity API cannot sell them. Worker on 2026-08-12 **cancelled open UI SELL orders** for those symbols (cancel-before-sell), then **skipped** fund sells. Fix: skip funds **before** cancel open orders (live `strategy_engine.preview_orders` + git). Sell funds only via E*TRADE UI fund ticket / NAV. Task `tasks/done/048-why-mutual-fund-sells-canceled.md`. **Act on: none**.
 
 - [x] **GROMIT (human: fix connection with phone):** Phone bus + LAN bridge repaired on GROMIT. Installed `FinanceWorkspaceWatch` (GitStatus → GROMIT). `watch-and-act.ps1` main host = GROMIT (not AI-CODING). Started `phone_bridge` v1.5.8 on live root `:8787` (`http://192.168.1.155:8787` health ok); durable task `FinancePhoneBridge` + firewall allow 8787. Pairing: `outbox/phone-bridge-pairing.md` (token not in git). **Act on: none**.
 - [x] **GROMIT (human: test etrade + start pipeline):** Live root `C:\Users\shagg\Finance` role=all; venv OK; pipeline critical+quant **51/51** (cycle 20260806T184745Z); worker+ensure **running** dry_run ON; **LIVE STATUS FAIL** — need real consumer_key/secret + OAuth (placeholder config). Trading flags off until keys.
@@ -87,7 +88,6 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
-- [ ] **GROMIT** I placed sell orders for the positions the api can not sell and the orders were canceled. why?
 
 ## Blockers
 
@@ -111,5 +111,4 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
-- PHONE: I placed sell orders for the positions the api can not sell and the orders were canceled. why? → Act on GROMIT (GROMIT delegates host-local work)
 

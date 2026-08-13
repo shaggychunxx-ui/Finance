@@ -64,6 +64,55 @@ def normalize_symbol(symbol: str) -> str:
     return str(symbol or "").strip().upper().replace(".", "-")
 
 
+# Known mutual-fund style tickers held in this account (equity API rejects).
+KNOWN_MUTUAL_FUNDS = frozenset({
+    "PRBLX", "PHYZX", "TAIBX", "ETMUX", "ETBOX", "VFIAX", "FXAIX", "SWTSX",
+})
+
+# Equity API rejects new opens (E*TRADE code 1527 / similar) — do not target for BUY.
+BLOCKED_NEW_BUYS = frozenset({
+    "EDHL",  # "Opening orders cannot be accepted online"
+})
+
+
+def is_mutual_fund_symbol(symbol: str, *, quantity: float | None = None) -> bool:
+    """Heuristic: known funds, or 5-letter *X tickers with fractional qty."""
+    sym = normalize_symbol(symbol)
+    if sym in KNOWN_MUTUAL_FUNDS:
+        return True
+    # 5-letter symbols ending in X are often open-end funds (not always)
+    if len(sym) == 5 and sym.endswith("X") and sym.isalpha():
+        if quantity is not None:
+            try:
+                q = float(quantity)
+                if abs(q - int(q)) > 1e-6:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        return True
+    return False
+
+
+def is_etrade_equity_orderable(
+    symbol: str,
+    *,
+    quantity: float | None = None,
+    for_new_buy: bool = False,
+) -> bool:
+    """Symbols acceptable for E*TRADE equity (EQ) order API on this stack.
+
+    - No mutual funds (equity API returns invalid symbol / not accepted online)
+    """
+    sym = normalize_symbol(symbol)
+    if not sym or sym.startswith("^"):
+        return False
+    if is_mutual_fund_symbol(sym, quantity=quantity):
+        return False
+    if for_new_buy and sym in BLOCKED_NEW_BUYS:
+        return False
+    return True
+
+
 def is_liquid_symbol(symbol: str, price: float | None = None) -> bool:
     """True when a symbol is in the curated liquid universe."""
     sym = normalize_symbol(symbol)
@@ -73,6 +122,8 @@ def is_liquid_symbol(symbol: str, price: float | None = None) -> bool:
         return sym in LIQUID_INDICES
     if sym.endswith("-USD"):
         return True
+    if is_mutual_fund_symbol(sym):
+        return False
     if sym in CURATED_LIQUID:
         return True
     if len(sym) > MAX_SYMBOL_LEN:

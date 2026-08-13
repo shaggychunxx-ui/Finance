@@ -743,8 +743,37 @@ def preview_orders(client: ETradeClient, plan: StrategyPlan) -> StrategyPlan:
     except Exception:
         pass
 
+    # Skip mutual funds before any cancel-open-orders / equity preview.
+    # E*TRADE equity API cannot sell funds; do not cancel human UI fund sells.
+    try:
+        from symbol_universe import is_etrade_equity_orderable, is_mutual_fund_symbol
+    except Exception:
+        is_etrade_equity_orderable = None  # type: ignore
+        is_mutual_fund_symbol = None  # type: ignore
+
     for order in plan.orders:
         if order.status == "blocked":
+            continue
+        if order.quantity <= 0:
+            order.status = "skipped"
+            order.message = "Zero quantity"
+            continue
+        sym_u = str(order.symbol or "").upper()
+        if is_mutual_fund_symbol is not None and is_mutual_fund_symbol(sym_u):
+            order.status = "skipped"
+            order.message = "Mutual fund — not tradable via equity order API (sell in E*TRADE UI)"
+            continue
+        if is_etrade_equity_orderable is not None and str(order.action).upper() in {
+            "BUY",
+            "SELL_SHORT",
+        }:
+            if not is_etrade_equity_orderable(sym_u, for_new_buy=True):
+                order.status = "skipped"
+                order.message = "Symbol not E*TRADE US equity-orderable (foreign/invalid)"
+                continue
+
+    for order in plan.orders:
+        if order.status in {"blocked", "skipped", "error"}:
             continue
         if order.quantity <= 0:
             order.status = "skipped"
