@@ -323,6 +323,13 @@ def build_day_trade_plan(
     min_conf = float(settings.get("min_confidence", DEFAULT_DAY_TRADING["min_confidence"]))
 
     for pos in day_positions:
+        try:
+            from symbol_universe import is_mutual_fund_symbol
+
+            if is_mutual_fund_symbol(pos.symbol, quantity=pos.quantity):
+                continue
+        except Exception:
+            pass
         price = _quote_price(client, pos.symbol) or pos.entry_price
         if price <= 0:
             continue

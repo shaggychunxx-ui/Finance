@@ -1,8 +1,8 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-13
-**Updated by:** PHONE
-**Active owner:** none
+**Updated by:** GROMIT
+**Active owner:** GROMIT
 **Act on:** GROMIT
 
 ## NOTIFY

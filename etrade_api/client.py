@@ -21,6 +21,85 @@ from .oauth import (
     touch_tokens,
 )
 
+# Worker-placed orders use this clientOrderId prefix (see _client_order_id).
+WORKER_CLIENT_ORDER_PREFIX = "FIN"
+# Only unlock shares by canceling worker protective exits — never MARKET/human tickets.
+DEFAULT_CANCEL_PRICE_TYPES = frozenset(
+    {"STOP", "STOP_LIMIT", "TRAILING_STOP_CNST", "TRAILING_STOP_PRCT", "LIMIT"}
+)
+
+
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def iter_open_order_legs(order: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten an E*TRADE Order into one dict per instrument leg."""
+    oid = order.get("orderId")
+    client_id = str(order.get("clientOrderId") or order.get("clientOrderID") or "")
+    details = _as_list(order.get("OrderDetail"))
+    detail = details[0] if details else {}
+    price_type = str(detail.get("priceType") or order.get("priceType") or "").upper()
+    legs: list[dict[str, Any]] = []
+    instruments = detail.get("Instrument") if detail else None
+    if not instruments:
+        instruments = order.get("Instrument")
+    for inst in _as_list(instruments):
+        prod = inst.get("Product") or {}
+        legs.append(
+            {
+                "order_id": oid,
+                "client_order_id": client_id,
+                "symbol": str(prod.get("symbol") or "").upper(),
+                "action": str(inst.get("orderAction") or "").upper(),
+                "price_type": price_type,
+                "security_type": str(prod.get("securityType") or "").upper(),
+            }
+        )
+    return legs
+
+
+def skip_cancel_reason(
+    leg: dict[str, Any],
+    symbols: set[str],
+    *,
+    actions: set[str] | None = None,
+    only_worker: bool = True,
+    price_types: set[str] | frozenset[str] | None = DEFAULT_CANCEL_PRICE_TYPES,
+) -> str | None:
+    """Why this open-order leg must not be canceled, or None if cancel is allowed.
+
+    Human UI sells (no FIN clientOrderId) and mutual funds are never canceled.
+    """
+    sym = str(leg.get("symbol") or "").upper()
+    if not sym or (symbols and sym not in symbols):
+        return "symbol_not_requested"
+    action = str(leg.get("action") or "").upper()
+    if actions is not None and action not in {a.upper() for a in actions}:
+        return "action_filtered"
+    sec = str(leg.get("security_type") or "").upper()
+    if sec in {"MF", "MUTUAL_FUND"}:
+        return "mutual_fund"
+    try:
+        from symbol_universe import is_mutual_fund_symbol
+
+        if is_mutual_fund_symbol(sym):
+            return "mutual_fund"
+    except Exception:
+        pass
+    client_id = str(leg.get("client_order_id") or "")
+    if only_worker and not client_id.upper().startswith(WORKER_CLIENT_ORDER_PREFIX):
+        return "human_or_external"
+    pt = str(leg.get("price_type") or "").upper()
+    allowed_pts = {p.upper() for p in price_types} if price_types is not None else None
+    if allowed_pts is not None and pt not in allowed_pts:
+        return "price_type_filtered"
+    return None
+
 
 class ETradeClient:
     def __init__(self, config: ETradeConfig, tokens: ETradeTokens | None = None) -> None:
@@ -229,6 +308,92 @@ class ETradeClient:
             "clientOrderId": self._client_order_id(),
             "Order": [order],
         }
+
+    def list_orders(
+        self,
+        account_id_key: str,
+        *,
+        status: str = "OPEN",
+        count: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List orders (default OPEN). Returns flattened order dicts."""
+        params: dict[str, Any] = {"count": int(count)}
+        if status:
+            params["status"] = status
+        payload = self._request(
+            "GET",
+            f"/v1/accounts/{account_id_key}/orders.json",
+            params=params,
+        )
+        wrap = payload.get("OrdersResponse", payload)
+        raw = wrap.get("Order") or wrap.get("Orders") or []
+        if isinstance(raw, dict):
+            raw = [raw]
+        return list(raw)
+
+    def cancel_order(self, account_id_key: str, order_id: int | str) -> dict[str, Any]:
+        """Cancel an open order by id."""
+        payload = {"CancelOrderRequest": {"orderId": int(order_id)}}
+        return self._request(
+            "PUT",
+            f"/v1/accounts/{account_id_key}/orders/cancel",
+            json=payload,
+        )
+
+    def cancel_open_orders_for_symbols(
+        self,
+        account_id_key: str,
+        symbols: set[str] | list[str],
+        *,
+        actions: set[str] | None = None,
+        only_worker: bool = True,
+        price_types: set[str] | frozenset[str] | None = DEFAULT_CANCEL_PRICE_TYPES,
+    ) -> list[dict[str, Any]]:
+        """Cancel OPEN worker protective orders that lock shares for a planned SELL.
+
+        Never cancels human UI tickets (no FIN clientOrderId) or mutual funds.
+        """
+        want = {str(s).upper() for s in symbols}
+        results: list[dict[str, Any]] = []
+        seen: set[Any] = set()
+        for order in self.list_orders(account_id_key, status="OPEN", count=100):
+            for leg in iter_open_order_legs(order):
+                reason = skip_cancel_reason(
+                    leg,
+                    want,
+                    actions=actions,
+                    only_worker=only_worker,
+                    price_types=price_types,
+                )
+                if reason is not None:
+                    continue
+                oid = leg.get("order_id")
+                if oid is None or oid in seen:
+                    continue
+                seen.add(oid)
+                try:
+                    resp = self.cancel_order(account_id_key, oid)
+                    results.append(
+                        {
+                            "order_id": oid,
+                            "symbol": leg.get("symbol"),
+                            "action": leg.get("action"),
+                            "ok": True,
+                            "response": resp,
+                        }
+                    )
+                except Exception as exc:
+                    results.append(
+                        {
+                            "order_id": oid,
+                            "symbol": leg.get("symbol"),
+                            "action": leg.get("action"),
+                            "ok": False,
+                            "error": str(exc),
+                        }
+                    )
+                break
+        return results
 
     def preview_equity_order(self, account_id_key: str, order_body: dict[str, Any]) -> dict[str, Any]:
         payload = {"PreviewOrderRequest": order_body}

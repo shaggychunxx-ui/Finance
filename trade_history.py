@@ -295,6 +295,13 @@ def append_stop_target_exit_orders(
     for sym, lots in open_lots.items():
         if sym in existing_sells:
             continue
+        try:
+            from symbol_universe import is_mutual_fund_symbol
+
+            if is_mutual_fund_symbol(sym):
+                continue
+        except Exception:
+            pass
         price = prices.get(sym) or float((pos_map.get(sym) or {}).get("price", 0))
         qty = int((pos_map.get(sym) or {}).get("quantity", 0))
         if price <= 0 or qty <= 0 or not lots:

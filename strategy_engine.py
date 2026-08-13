@@ -358,6 +358,22 @@ def _position_map(positions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         return out
 
 
+def _is_mutual_fund_holding(symbol: str, pos: dict[str, Any] | None = None) -> bool:
+    """True when the equity order API must not buy/sell this holding."""
+    try:
+        from symbol_universe import is_mutual_fund_symbol
+
+        qty = None
+        if pos:
+            try:
+                qty = float(pos.get("quantity") or 0)
+            except (TypeError, ValueError):
+                qty = None
+        return bool(is_mutual_fund_symbol(symbol, quantity=qty))
+    except Exception:
+        return False
+
+
 def build_strategy_plan(
     client: ETradeClient,
     account_id_key: str,
@@ -438,6 +454,9 @@ def build_strategy_plan(
     for holding in targets:
         sym = holding["symbol"].upper()
         handled.add(sym)
+        # Human sells mutual funds in the E*TRADE UI — never propose API orders.
+        if _is_mutual_fund_holding(sym, pos_map.get(sym)):
+            continue
         weight = float(holding.get("weight_pct", 0))
         target_value = investable * weight / 100
         current = pos_map.get(sym, {})
@@ -517,6 +536,8 @@ def build_strategy_plan(
 
     for sym, pos in pos_map.items():
         if sym in handled:
+            continue
+        if _is_mutual_fund_holding(sym, pos):
             continue
         current_value = float(pos.get("market_value", 0))
         price = prices.get(sym) or float(pos.get("price", 0))
@@ -771,6 +792,32 @@ def preview_orders(client: ETradeClient, plan: StrategyPlan) -> StrategyPlan:
                 order.status = "skipped"
                 order.message = "Symbol not E*TRADE US equity-orderable (foreign/invalid)"
                 continue
+
+    # Cancel only worker-placed protective GTC stops/limits that lock shares.
+    # Never cancel human UI sells (PHONE: "I put them for sale, not the api").
+    settings = load_strategy_settings()
+    cancel_conflicts = bool(settings.get("cancel_conflicting_orders_before_sell", True))
+    sell_syms = {
+        o.symbol.upper()
+        for o in plan.orders
+        if o.status not in {"blocked", "skipped", "error"}
+        and str(o.action).upper() == "SELL"
+        and o.quantity > 0
+    }
+    if cancel_conflicts and sell_syms:
+        try:
+            cancelled = client.cancel_open_orders_for_symbols(
+                plan.account_id_key,
+                sell_syms,
+                actions={"SELL", "SELL_SHORT"},
+                only_worker=True,
+            )
+            if cancelled:
+                plan.meta = dict(plan.meta or {})
+                plan.meta["cancelled_open_orders"] = cancelled
+        except Exception as exc:
+            plan.meta = dict(plan.meta or {})
+            plan.meta["cancel_open_orders_error"] = str(exc)
 
     for order in plan.orders:
         if order.status in {"blocked", "skipped", "error"}:
