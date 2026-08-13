@@ -2,8 +2,8 @@
 
 **Last updated:** 2026-08-13
 **Updated by:** GROMIT
-**Active owner:** GROMIT
-**Act on:** GROMIT
+**Active owner:** none
+**Act on:** none
 
 ## NOTIFY
 
@@ -37,9 +37,10 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
-- [ ] **GROMIT** I put them for sale, not the api
 
 ## Done
+
+- [x] **GROMIT (PHONE: I put them for sale, not the api):** Your UI sells stay. Worker cancels only its own `FIN*` protective stops/limits — never human tickets and never mutual funds. Funds ETMUX/ETBOX/TAIBX/PHYZX/PRBLX are not proposed on the equity API. Re-place any 2026-08-12 canceled fund sells in the E*TRADE **fund** ticket (NAV). Tests `test_human_ui_orders.py` OK. Worker pid 15712 loaded the fix. OAuth still expired past midnight ET (separate human item). Task `tasks/done/049-human-ui-sells-not-api.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: why fund sells canceled):** Positions ETMUX/ETBOX/TAIBX/PHYZX/PRBLX are **mutual funds** — equity API cannot sell them. Worker on 2026-08-12 **cancelled open UI SELL orders** for those symbols (cancel-before-sell), then **skipped** fund sells. Fix: skip funds **before** cancel open orders (live `strategy_engine.preview_orders` + git). Sell funds only via E*TRADE UI fund ticket / NAV. Task `tasks/done/048-why-mutual-fund-sells-canceled.md`. **Act on: none**.
 
@@ -89,7 +90,6 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
-- [ ] **GROMIT** I put them for sale, not the api
 
 ## Blockers
 
@@ -113,5 +113,4 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
-- PHONE: I put them for sale, not the api → Act on GROMIT (GROMIT delegates host-local work)
 
