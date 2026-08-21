@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from agents.agriculture import run_agriculture_analysis
 from agents.census import run_census_analysis
+from agents.dca_strategy import run_dca_strategy_analysis
 from agents.datascience import run_datascience_analysis
 from agents.electricity import run_electricity_analysis
 from agents.empirical_probability import run_empirical_probability_analysis
@@ -1345,6 +1346,7 @@ RUNNERS: dict[str, Callable[..., dict[str, Any]]] = {
     "census": run_census_analysis,
     "combined-conditional": run_combined_conditional_analysis,
     "data-steward": run_data_steward_analysis,
+    "dca-strategy": run_dca_strategy_analysis,
     "historical-sim": run_historical_simulation_cli,
     "datascience": run_datascience_analysis,
     "electricity": run_electricity_analysis,

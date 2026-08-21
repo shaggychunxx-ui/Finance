@@ -27,6 +27,7 @@ AGENT_DEFAULT_HORIZON: dict[str, str] = {
     "financial-data": "24h",
     "datascience": "24h",
     "order-execution": "24h",
+    "dca-strategy": "1yr",
     "sales-analytics": "1wk",
     "geopolitics": "1wk",
     "events": "1wk",
@@ -90,6 +91,7 @@ AGENT_CLUSTERS: dict[str, str] = {
     "trading-economics": "macro",
     "sales-analytics": "consumer",
     "order-execution": "execution",
+    "dca-strategy": "portfolio",
     "data-steward": "data_platform",
     "records-management": "data_platform",
     "market-predictor": "fusion",
@@ -105,6 +107,7 @@ DIRECTIONAL_SCORING_SKIP = frozenset({
     "order-execution",
     "data-steward",
     "records-management",
+    "dca-strategy",
 })
 
 

@@ -54,6 +54,7 @@ RESEARCH_AGENTS: frozenset[str] = frozenset(
         "content-integrity",
         "capital-return",
         "portfolio-frameworks",
+        "dca-strategy",
         "equity-structuring",
         "ipo-monitor",
         "ipo-debut",

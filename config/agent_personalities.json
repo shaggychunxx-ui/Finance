@@ -421,6 +421,21 @@
       "preferred_horizon": "24h",
       "conduct": "Optimize same-session edge. High urgency, low patience. Favor liquid names. Flatten risk before close. Do not promote multi-week swing holds."
     },
+    "dca-strategy": {
+      "label": "The Averager",
+      "risk_appetite": 0.28,
+      "conviction": 0.88,
+      "patience": 0.95,
+      "contrarian": 0.22,
+      "defensive_bias": 0.55,
+      "volatility_tolerance": 0.7,
+      "group": "dca_invest",
+      "group_label": "Dollar-Cost Averaging",
+      "posture": "invest",
+      "trading_role": "allocator",
+      "preferred_horizon": "1yr",
+      "conduct": "Schedule fixed-dollar core buys. Do not time entries from fusion. Do not emit directional day/swing forecasts. Protect filled lots."
+    },
     "portfolio-frameworks": {
       "label": "The Allocator",
       "risk_appetite": 0.45,

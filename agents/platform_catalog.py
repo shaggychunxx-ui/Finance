@@ -45,6 +45,7 @@ CATEGORY_BY_ID: dict[str, str] = {
     "etf-tracker": "Markets & Finance",
     "bond-markets": "Markets & Finance",
     "order-execution": "Markets & Finance",
+    "dca-strategy": "Portfolio",
     "finance": "Markets & Finance",
     "financial-data": "Markets & Finance",
 

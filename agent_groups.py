@@ -639,6 +639,57 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
             success_criteria="Robust multi-horizon theses with solid directional accuracy.",
         ),
     },
+    "dca_invest": {
+        "label": "Dollar-Cost Averaging",
+        "cluster": "portfolio",
+        "category": "Portfolio",
+        "horizon": "1yr",
+        "posture": "invest",
+        "generalist": False,
+        "directional": False,
+        "trading_role": "allocator",
+        "conduct": (
+            "Schedule fixed-dollar core buys. Do not time entries from fusion. "
+            "Do not emit directional day/swing forecasts. Protect filled lots."
+        ),
+        "traits": {
+            "risk_appetite": 0.28,
+            "conviction": 0.88,
+            "patience": 0.95,
+            "contrarian": 0.22,
+            "defensive_bias": 0.55,
+            "volatility_tolerance": 0.70,
+        },
+        "scoring": _scoring(
+            mode="allocation",
+            primary_metric="schedule_fidelity",
+            summary="Grade DCA on calendar fidelity and core funding, not price direction.",
+            score_horizon="1yr",
+            direction_weight=0.0,
+            magnitude_weight=1.0,
+            metrics=[
+                {
+                    "id": "schedule_fidelity",
+                    "weight": 0.50,
+                    "label": "Schedule fidelity",
+                    "description": "Due periods are filled once, on calendar, with no extra tickets.",
+                },
+                {
+                    "id": "core_funding",
+                    "weight": 0.30,
+                    "label": "Core funding",
+                    "description": "Fixed dollars reach the intended ETF mix after whole-share rounding.",
+                },
+                {
+                    "id": "isolation",
+                    "weight": 0.20,
+                    "label": "Sleeve isolation",
+                    "description": "Lots stay protected from rebalance SELL and day-trade flatten.",
+                },
+            ],
+            success_criteria="Due periods fill once; lots remain isolated from signal sleeves.",
+        ),
+    },
     "portfolio_alloc": {
         "label": "Portfolio Construction",
         "cluster": "portfolio",
@@ -911,6 +962,7 @@ AGENT_TO_GROUP: dict[str, str] = {
     "portfolio-frameworks": "portfolio_alloc",
     "equity-structuring": "portfolio_alloc",
     "capital-return": "portfolio_alloc",
+    "dca-strategy": "dca_invest",
     # Platform
     "data-steward": "data_platform",
     "records-management": "data_platform",
@@ -1096,6 +1148,10 @@ GROUP_DOMAIN_HINTS: dict[str, dict[str, frozenset[str]]] = {
     "portfolio-frameworks": {
         "tickers": frozenset({"SPY", "AGG", "TLT", "GLD", "EFA", "EEM"}),
         "sectors": frozenset({"allocation", "portfolio", "asset class", "risk parity"}),
+    },
+    "dca-strategy": {
+        "tickers": frozenset({"VTI", "VXUS", "BND", "ITOT", "IXUS", "AGG", "SPY"}),
+        "sectors": frozenset({"dca", "core", "allocation", "etf", "invest"}),
     },
     "long-squeeze-synergy": {
         "tickers": frozenset({"GME", "AMC", "PLTR", "TSLA", "NVDA"}),

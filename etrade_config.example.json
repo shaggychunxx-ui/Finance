@@ -89,6 +89,25 @@
     "confirmed_at": "",
     "account_opened_at": "2026-07-24"
   },
+  "dca_strategy": {
+    "enabled": false,
+    "amount_usd": 100.0,
+    "cadence": "weekly",
+    "weekday": "Friday",
+    "month_day": 1,
+    "execute_after_et": "10:30",
+    "min_trade_usd": 50.0,
+    "order_type": "MARKET",
+    "protect_lots": true,
+    "vix_overlay": "off",
+    "vix_high": 30.0,
+    "skip_if_cash_below_usd": 200.0,
+    "universe": [
+      {"symbol": "VTI", "weight_pct": 70.0, "name": "US total market"},
+      {"symbol": "VXUS", "weight_pct": 20.0, "name": "International ex-US"},
+      {"symbol": "BND", "weight_pct": 10.0, "name": "US aggregate bonds"}
+    ]
+  },
   "day_trading": {
     "enabled": true,
     "interval_minutes": 5,

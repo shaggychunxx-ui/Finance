@@ -243,6 +243,14 @@ AGENT_REGISTRY: list[dict[str, Any]] = [
         "sources": ["Yahoo Finance Chart API"],
         "owner": "platform",
     },
+    {
+        "command": "dca-strategy",
+        "agent": "DCA Strategy Expert",
+        "primary_output": "dca_strategy.json",
+        "sidecars": ["dca_methodology.json", "dca_plan.json", "dca_state.json"],
+        "sources": ["etrade_config.json dca_strategy", "E*TRADE quotes"],
+        "owner": "platform",
+    },
 ]
 
 DATA_SOURCES: list[dict[str, Any]] = [

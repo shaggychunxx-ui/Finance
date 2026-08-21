@@ -33,6 +33,7 @@ Intelligence agents for financial market analysis and a client-side world events
 | **Research Statistics Expert** | `run.bat research-statistics` | Yahoo Finance (1yr daily history) |
 | **Sales Analytics BI Expert** | `run.bat sales-analytics` | Yahoo Finance retail proxies + dashboard |
 | **Market Predictor** | `run.bat market-predictor` | Fuses all agent outputs into multi-horizon predictions |
+| **DCA Strategy** | `run.bat dca-strategy` | Calendar dollar-cost averaging sleeve (off until `dca_strategy.enabled`) |
 | **Data Steward Expert** | `run.bat data-steward` | Platform catalog, output/ artifacts, health checks |
 | **Records Management Expert** | `run.bat records-management` | Archive inventory, retention, snapshot archiving |
 | **Meteorology Expert** | `run.bat meteorology` | [weather.gov](https://www.weather.gov/) / NWS API |
@@ -57,6 +58,7 @@ run.bat combined-conditional
 run.bat research-statistics
 run.bat sales-analytics
 run.bat market-predictor -o output/market_predictions.json
+run.bat dca-strategy -o output/dca_strategy.json
 run.bat data-steward
 run.bat records-management
 run.bat meteorology

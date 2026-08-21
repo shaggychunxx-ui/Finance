@@ -154,6 +154,15 @@
       "defensive_bias": 0.34,
       "volatility_tolerance": 0.5
     },
+    "dca-strategy": {
+      "label": "The Averager",
+      "risk_appetite": 0.28,
+      "conviction": 0.88,
+      "patience": 0.95,
+      "contrarian": 0.22,
+      "defensive_bias": 0.55,
+      "volatility_tolerance": 0.7
+    },
     "order-execution": {
       "label": "The Execution Purist",
       "risk_appetite": 0.3,

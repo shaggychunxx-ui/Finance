@@ -47,6 +47,7 @@ DEFAULT_WORKER = {
     "auto_execute": True,
     "live_trading": True,
     "day_trading": True,
+    "dca_strategy": True,
     "dry_run": False,
     "paused": False,
     # Legacy "full cycle" cadence (used as fallback / sleep baseline).
@@ -1402,8 +1403,23 @@ def _submit_plan_orders(
         suffix = f" ({'; '.join(extra)})" if extra else ""
         _log(f"Trade guards blocked {blocked}/{proposed} order(s) before E*TRADE preview{suffix}.")
     previewed = sum(1 for o in plan.orders if o.status == "previewed")
+    errored = [o for o in plan.orders if o.status == "error"]
+    skipped = [o for o in plan.orders if o.status == "skipped"]
+    cancelled = (plan.meta or {}).get("cancelled_open_orders") or []
+    if cancelled:
+        ok_c = sum(1 for c in cancelled if c.get("ok"))
+        _log(f"Cancelled {ok_c}/{len(cancelled)} open order(s) that locked sell shares.")
+    if errored:
+        for o in errored[:8]:
+            _log(f"  preview error {o.action} {o.symbol} x{o.quantity}: {o.message}")
+        if len(errored) > 8:
+            _log(f"  …and {len(errored) - 8} more preview errors")
+    if skipped:
+        for o in skipped[:6]:
+            _log(f"  skipped {o.action} {o.symbol}: {o.message}")
     if previewed == 0:
         _log("No orders passed E*TRADE preview.")
+        save_strategy_plan(plan)
         return False
 
     execute_orders(client, plan, dry_run=dry_run)
@@ -1472,6 +1488,66 @@ def _run_plan_build(client: ETradeClient, *, force: bool = False, config_path: P
     save_worker_state(state)
     _log(f"Strategy plan ready - {len(plan.orders)} proposed orders.")
     return plan
+
+
+def _run_dca(
+    client: ETradeClient,
+    *,
+    force: bool = False,
+    config_path: Path = CONFIG_PATH,
+) -> bool:
+    """Calendar DCA sleeve. Off unless dca_strategy.enabled is true."""
+    from dca_engine import build_dca_plan, load_dca_settings, record_fills
+
+    settings = worker_settings(config_path)
+    dca = load_dca_settings(config_path)
+    if not dca.get("enabled") and not force:
+        return False
+    if not settings.get("dca_strategy", True):
+        _log("DCA sleeve skipped — background_worker.dca_strategy is false.")
+        return False
+
+    acct = _resolve_account(client, config_path)
+    if not acct:
+        return False
+
+    plan = build_dca_plan(
+        client,
+        acct["account_id_key"],
+        acct.get("account_name", ""),
+        settings=dca,
+        force=force,
+    )
+    skip = (plan.meta or {}).get("skip_reason")
+    if skip:
+        _log(f"DCA skipped — {skip}")
+        return False
+    if not plan.orders:
+        _log("DCA: no whole-share buys this period.")
+        return False
+    if not is_us_market_open() and not settings.get("allow_off_hours_trading", False):
+        _log("US market closed — DCA orders deferred.")
+        return False
+    if not live_trading_enabled(settings, sandbox=client.config.sandbox):
+        _log("DCA live trading disabled (dry run, sandbox, or auto_execute off).")
+        return False
+
+    mode = "LIVE PRODUCTION" if not client.config.sandbox else "LIVE SANDBOX"
+    dry_run = bool(settings.get("dry_run", False))
+    _log(f"=== DCA {mode}: {len(plan.orders)} BUY(s) ===")
+    preview_orders(client, plan)
+    previewed = sum(1 for o in plan.orders if o.status == "previewed")
+    if previewed == 0:
+        _log("DCA: no orders passed E*TRADE preview.")
+        return False
+    execute_orders(client, plan, dry_run=dry_run)
+    record_fills(plan.orders)
+    placed = sum(1 for o in plan.orders if o.status in {"placed", "dry_run"})
+    if dry_run:
+        _log(f"DCA dry run — simulated {placed} buy(s).")
+    else:
+        _log(f"DCA LIVE buys submitted: {placed}")
+    return True
 
 
 def _run_day_trading(
@@ -1815,6 +1891,7 @@ def run_full_cycle(*, force: bool = False, config_path: Path = CONFIG_PATH) -> i
                     _log(f"Broker market data note: {exc}")
                 if not trading_paused:
                     plan_ran = _run_plan_and_orders(client, force=force, config_path=config_path)
+                    _run_dca(client, force=force, config_path=config_path)
                     _run_day_trading(client, force=force, config_path=config_path)
                 else:
                     _log("Skipping plan/orders — trading paused.")

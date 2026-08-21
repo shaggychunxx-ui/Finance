@@ -434,6 +434,15 @@ def build_strategy_plan(
         min_drift_pct, _ = resolve_trade_thresholds(settings, investable=total_value)
         min_trade_usd = float(settings.get("min_trade_usd", min_trade_usd))
 
+    try:
+        from dca_engine import reserved_cash_usd
+
+        reserve = float(reserved_cash_usd() or 0)
+        if reserve > 0 and total_value > 0:
+            cash_buffer_pct = cash_buffer_pct + (100.0 * reserve / total_value)
+    except Exception:
+        pass
+
     investable = total_value * (1 - cash_buffer_pct / 100)
     if investable_cap > 0:
         investable = min(investable, investable_cap)
@@ -479,6 +488,14 @@ def build_strategy_plan(
         if abs(delta) < order_min_trade:
             continue
 
+        protected_qty = 0
+        try:
+            from dca_engine import protected_quantities
+
+            protected_qty = int((protected_quantities() or {}).get(sym, 0) or 0)
+        except Exception:
+            protected_qty = 0
+
         if delta > 0:
             # Shared capital OK — but never open long against short sleeve
             if sym in blocked_new:
@@ -487,6 +504,8 @@ def build_strategy_plan(
             action = "BUY"
         else:
             qty = min(current_qty, int(abs(delta) // price))
+            sellable = max(0, current_qty - protected_qty)
+            qty = min(qty, sellable)
             action = "SELL"
 
         if qty <= 0:
@@ -546,6 +565,15 @@ def build_strategy_plan(
             continue
         qty = int(pos.get("quantity", 0))
         if qty <= 0 or price <= 0:
+            continue
+        try:
+            from dca_engine import protected_quantities
+
+            prot = int((protected_quantities() or {}).get(sym, 0) or 0)
+        except Exception:
+            prot = 0
+        qty = max(0, qty - prot)
+        if qty <= 0:
             continue
         trim_order = TradeOrder(
             symbol=sym,
@@ -764,8 +792,12 @@ def preview_orders(client: ETradeClient, plan: StrategyPlan) -> StrategyPlan:
     except Exception:
         pass
 
-    # Skip mutual funds before any cancel-open-orders / equity preview.
-    # E*TRADE equity API cannot sell funds; do not cancel human UI fund sells.
+    settings = load_strategy_settings()
+    cancel_conflicts = bool(settings.get("cancel_conflicting_orders_before_sell", True))
+
+    # Skip symbols the equity API cannot trade (funds / foreign) BEFORE canceling
+    # open orders — otherwise human UI mutual-fund sells get wiped, then we skip
+    # placing our own fund sells (API cannot trade them).
     try:
         from symbol_universe import is_etrade_equity_orderable, is_mutual_fund_symbol
     except Exception:
@@ -795,8 +827,6 @@ def preview_orders(client: ETradeClient, plan: StrategyPlan) -> StrategyPlan:
 
     # Cancel only worker-placed protective GTC stops/limits that lock shares.
     # Never cancel human UI sells (PHONE: "I put them for sale, not the api").
-    settings = load_strategy_settings()
-    cancel_conflicts = bool(settings.get("cancel_conflicting_orders_before_sell", True))
     sell_syms = {
         o.symbol.upper()
         for o in plan.orders
@@ -813,8 +843,11 @@ def preview_orders(client: ETradeClient, plan: StrategyPlan) -> StrategyPlan:
                 only_worker=True,
             )
             if cancelled:
+                ok_n = sum(1 for c in cancelled if c.get("ok"))
                 plan.meta = dict(plan.meta or {})
                 plan.meta["cancelled_open_orders"] = cancelled
+                # lightweight log via order messages is not ideal; worker logs meta
+                _ = ok_n
         except Exception as exc:
             plan.meta = dict(plan.meta or {})
             plan.meta["cancel_open_orders_error"] = str(exc)
@@ -837,6 +870,10 @@ def preview_orders(client: ETradeClient, plan: StrategyPlan) -> StrategyPlan:
             elif isinstance(preview_ids, dict):
                 preview_id = preview_ids.get("previewId")
             order.preview_id = preview_id
+            if preview_id is None:
+                order.status = "error"
+                order.message = "Preview returned no previewId"
+                continue
             order.status = "previewed"
             type_note = order.price_type
             if order.price_type == "LIMIT" and order.limit_price is not None:

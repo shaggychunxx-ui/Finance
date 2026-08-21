@@ -56,6 +56,8 @@ DEFAULT_POLICY = {
     "forbid_same_symbol_both_sleeves": True,
     # Dynamically tilt capital + assign symbols for joint profit.
     "coordinate_for_profit": True,
+    # When the DCA period is due, reserve that cash so long/short do not spend it.
+    "dca_reserve_on_due": True,
 }
 
 
@@ -225,6 +227,13 @@ def shared_capital_budget(
     total = max(0.0, float(total_account_value or 0))
     buffer = float(policy.get("shared_cash_buffer_pct", 5.0)) / 100.0
     free_equity = total * max(0.0, 1.0 - buffer)
+    if policy.get("dca_reserve_on_due", True):
+        try:
+            from dca_engine import reserved_cash_usd
+
+            free_equity = max(0.0, free_equity - float(reserved_cash_usd() or 0))
+        except Exception:
+            pass
     shared_on = bool(policy.get("shared_capital", True))
 
     long_pct = float(policy.get("long_max_deploy_pct", 75.0))
