@@ -1,13 +1,13 @@
 # Team rules — Finance phone bus
 
 **Applies to:** GROMIT (sole Finance host) · PHONE-OXYGEN (human mobile) · unattended agents  
-**Does not apply Finance work to:** BOXONE · LAPTOP · AI-CODING (unless human overrides)
+**Does not apply Finance work to:** LAPTOP · retired BOXONE · retired AI-CODING (unless human overrides)
 
 This repo is a **GitStatus phone bus** plus trading code. Phone writes `STATUS.md`; GROMIT watchers wake headless Grok when assigned.
 
 ### Host policy (human 2026-08-06)
 
-**All Finance is off BOXONE.** Dual-PC broker/pipeline split is **retired**.
+**All Finance is off BOXONE** (and BOXONE is out of the fleet). Dual-PC broker/pipeline split is **retired**.
 
 | Work | Who |
 |------|-----|

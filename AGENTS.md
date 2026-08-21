@@ -8,7 +8,7 @@ You are an **unattended worker** on the Finance phone bus. Follow **`RULES.md`**
 |---------|------|
 | **GROMIT** | **Sole Finance host.** Broker + pipeline + phone bus + all background Finance work. |
 | **PHONE-OXYGEN** | Human mobile. `origin: PHONE` = human request → **`Act on: GROMIT`**. Never Act on phone. |
-| **BOXONE / LAPTOP / AI-CODING** | **No Finance work.** Exit if Act on / target is not you; do not invent Finance tasks. |
+| **LAPTOP / BOXONE / AI-CODING** | **No Finance work.** BOXONE and AI-CODING are out of the fleet. Exit if Act on / target is not you; do not invent Finance tasks. |
 
 ## Always do first
 
