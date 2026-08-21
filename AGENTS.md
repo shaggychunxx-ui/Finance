@@ -33,7 +33,8 @@ You are an **unattended worker** on the Finance phone bus. Follow **`RULES.md`**
 3. Task file → `tasks/done/` + **Result** when applicable.
 4. Update **Done**; clear finished **Next** items.
 5. **Active owner:** `none` when you stop.
-6. No secrets in git.
+6. No secrets in git.  
+7. **Commit and push immediately** after edits (GROMIT). Auto-sync is backup only. See grok-shared-workspace `work/fleet/COMMIT-PUSH.md`.
 
 ## Phone (GitStatus)
 
