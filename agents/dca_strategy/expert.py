@@ -3,9 +3,10 @@ DCA Strategy Expert Agent
 =========================
 Dollar-cost averaging knowledge + calendar buy plan for the Finance pipeline.
 
-This agent does **not** time entries from fusion signals. It proposes fixed-dollar
-purchases on a schedule into a diversified ETF core, isolated from the long
-rebalance sleeve and the day-trade sleeve.
+This agent does **not** emit directional day/swing forecasts. It proposes
+fixed-dollar core ETF buys on a schedule. A 0-100 **use score** (cash slack,
+index dip, VIX, fusion regime, breadth) lets the pipeline skip / half / full /
+lean-in that period.
 
 Execution lives in ``dca_engine.py`` (E*TRADE worker hook). Live orders stay
 off until ``dca_strategy.enabled`` is true in etrade_config.json.
@@ -80,9 +81,13 @@ DCA_KNOWLEDGE: dict[str, Any] = {
         "Dividends on core ETFs should be set to reinvest or swept; this agent does not place DRIP tickets.",
     ],
     "overlays": {
-        "off": "Ignore VIX. Pure calendar. Default.",
+        "off": "Ignore the simple VIX overlay. Use-score still applies when use_score=true.",
         "skip_high": "Skip the period when VIX is above vix_high (optional freeze in a panic).",
         "lean_in": "Multiply amount when VIX is above vix_high (buy more of the dip). Use only with spare cash.",
+        "use_score": (
+            "Pipeline 0-100 grade: cash_slack 25, cheapness 25, vix 20, regime 20, breadth 10. "
+            "skip <40, half 40-59, full 60-84, lean-in >=85 (1.5x if cash allows)."
+        ),
     },
     "what_this_is_not": [
         "Not target-weight rebalance (strategy_engine).",
@@ -157,10 +162,12 @@ class DcaStrategyExpert(BaseExpert):
         from dca_engine import (
             already_filled,
             is_period_due,
+            leftover_usd,
             load_dca_settings,
             period_key,
             planned_lots,
             public_settings,
+            score_dca_use,
         )
 
         settings = load_dca_settings()
@@ -169,7 +176,18 @@ class DcaStrategyExpert(BaseExpert):
         due = is_period_due(settings, now=now)
         filled = already_filled(key)
         amount = float(settings.get("amount_usd") or 0)
-        lots_raw = planned_lots(settings, price_fn=self._price)
+        decision = score_dca_use(settings)
+        try:
+            mult = float(decision.get("multiplier") or 1.0)
+        except (TypeError, ValueError):
+            mult = 1.0
+        budget = max(0.0, amount * max(0.0, mult) + leftover_usd())
+        lots_raw = planned_lots(
+            settings,
+            price_fn=self._price,
+            amount_usd=budget,
+            overlay_note=str(decision.get("note") or ""),
+        )
         lots = [
             DcaLot(
                 symbol=row["symbol"],
@@ -187,6 +205,8 @@ class DcaStrategyExpert(BaseExpert):
         enabled = bool(settings.get("enabled"))
         cadence = str(settings.get("cadence") or "weekly")
 
+        action = str(decision.get("action") or "full")
+        score = decision.get("score")
         if not enabled:
             summary = (
                 "DCA sleeve is implemented and wired, but live buys are OFF "
@@ -195,17 +215,24 @@ class DcaStrategyExpert(BaseExpert):
             )
         elif filled:
             summary = f"Period {key} already filled. Next calendar period waits."
+        elif due and action == "skip":
+            summary = (
+                f"Period {key} is due but pipeline skipped "
+                f"(use_score={score}, action=skip)."
+            )
         elif due:
             buyable = [lot for lot in lots if lot.shares > 0]
             summary = (
-                f"Period {key} is due. {len(buyable)} whole-share BUY(s) from "
-                f"${amount:.2f} {cadence} into the core ETF mix."
+                f"Period {key} is due. use_score={score} -> {action}. "
+                f"{len(buyable)} whole-share BUY(s) from ${budget:.2f} "
+                f"{cadence} into the core ETF mix."
             )
         else:
             summary = (
                 f"DCA armed. Period {key} is not due yet "
                 f"({cadence}, weekday={settings.get('weekday')}, "
-                f"after {settings.get('execute_after_et')} ET)."
+                f"after {settings.get('execute_after_et')} ET). "
+                f"Latest use_score={score} -> {action}."
             )
 
         signals = [
@@ -214,15 +241,16 @@ class DcaStrategyExpert(BaseExpert):
                 "bias": "NEUTRAL",
                 "tickers": [lot.symbol for lot in lots],
                 "reason": (
-                    "Scheduled DCA core. Not a directional forecast. "
-                    "Buy on calendar; do not time with fusion."
+                    "Scheduled DCA core. Pipeline use-score sizes or defers the "
+                    "period; this is not a directional forecast."
                 ),
             }
         ]
         recs = [
             DCA_KNOWLEDGE["definition"],
             "Live execution: etrade_worker -> dca_engine after long rebalance, before day trading.",
-            "Protect filled lots from strategy SELL. Reserve cash on due days.",
+            "Protect filled lots from strategy SELL. Reserve cash on due days that the score does not skip.",
+            str(DCA_KNOWLEDGE["overlays"]["use_score"]),
         ]
         if not enabled:
             recs.append(
@@ -255,6 +283,7 @@ class DcaStrategyExpert(BaseExpert):
                 "weekday": settings.get("weekday"),
                 "month_day": settings.get("month_day"),
                 "execute_after_et": settings.get("execute_after_et"),
+                "use_score": decision,
             },
             settings_public=public_settings(settings),
         )
@@ -294,6 +323,12 @@ class DcaStrategyExpert(BaseExpert):
                 "due": report.due,
                 "already_filled": report.already_filled,
                 "buyable_shares": sum(lot.shares for lot in report.lots),
+                "use_score": (report.schedule or {}).get("use_score", {}).get("score")
+                if isinstance(report.schedule.get("use_score"), dict)
+                else None,
+                "use_action": (report.schedule or {}).get("use_score", {}).get("action")
+                if isinstance(report.schedule.get("use_score"), dict)
+                else None,
             },
             "market_signals": report.market_signals,
             "recommendations": report.recommendations,

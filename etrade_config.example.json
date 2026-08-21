@@ -90,7 +90,7 @@
     "account_opened_at": "2026-07-24"
   },
   "dca_strategy": {
-    "enabled": false,
+    "enabled": true,
     "amount_usd": 100.0,
     "cadence": "weekly",
     "weekday": "Friday",
@@ -102,6 +102,11 @@
     "vix_overlay": "off",
     "vix_high": 30.0,
     "skip_if_cash_below_usd": 200.0,
+    "use_score": true,
+    "min_score_full": 60.0,
+    "min_score_half": 40.0,
+    "min_score_lean": 85.0,
+    "lean_multiplier": 1.5,
     "universe": [
       {"symbol": "VTI", "weight_pct": 70.0, "name": "US total market"},
       {"symbol": "VXUS", "weight_pct": 20.0, "name": "International ex-US"},

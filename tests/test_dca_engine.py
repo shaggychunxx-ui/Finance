@@ -87,6 +87,7 @@ class DcaEngineTests(unittest.TestCase):
                 "cadence": "weekly",
                 "weekday": "Friday",
                 "execute_after_et": "10:30",
+                "use_score": False,
             }
             self.assertEqual(de.reserved_cash_usd(settings, now=friday), 0.0)
             settings["enabled"] = True
@@ -174,6 +175,150 @@ class DcaEngineTests(unittest.TestCase):
         self.assertEqual(pipeline_id_for_agent("dca-strategy"), "research")
         self.assertEqual(AGENT_TO_GROUP["dca-strategy"], "dca_invest")
         self.assertFalse(AGENT_GROUPS["dca_invest"]["directional"])
+        scoring = AGENT_GROUPS["dca_invest"]["scoring"]
+        metric_ids = {m["id"] for m in scoring["metrics"]}
+        self.assertIn("use_decision", metric_ids)
+
+    def test_use_score_skip_half_full_lean(self) -> None:
+        from dca_engine import score_dca_use
+
+        settings = {
+            "amount_usd": 100.0,
+            "skip_if_cash_below_usd": 200.0,
+            "use_score": True,
+            "min_score_half": 40.0,
+            "min_score_full": 60.0,
+            "min_score_lean": 85.0,
+            "lean_multiplier": 1.5,
+        }
+        skip = score_dca_use(
+            settings,
+            cash=50.0,
+            vix=11.0,
+            spy_day_chg_pct=2.5,
+            risk_on_score=0.90,
+            breadth_score=0.80,
+            posture="risk-on",
+        )
+        self.assertEqual(skip["action"], "skip")
+        self.assertEqual(skip["multiplier"], 0.0)
+        self.assertLess(skip["score"], 40.0)
+
+        half = score_dca_use(
+            settings,
+            cash=250.0,
+            vix=13.0,
+            spy_day_chg_pct=1.2,
+            risk_on_score=0.70,
+            breadth_score=0.70,
+            posture="risk-on",
+        )
+        self.assertEqual(half["action"], "half")
+        self.assertEqual(half["multiplier"], 0.5)
+
+        full = score_dca_use(
+            settings,
+            cash=600.0,
+            vix=19.0,
+            spy_day_chg_pct=-0.4,
+            risk_on_score=0.50,
+            breadth_score=0.50,
+            posture="neutral",
+        )
+        self.assertEqual(full["action"], "full")
+        self.assertEqual(full["multiplier"], 1.0)
+        self.assertGreaterEqual(full["score"], 60.0)
+
+        lean = score_dca_use(
+            settings,
+            cash=8000.0,
+            vix=32.0,
+            spy_day_chg_pct=-2.5,
+            risk_on_score=0.20,
+            breadth_score=0.30,
+            posture="risk-off",
+        )
+        self.assertEqual(lean["action"], "lean")
+        self.assertEqual(lean["multiplier"], 1.5)
+        self.assertGreaterEqual(lean["score"], 85.0)
+
+    def test_score_skip_plan_has_no_orders(self) -> None:
+        import dca_engine as de
+        from unittest.mock import patch
+
+        td = Path(tempfile.mkdtemp())
+        old_plan = de.PLAN_FILE
+        old_score = de.SCORE_FILE
+        old_state = de.STATE_FILE
+        de.PLAN_FILE = td / "dca_plan.json"
+        de.SCORE_FILE = td / "dca_use_score.json"
+        de.STATE_FILE = td / "dca_state.json"
+        skip = {
+            "score": 22.0,
+            "action": "skip",
+            "multiplier": 0.0,
+            "thresholds": {"min_score_half": 40.0},
+            "note": "use_score=22 action=skip x0",
+        }
+        try:
+            with patch.object(de, "score_dca_use", return_value=skip):
+                plan = de.build_dca_plan(
+                    None,
+                    "acct",
+                    "test",
+                    settings={
+                        "enabled": True,
+                        "amount_usd": 1000.0,
+                        "cadence": "weekly",
+                        "weekday": "Friday",
+                        "execute_after_et": "10:30",
+                        "skip_if_cash_below_usd": 0.0,
+                        "use_score": True,
+                        "universe": [{"symbol": "VTI", "weight_pct": 100.0, "name": "US"}],
+                    },
+                    now=datetime(2026, 8, 21, 11, 0, tzinfo=ET),
+                )
+            self.assertEqual(plan.orders, [])
+            self.assertIn("use_score 22", str(plan.meta.get("skip_reason") or ""))
+        finally:
+            de.PLAN_FILE = old_plan
+            de.SCORE_FILE = old_score
+            de.STATE_FILE = old_state
+
+    def test_leftover_rolls_into_next_budget(self) -> None:
+        import dca_engine as de
+        from strategy_engine import StrategyPlan
+
+        td = Path(tempfile.mkdtemp())
+        old_state = de.STATE_FILE
+        de.STATE_FILE = td / "dca_state.json"
+        try:
+            plan = StrategyPlan(
+                generated_at="2026-08-21T15:00:00Z",
+                account_id_key="acct",
+                account_name="t",
+                sandbox=True,
+                total_account_value=0.0,
+                investable_usd=100.0,
+                cash_buffer_pct=0.0,
+                regime={},
+                target_holdings=[],
+                current_positions=[],
+                orders=[],
+                meta={
+                    "period_key": "2026-W34",
+                    "lots": [
+                        {"symbol": "VTI", "leftover_usd": 70.0},
+                        {"symbol": "VXUS", "leftover_usd": 20.0},
+                        {"symbol": "BND", "leftover_usd": 10.0},
+                    ],
+                },
+            )
+            de.settle_dca_period(plan)
+            self.assertEqual(de.leftover_usd(), 100.0)
+            self.assertTrue(de.already_filled("2026-W34"))
+        finally:
+            de.STATE_FILE = old_state
 
 
 if __name__ == "__main__":

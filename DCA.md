@@ -12,15 +12,27 @@ This is the scheduled **invest** sleeve. It is not the signal rebalance plan and
 
 On a calendar (weekly default Friday after 10:30 ET, or monthly), buy a fixed dollar amount of a core ETF mix with **whole shares**. Leftover cash rolls. Lots are **protected** from `strategy_engine` SELL/trim. Due-period cash is **reserved** so long/short sleeves do not spend it.
 
-## Live is OFF until you enable it
+## Live + use score
 
-Default: `dca_strategy.enabled = false`. No tickets until you turn it on.
+`dca_strategy.enabled = true` lets the worker place tickets. A **0-100 use score**
+decides whether this period deploys:
+
+| Score | Action | Size |
+|------|--------|------|
+| below 40 | skip (period stays open, retry later) | 0 |
+| 40-59 | half | 0.5x |
+| 60-84 | full | 1.0x |
+| 85+ | lean-in | 1.5x |
+
+Factors: cash slack 25, index dip 25, VIX 20, fusion regime 20, breadth 10.
+Risk-off / a down day **raises** the score (buy cheaper core). Melt-up still
+invests unless cash is tight. Leftover below 1 whole share rolls to the next period.
 
 In live `etrade_config.json` (never commit secrets):
 
 ```json
 "dca_strategy": {
-  "enabled": false,
+  "enabled": true,
   "amount_usd": 100.0,
   "cadence": "weekly",
   "weekday": "Friday",
@@ -31,6 +43,11 @@ In live `etrade_config.json` (never commit secrets):
   "vix_overlay": "off",
   "vix_high": 30.0,
   "skip_if_cash_below_usd": 200.0,
+  "use_score": true,
+  "min_score_full": 60.0,
+  "min_score_half": 40.0,
+  "min_score_lean": 85.0,
+  "lean_multiplier": 1.5,
   "universe": [
     {"symbol": "VTI", "weight_pct": 70.0, "name": "US total market"},
     {"symbol": "VXUS", "weight_pct": 20.0, "name": "International ex-US"},
@@ -39,7 +56,8 @@ In live `etrade_config.json` (never commit secrets):
 }
 ```
 
-Rehearsal: keep `background_worker.dry_run = true`, set `enabled: true`, confirm `output/dca_plan.json`. Then dry_run false.
+Group grading: `dca_invest` uses allocation scoring (schedule fidelity, use-decision,
+core funding, isolation) and allocator P/L points (9 per full 1% account gain).
 
 ## Knowledge (short)
 

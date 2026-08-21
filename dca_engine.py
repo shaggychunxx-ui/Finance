@@ -9,6 +9,9 @@ Pipeline place:
   5) Due-period cash is reserved in sleeve_policy so other sleeves do not spend it.
 
 Live tickets stay off until ``dca_strategy.enabled`` is true.
+
+When enabled, a 0-100 **use score** (cash slack, dip, VIX, regime, breadth)
+decides skip / half / full / lean-in. Leftover cash below 1 share rolls.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ ET_TZ = ZoneInfo("America/New_York")
 CONFIG_PATH = ROOT / "etrade_config.json"
 STATE_FILE = OUTPUT / "dca_state.json"
 PLAN_FILE = OUTPUT / "dca_plan.json"
+SCORE_FILE = OUTPUT / "dca_use_score.json"
 
 DEFAULT_UNIVERSE: list[dict[str, Any]] = [
     {"symbol": "VTI", "weight_pct": 70.0, "name": "US total market"},
@@ -46,6 +50,11 @@ DEFAULT_DCA: dict[str, Any] = {
     "vix_overlay": "off",
     "vix_high": 30.0,
     "skip_if_cash_below_usd": 200.0,
+    "use_score": True,
+    "min_score_full": 60.0,
+    "min_score_half": 40.0,
+    "min_score_lean": 85.0,
+    "lean_multiplier": 1.5,
     "universe": list(DEFAULT_UNIVERSE),
 }
 
@@ -136,6 +145,17 @@ def load_dca_settings(config_path: Path | None = None) -> dict[str, Any]:
         settings["vix_high"] = float(settings.get("vix_high") or 30.0)
     except (TypeError, ValueError):
         settings["vix_high"] = 30.0
+    settings["use_score"] = bool(settings.get("use_score", True))
+    for key, default in (
+        ("min_score_full", 60.0),
+        ("min_score_half", 40.0),
+        ("min_score_lean", 85.0),
+        ("lean_multiplier", 1.5),
+    ):
+        try:
+            settings[key] = float(settings.get(key) if settings.get(key) is not None else default)
+        except (TypeError, ValueError):
+            settings[key] = default
     return settings
 
 
@@ -153,6 +173,11 @@ def public_settings(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "vix_overlay": raw.get("vix_overlay"),
         "vix_high": raw.get("vix_high"),
         "skip_if_cash_below_usd": raw.get("skip_if_cash_below_usd"),
+        "use_score": bool(raw.get("use_score", True)),
+        "min_score_full": raw.get("min_score_full"),
+        "min_score_half": raw.get("min_score_half"),
+        "min_score_lean": raw.get("min_score_lean"),
+        "lean_multiplier": raw.get("lean_multiplier"),
         "universe": list(raw.get("universe") or []),
     }
 
@@ -211,6 +236,10 @@ def load_dca_state() -> dict[str, Any]:
     data.setdefault("lots", [])
     data.setdefault("filled_periods", [])
     data.setdefault("protected", {})
+    try:
+        data["leftover_usd"] = max(0.0, float(data.get("leftover_usd") or 0))
+    except (TypeError, ValueError):
+        data["leftover_usd"] = 0.0
     return data
 
 
@@ -255,6 +284,14 @@ def protected_quantities(state: dict[str, Any] | None = None) -> dict[str, int]:
     return out
 
 
+def leftover_usd(state: dict[str, Any] | None = None) -> float:
+    state = state or load_dca_state()
+    try:
+        return max(0.0, float(state.get("leftover_usd") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def reserved_cash_usd(
     settings: dict[str, Any] | None = None,
     *,
@@ -267,7 +304,15 @@ def reserved_cash_usd(
         return 0.0
     if not is_period_due(settings, now=now):
         return 0.0
-    return max(0.0, float(settings.get("amount_usd") or 0))
+    decision = score_dca_use(settings)
+    if str(decision.get("action") or "") == "skip":
+        return 0.0
+    try:
+        mult = float(decision.get("multiplier") or 1.0)
+    except (TypeError, ValueError):
+        mult = 1.0
+    base = max(0.0, float(settings.get("amount_usd") or 0)) * max(0.0, mult)
+    return round(base + leftover_usd(), 2)
 
 
 def _normalize_weights(universe: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -319,14 +364,233 @@ def overlay_amount(settings: dict[str, Any]) -> tuple[float, str]:
     return amount, f"{mode}:vix={vix:.1f}"
 
 
+def _index_day_change() -> float | None:
+    markets = _load_json(OUTPUT / "markets.json")
+    indices = markets.get("indices")
+    if not isinstance(indices, list):
+        return None
+    prefer = ("SPY", "^GSPC", "VTI", "QQQ", "^DJI")
+    by_sym: dict[str, float] = {}
+    for row in indices:
+        if not isinstance(row, dict):
+            continue
+        try:
+            chg = float(row.get("day_chg_pct"))
+        except (TypeError, ValueError):
+            continue
+        by_sym[str(row.get("symbol") or "").upper()] = chg
+    for key in prefer:
+        if key in by_sym:
+            return by_sym[key]
+    if by_sym:
+        return sum(by_sym.values()) / len(by_sym)
+    return None
+
+
+def _breadth_level() -> float | None:
+    markets = _load_json(OUTPUT / "markets.json")
+    metrics = markets.get("metrics") if isinstance(markets.get("metrics"), dict) else {}
+    try:
+        val = float(metrics.get("breadth_score"))
+        return val
+    except (TypeError, ValueError):
+        return None
+
+
+def _risk_on_level() -> tuple[float | None, str]:
+    try:
+        from agent_fusion import current_regime
+
+        regime = current_regime() or {}
+        score = float(regime.get("risk_on_score"))
+        posture = str(regime.get("posture") or "neutral")
+        return score, posture
+    except Exception:
+        pass
+    markets = _load_json(OUTPUT / "markets.json")
+    metrics = markets.get("metrics") if isinstance(markets.get("metrics"), dict) else {}
+    try:
+        score = float(metrics.get("risk_on_score"))
+    except (TypeError, ValueError):
+        score = None
+    posture = "neutral"
+    if score is not None:
+        if score >= 0.58:
+            posture = "risk-on"
+        elif score <= 0.42:
+            posture = "risk-off"
+    return score, posture
+
+
+def _clip(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+def score_dca_use(
+    settings: dict[str, Any] | None = None,
+    *,
+    cash: float | None = None,
+    vix: float | None = None,
+    spy_day_chg_pct: float | None = None,
+    risk_on_score: float | None = None,
+    breadth_score: float | None = None,
+    posture: str | None = None,
+) -> dict[str, Any]:
+    """0-100 use score. Pipeline maps it to skip / half / full / lean-in.
+
+    Factors (weights sum to 100):
+      cash_slack 25 | cheapness 25 | vix 20 | regime 20 | breadth 10
+    DCA still wants to buy on a schedule; the score sizes or defers, it does
+    not try to time a single-name entry.
+    """
+    settings = settings or load_dca_settings()
+    amount = max(0.0, float(settings.get("amount_usd") or 0))
+    floor = max(0.0, float(settings.get("skip_if_cash_below_usd") or 0))
+    parts: dict[str, float] = {}
+    reasons: list[str] = []
+
+    if cash is None:
+        parts["cash_slack"] = 12.0
+        reasons.append("cash unknown, mid slack")
+    elif cash < floor:
+        parts["cash_slack"] = 0.0
+        reasons.append(f"cash ${cash:.0f} below floor ${floor:.0f}")
+    else:
+        coverage = cash / max(amount, 1.0)
+        parts["cash_slack"] = round(_clip(8.0 + 5.0 * coverage, 0.0, 25.0), 2)
+        reasons.append(f"cash ${cash:.0f} covers {coverage:.1f}x envelope")
+
+    if spy_day_chg_pct is None:
+        spy_day_chg_pct = _index_day_change()
+    if spy_day_chg_pct is None:
+        parts["cheapness"] = 12.0
+        reasons.append("index change unknown")
+    else:
+        # Dip = more points (classic DCA). Melt-up still some points so cash invests.
+        if spy_day_chg_pct <= -2.0:
+            parts["cheapness"] = 25.0
+        elif spy_day_chg_pct <= -1.0:
+            parts["cheapness"] = 20.0
+        elif spy_day_chg_pct < 0:
+            parts["cheapness"] = 16.0
+        elif spy_day_chg_pct < 1.0:
+            parts["cheapness"] = 12.0
+        else:
+            parts["cheapness"] = 8.0
+        reasons.append(f"index day {spy_day_chg_pct:+.2f}%")
+
+    if vix is None:
+        vix = _vix_level()
+    if vix is None:
+        parts["vix"] = 10.0
+        reasons.append("vix unknown")
+    else:
+        if vix < 12:
+            parts["vix"] = 6.0
+        elif vix < 18:
+            parts["vix"] = 12.0
+        elif vix < 25:
+            parts["vix"] = 16.0
+        elif vix < 35:
+            parts["vix"] = 20.0
+        else:
+            parts["vix"] = 14.0
+        reasons.append(f"vix={vix:.1f}")
+
+    if risk_on_score is None or posture is None:
+        live_score, live_posture = _risk_on_level()
+        if risk_on_score is None:
+            risk_on_score = live_score
+        if posture is None:
+            posture = live_posture
+    posture = str(posture or "neutral").lower()
+    if risk_on_score is None:
+        parts["regime"] = 12.0
+        reasons.append("regime unknown")
+    else:
+        # Risk-off favors buying the core cheaper. Risk-on still invests (DCA).
+        if posture == "risk-off" or risk_on_score <= 0.42:
+            parts["regime"] = 18.0 if risk_on_score is not None and risk_on_score > 0.22 else 20.0
+        elif posture == "risk-on" or risk_on_score >= 0.58:
+            parts["regime"] = 10.0
+        else:
+            parts["regime"] = 14.0
+        reasons.append(f"regime {posture} risk_on={float(risk_on_score):.2f}")
+
+    if breadth_score is None:
+        breadth_score = _breadth_level()
+    if breadth_score is None:
+        parts["breadth"] = 5.0
+    else:
+        # Low breadth = more names down = better DCA entry.
+        if breadth_score <= 0.40:
+            parts["breadth"] = 10.0
+        elif breadth_score <= 0.55:
+            parts["breadth"] = 7.0
+        else:
+            parts["breadth"] = 4.0
+        reasons.append(f"breadth={breadth_score:.2f}")
+
+    score = round(sum(float(v) for v in parts.values()), 2)
+    min_half = float(settings.get("min_score_half") or 40.0)
+    min_full = float(settings.get("min_score_full") or 60.0)
+    min_lean = float(settings.get("min_score_lean") or 85.0)
+    lean_mult = float(settings.get("lean_multiplier") or 1.5)
+    if not settings.get("use_score", True):
+        action, multiplier = "full", 1.0
+        reasons.append("use_score disabled, calendar full size")
+    elif score < min_half:
+        action, multiplier = "skip", 0.0
+    elif score < min_full:
+        action, multiplier = "half", 0.5
+    elif score < min_lean:
+        action, multiplier = "full", 1.0
+    else:
+        action, multiplier = "lean", lean_mult
+
+    result = {
+        "score": score,
+        "action": action,
+        "multiplier": multiplier,
+        "parts": {k: round(float(v), 2) for k, v in parts.items()},
+        "reasons": reasons,
+        "thresholds": {
+            "min_score_half": min_half,
+            "min_score_full": min_full,
+            "min_score_lean": min_lean,
+            "lean_multiplier": lean_mult,
+        },
+        "inputs": {
+            "cash": cash,
+            "vix": vix,
+            "spy_day_chg_pct": spy_day_chg_pct,
+            "risk_on_score": risk_on_score,
+            "breadth_score": breadth_score,
+            "posture": posture,
+        },
+        "note": f"use_score={score:.0f} action={action} x{multiplier}",
+    }
+    try:
+        _write_json(SCORE_FILE, result)
+    except OSError:
+        pass
+    return result
+
+
 def planned_lots(
     settings: dict[str, Any] | None = None,
     *,
     price_fn: Callable[[str], tuple[float, str]] | None = None,
     prices: dict[str, float] | None = None,
+    amount_usd: float | None = None,
+    overlay_note: str | None = None,
 ) -> list[dict[str, Any]]:
     settings = settings or load_dca_settings()
-    amount, overlay_note = overlay_amount(settings)
+    if amount_usd is None:
+        amount, computed_note = overlay_amount(settings)
+    else:
+        amount, computed_note = max(0.0, float(amount_usd)), "override"
+    overlay_note = overlay_note or computed_note
     universe = _normalize_weights(list(settings.get("universe") or DEFAULT_UNIVERSE))
     min_trade = float(settings.get("min_trade_usd") or 0)
     lots: list[dict[str, Any]] = []
@@ -426,6 +690,46 @@ def record_fills(
     return state
 
 
+def settle_dca_period(
+    plan: StrategyPlan | None = None,
+    *,
+    leftover: float | None = None,
+    mark_filled: bool = True,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Persist unused envelope and optionally consume the calendar period."""
+    state = load_dca_state()
+    lots_meta = []
+    if plan is not None:
+        lots_meta = list((plan.meta or {}).get("lots") or [])
+    if leftover is None:
+        leftover = 0.0
+        for row in lots_meta:
+            if not isinstance(row, dict):
+                continue
+            try:
+                leftover += float(row.get("leftover_usd") or 0)
+            except (TypeError, ValueError):
+                continue
+    try:
+        leftover_f = max(0.0, float(leftover or 0))
+    except (TypeError, ValueError):
+        leftover_f = 0.0
+    state["leftover_usd"] = round(leftover_f, 2)
+    if mark_filled:
+        key = ""
+        if plan is not None:
+            key = str((plan.meta or {}).get("period_key") or "")
+        key = key or period_key()
+        filled = [str(x) for x in (state.get("filled_periods") or [])]
+        if key not in filled:
+            filled.append(key)
+        state["filled_periods"] = filled[-48:]
+    state["updated"] = _now_et(now).strftime("%Y-%m-%dT%H:%M:%S%z")
+    save_dca_state(state)
+    return state
+
+
 def build_dca_plan(
     client: Any,
     account_id_key: str,
@@ -467,8 +771,6 @@ def build_dca_plan(
                     return live, "etrade"
             return 0.0, "missing"
 
-        lots = planned_lots(settings, price_fn=_px)
-        meta["lots"] = lots
         blocked: set[str] = set()
         try:
             from sleeve_policy import blocked_symbols_for_new_entry
@@ -491,9 +793,33 @@ def build_dca_plan(
         except Exception:
             cash = None
         floor = float(settings.get("skip_if_cash_below_usd") or 0)
+        decision = score_dca_use(settings, cash=cash)
+        meta["use_score"] = decision
+        bank = leftover_usd()
+        meta["leftover_bank_usd"] = bank
+        meta["cash"] = cash
+        meta["skip_if_cash_below_usd"] = floor
         if cash is not None and cash < floor:
             skip_reason = f"cash ${cash:.2f} below floor ${floor:.2f}"
+        elif str(decision.get("action") or "") == "skip":
+            skip_reason = (
+                f"use_score {decision.get('score')} below "
+                f"{decision.get('thresholds', {}).get('min_score_half')} (skip)"
+            )
         else:
+            try:
+                mult = float(decision.get("multiplier") or 1.0)
+            except (TypeError, ValueError):
+                mult = 1.0
+            budget = max(0.0, float(settings.get("amount_usd") or 0)) * max(0.0, mult) + bank
+            meta["budget_usd"] = round(budget, 2)
+            lots = planned_lots(
+                settings,
+                price_fn=_px,
+                amount_usd=budget,
+                overlay_note=str(decision.get("note") or ""),
+            )
+            meta["lots"] = lots
             for lot in lots:
                 sym = lot["symbol"]
                 shares = int(lot.get("shares") or 0)
@@ -512,12 +838,13 @@ def build_dca_plan(
                         target_value_usd=float(lot.get("spent_usd") or 0),
                         current_value_usd=0.0,
                         estimated_price=px,
-                        rationale=f"DCA {key} {settings.get('cadence')} core buy",
+                        rationale=(
+                            f"DCA {key} {settings.get('cadence')} "
+                            f"{decision.get('action')} score={decision.get('score')}"
+                        ),
                         price_type=str(settings.get("order_type") or "MARKET"),
                     )
                 )
-        meta["cash"] = cash
-        meta["skip_if_cash_below_usd"] = floor
 
     if skip_reason:
         meta["skip_reason"] = skip_reason
@@ -528,7 +855,7 @@ def build_dca_plan(
         account_name=account_name,
         sandbox=bool(getattr(getattr(client, "config", None), "sandbox", False)),
         total_account_value=float(total_value or 0),
-        investable_usd=float(settings.get("amount_usd") or 0),
+        investable_usd=float((meta.get("budget_usd") if isinstance(meta, dict) else None) or settings.get("amount_usd") or 0),
         cash_buffer_pct=0.0,
         regime={"sleeve": "dca", "period_key": key},
         target_holdings=list(settings.get("universe") or []),

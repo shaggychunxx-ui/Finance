@@ -1496,8 +1496,16 @@ def _run_dca(
     force: bool = False,
     config_path: Path = CONFIG_PATH,
 ) -> bool:
-    """Calendar DCA sleeve. Off unless dca_strategy.enabled is true."""
-    from dca_engine import build_dca_plan, load_dca_settings, record_fills
+    """Calendar DCA sleeve. Off unless dca_strategy.enabled is true.
+
+    Use-score (0-100) inside dca_engine decides skip / half / full / lean-in.
+    """
+    from dca_engine import (
+        build_dca_plan,
+        load_dca_settings,
+        record_fills,
+        settle_dca_period,
+    )
 
     settings = worker_settings(config_path)
     dca = load_dca_settings(config_path)
@@ -1519,11 +1527,20 @@ def _run_dca(
         force=force,
     )
     skip = (plan.meta or {}).get("skip_reason")
+    decision = (plan.meta or {}).get("use_score") or {}
+    if decision:
+        _log(
+            f"DCA use score {decision.get('score')} -> "
+            f"{decision.get('action')} x{decision.get('multiplier')}"
+        )
     if skip:
         _log(f"DCA skipped — {skip}")
         return False
     if not plan.orders:
-        _log("DCA: no whole-share buys this period.")
+        settle_dca_period(plan)
+        leftover = (plan.meta or {}).get("lots") or []
+        rolled = sum(float(r.get("leftover_usd") or 0) for r in leftover if isinstance(r, dict))
+        _log(f"DCA: no whole-share buys this period; leftover ${rolled:.2f} rolled.")
         return False
     if not is_us_market_open() and not settings.get("allow_off_hours_trading", False):
         _log("US market closed — DCA orders deferred.")
@@ -1542,6 +1559,7 @@ def _run_dca(
         return False
     execute_orders(client, plan, dry_run=dry_run)
     record_fills(plan.orders)
+    settle_dca_period(plan)
     placed = sum(1 for o in plan.orders if o.status in {"placed", "dry_run"})
     if dry_run:
         _log(f"DCA dry run — simulated {placed} buy(s).")

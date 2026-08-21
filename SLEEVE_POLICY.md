@@ -32,7 +32,7 @@ Implementation: `shared_etrade_api.py`. Short config may **mirror** API fields f
   - `"usd"` — hard dollar ceiling via `long_max_capital_usd` (e.g. only $5,000 of a $20k account)
   - `"off"` — no soft long ceiling beyond free equity / buying power
 - **`coordinate_for_profit: true`** (default): `sleeve_coordinator.py` tilts those ceilings toward the sleeve with better multi-horizon expected edge, and assigns each symbol to **long or short** (not both) for new entries.
-- **DCA reserve:** when the DCA period is due and `dca_strategy.enabled` is true, `dca_engine.reserved_cash_usd()` is subtracted from free equity so long/short do not spend that envelope. Filled DCA lots are protected from strategy SELL. See `DCA.md`.
+- **DCA reserve:** when the DCA period is due, enabled, and the use-score is not skip, `dca_engine.reserved_cash_usd()` is subtracted from free equity so long/short do not spend that envelope. Filled DCA lots are protected from strategy SELL. See `DCA.md`.
 - Output: `output/sleeve_coordination.json` (deploy %, symbol assignment, joint expected profit).
 
 ### 2. Position isolation (no crossing books)

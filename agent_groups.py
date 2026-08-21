@@ -649,8 +649,8 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
         "directional": False,
         "trading_role": "allocator",
         "conduct": (
-            "Schedule fixed-dollar core buys. Do not time entries from fusion. "
-            "Do not emit directional day/swing forecasts. Protect filled lots."
+            "Schedule fixed-dollar core buys. Pipeline use-score sizes or defers "
+            "the period. Do not emit directional day/swing forecasts. Protect filled lots."
         ),
         "traits": {
             "risk_appetite": 0.28,
@@ -663,31 +663,37 @@ AGENT_GROUPS: dict[str, dict[str, Any]] = {
         "scoring": _scoring(
             mode="allocation",
             primary_metric="schedule_fidelity",
-            summary="Grade DCA on calendar fidelity and core funding, not price direction.",
+            summary="Grade DCA on calendar fidelity, use-score decisions, and core funding, not price direction.",
             score_horizon="1yr",
             direction_weight=0.0,
             magnitude_weight=1.0,
             metrics=[
                 {
                     "id": "schedule_fidelity",
-                    "weight": 0.50,
+                    "weight": 0.35,
                     "label": "Schedule fidelity",
-                    "description": "Due periods are filled once, on calendar, with no extra tickets.",
+                    "description": "Due periods that the use-score deploys are filled once, with no extra tickets.",
+                },
+                {
+                    "id": "use_decision",
+                    "weight": 0.25,
+                    "label": "Use-score decision",
+                    "description": "Skip/half/full/lean matches cash, dip, VIX, regime, and breadth.",
                 },
                 {
                     "id": "core_funding",
-                    "weight": 0.30,
+                    "weight": 0.25,
                     "label": "Core funding",
-                    "description": "Fixed dollars reach the intended ETF mix after whole-share rounding.",
+                    "description": "Fixed dollars plus leftover roll reach the intended ETF mix after whole-share rounding.",
                 },
                 {
                     "id": "isolation",
-                    "weight": 0.20,
+                    "weight": 0.15,
                     "label": "Sleeve isolation",
                     "description": "Lots stay protected from rebalance SELL and day-trade flatten.",
                 },
             ],
-            success_criteria="Due periods fill once; lots remain isolated from signal sleeves.",
+            success_criteria="Use-score sizes the period; lots remain isolated from signal sleeves.",
         ),
     },
     "portfolio_alloc": {
