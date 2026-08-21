@@ -702,12 +702,23 @@ def _publish_dashboard_to_oxygen(payload: dict[str, Any]) -> None:
             / "etrade-dashboard.json"
         )
         oxygen.parent.mkdir(parents=True, exist_ok=True)
-        new_n = len(payload.get("positions") or [])
+
+        def _held_n(pack: dict[str, Any]) -> int:
+            port = pack.get("portfolio") if isinstance(pack.get("portfolio"), dict) else {}
+            held = port.get("held_position_count")
+            try:
+                if held is not None:
+                    return int(held)
+            except (TypeError, ValueError):
+                pass
+            return len(pack.get("positions") or [])
+
+        new_n = _held_n(payload)
         if oxygen.is_file():
             try:
                 prev = json.loads(oxygen.read_text(encoding="utf-8-sig"))
                 if isinstance(prev, dict):
-                    old_n = len(prev.get("positions") or [])
+                    old_n = _held_n(prev)
                     if old_n >= _MIN_POS_KEEP_RICHER and new_n < old_n:
                         # Allow overwrite only if new pack has real balance and is explicitly live
                         pull = payload.get("data_pull") if isinstance(payload.get("data_pull"), dict) else {}
@@ -2884,11 +2895,23 @@ def build_orders_for_phone() -> dict[str, Any]:
 
 
 def build_full_for_phone(force_refresh: bool = True) -> dict[str, Any]:
-    """One-shot full data pack for the phone: dashboard + agents + accounts + orders."""
-    dash = build_dashboard(force_refresh=force_refresh)
+    """One-shot full data pack for the phone: dashboard + agents + accounts + orders.
+
+    Re-publishes the Oxygen-OS GitHub bus file with orders embedded so the
+    phone can refresh on cellular / other Wi‑Fi (no LAN bridge required).
+    """
+    dash = build_dashboard(force_refresh=force_refresh, publish=False)
     agents = build_agents_for_phone()
     accounts = list_accounts_for_phone()
     orders = build_orders_for_phone()
+    if isinstance(dash, dict):
+        packed = dict(dash)
+        packed["orders"] = orders if isinstance(orders, dict) else {"ok": True, "orders": []}
+        packed["bus"] = "github"
+        try:
+            _publish_dashboard_to_oxygen(packed)
+        except Exception as exc:
+            _log(f"github bus full publish note: {exc}")
     return {
         "ok": True,
         "version": BRIDGE_VERSION,
