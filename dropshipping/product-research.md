@@ -33,6 +33,7 @@ Metrics used: category market-size & growth data, cross-platform best-seller ove
 - Firearms, ammunition, high-capacity magazines, illegal weapons, explosives.
 - Obvious weapons marketed for violence; age-restricted where store policy requires.
 - IP/brand knockoffs (logos, licensed characters).
+- **No products that require licensing** (PHONE 2026-08-23): licensed brands/teams/camo, knockoffs, or seller-license SKUs. ShopifyDS gate `api/license-block.json`.
 - Heavy hazmat / lithium edge cases that break CJ shipping rules without review.
 
 ## Shortlist — Tier 1 (live heroes, keep)
