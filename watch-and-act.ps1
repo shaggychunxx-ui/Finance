@@ -16,6 +16,22 @@ $script:HeadlessSlotsLoaded = $false
 
 if (-not (Test-Path $localDir)) { New-Item -ItemType Directory -Path $localDir -Force | Out-Null }
 
+function Import-HeadlessSlotHelper {
+    $candidates = @()
+    if ($env:GROK_PRIMARY_SHARED_REPO) {
+        $candidates += (Join-Path $env:GROK_PRIMARY_SHARED_REPO "work\background-shared-repo\HeadlessSlots.ps1")
+    }
+    $candidates += (Join-Path $env:USERPROFILE "Documents\GitHub\grok-shared-workspace\work\background-shared-repo\HeadlessSlots.ps1")
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path -LiteralPath $c)) {
+            . $c
+            $script:HeadlessSlotsLoaded = $true
+            return
+        }
+    }
+}
+Import-HeadlessSlotHelper
+
 function Resolve-GitExe {
     $cmd = Get-Command git -ErrorAction SilentlyContinue
     if ($cmd -and $cmd.Source) { return $cmd.Source }
