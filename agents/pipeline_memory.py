@@ -279,6 +279,24 @@ def memory_bundle_for_agent(agent_id: str) -> dict[str, Any]:
     except Exception:
         pass
 
+    patent_holders: list[dict[str, Any]] = []
+    patents_out = _same_cycle_outputs.get("patents") or {}
+    for card in patents_out.get("landscape") or []:
+        if not isinstance(card, dict):
+            continue
+        tick = str(card.get("holder_ticker") or card.get("symbol") or "").upper()
+        if not tick:
+            continue
+        patent_holders.append(
+            {
+                "ticker": tick,
+                "company": card.get("company"),
+                "industry": card.get("industry"),
+                "intended_use": card.get("intended_use"),
+                "held_lot": str(card.get("source") or "").startswith("held-lot"),
+            }
+        )
+
     return {
         "agent_id": aid,
         "posture": learning_row.get("posture", "neutral"),
@@ -305,6 +323,7 @@ def memory_bundle_for_agent(agent_id: str) -> dict[str, Any]:
         "regime_history": list(ctx.get("regime_history") or [])[-3:],
         "accuracy_leaderboard_top": list(ctx.get("accuracy_leaderboard") or [])[:5],
         "total_pipeline_runs": int(ctx.get("total_pipeline_runs") or 0),
+        "patent_holders": patent_holders,
     }
 
 
