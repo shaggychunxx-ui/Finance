@@ -377,20 +377,20 @@ function Invoke-GrokAct([string]$reason, [string]$commitSummary) {
         Write-Log "Grok not found at $grok - cannot act"
         return $false
     }
-    if (-not (Test-LockStale)) {
+    $headSha = Get-HeadSha
+    $useSlots = $script:HeadlessSlotsLoaded -and (Get-Command Start-HeadlessGrokDetached -ErrorAction SilentlyContinue)
+    if ($useSlots) {
+        if (Test-HeadlessShaInFlight -Repo $repo -Sha $headSha) {
+            Write-Log "Headless act already running for this send - skip spawn"
+            return $false
+        }
+    } elseif (-not (Test-LockStale)) {
         Write-Log "Another act is in progress (lock present) - skip"
         return $false
     }
 
-    $lockBody = @{
-        machine = $machine
-        started = (Get-Date).ToString("o")
-        pid     = $PID
-        reason  = $reason
-    } | ConvertTo-Json
-    Set-Content -Path $lockPath -Value $lockBody -Encoding UTF8
-
-    $promptPath = Join-Path $localDir "prompt.txt"
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmssfff"
+    $promptPath = Join-Path $localDir ("prompt-" + $stamp + ".txt")
     $prompt = @"
 You are running unattended on machine $machine in the Finance repo.
 
