@@ -23,6 +23,15 @@ HORIZON_RETURN_SCALE = {
 TOP_N = 25
 INTRADAY_TOP_N = 12
 PREDICTION_HORIZONS = ("1m", "1h", "24h", "1wk", "1mo", "1yr")
+
+
+def _predictor_regime() -> dict:
+    try:
+        from agents.market_regime_state import load_regime
+
+        return load_regime()
+    except Exception:
+        return {}
 SYMBOL_RETURN_HINT_WEIGHT = 0.58
 # Keep enrich small so post-fusion finishes under pipeline stall/timeouts.
 ENRICH_PRICE_RETURNS_LIMIT = 25
@@ -909,6 +918,7 @@ def run_market_predictor_analysis(
                 "event_day": bool(regime_gate.get("event_day")),
                 "regime": regime_gate.get("regime") or {},
             },
+            "market_regime": _predictor_regime(),
             "trading_uses_actionable_only": True,
         },
         # Full book (includes abstained→flat) for analysis / accuracy recording
