@@ -450,6 +450,62 @@ class PatentLandscapeAnalyst(BaseExpert):
             })
         return findings
 
+    def _fetch_uspto_ibd(self, query: str) -> list[dict[str, Any]]:
+        """Keyless USPTO IBD search for an assignee/company (tight timeout)."""
+        url = "https://developer.uspto.gov/ibd-api/v1/patent/application"
+        try:
+            resp = requests.get(
+                url,
+                params={"searchText": query, "start": 0, "rows": 5},
+                headers=HEADERS,
+                timeout=(2, 4),
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except Exception:
+            return []
+        rows = payload.get("results") or payload.get("response", {}).get("docs") or []
+        if not isinstance(rows, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for row in rows[:5]:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("inventionTitle") or row.get("patentTitle") or row.get("title") or "")
+            if not title:
+                continue
+            out.append(
+                {
+                    "title": title,
+                    "date": str(row.get("filingDate") or row.get("publicationDate") or "")[:10],
+                    "sector": self._classify_sector(title),
+                    "source": "USPTO IBD",
+                    "link": "https://developer.uspto.gov/",
+                    "assignee": str(row.get("assignee") or row.get("applicantName") or query),
+                    "description": str(row.get("abstractText") or "")[:240],
+                }
+            )
+        return out
+
+    def _fetch_pipeline_holder_patents(self) -> list[dict[str, Any]]:
+        try:
+            from agents.pipeline_book import pipeline_held_positions
+        except Exception:
+            return []
+        out: list[dict[str, Any]] = []
+        for row in pipeline_held_positions():
+            company = str(row.get("company") or row.get("symbol") or "")
+            if not company:
+                continue
+            items = self._fetch_uspto_odp(query=company)
+            if not items:
+                items = self._fetch_uspto_ibd(company)
+            for item in items[:4]:
+                item["symbol"] = row["symbol"]
+                item["assignee"] = item.get("assignee") or company
+            out.extend(items[:4])
+        return out
+
     def _fetch_news_feeds(self) -> list[dict[str, Any]]:
         headlines: list[dict[str, Any]] = []
         # Cap at 1 feed with a tight timeout — RSS hangs were stacking past agent timeout.
@@ -577,6 +633,11 @@ class PatentLandscapeAnalyst(BaseExpert):
         # Proxy-first for the scheduled pipeline. Live OpenAlex/RSS hangs on some
         # Windows networks even with short timeouts (connect stalls past agent kill).
         import os
+
+        holder_hits = self._fetch_pipeline_holder_patents()
+        if holder_hits:
+            raw.extend(holder_hits)
+            sources.append("USPTO holder search")
 
         live = str(os.environ.get("FINANCE_PATENTS_LIVE", "")).strip().lower() in {
             "1",

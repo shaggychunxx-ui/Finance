@@ -1310,6 +1310,29 @@ def is_generalist(agent_id: str) -> bool:
     return bool(agent_group(agent_id).get("generalist", True))
 
 
+# Yahoo-tape clones + physical-context agents: tilt fusion, do not nominate names.
+MARKET_CONTEXT_AGENTS: frozenset[str] = frozenset(
+    {
+        "finance",
+        "financial-data",
+        "electricity",
+        "grid",
+        "meteorology",
+        "agriculture",
+        "earthdata",
+        "migration",
+        "census",
+        "cpi",
+        "fred",
+    }
+)
+
+
+def is_market_context_agent(agent_id: str) -> bool:
+    aid = str(agent_id or "").replace("_", "-")
+    return aid in MARKET_CONTEXT_AGENTS
+
+
 def uses_directional_scoring(agent_id: str) -> bool:
     return bool(agent_group(agent_id).get("directional", True))
 

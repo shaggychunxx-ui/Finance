@@ -294,9 +294,8 @@ def _extract_from_agent_file(
     event_day: bool = False,
 ) -> None:
     from agent_constraints import agent_preferred_horizon
-    # Patents innovation-price votes go to fusion; do not mint live labels
-    # (would rewrite walk-forward accuracy_pct).
-    if str(agent_id or "") == "patents":
+    # Specialists feed facts. Only market-predictor mints live price labels.
+    if str(agent_id or "").replace("_", "-") != "market-predictor":
         return
     preds = data.get("predictions", {})
     if isinstance(preds, dict):
@@ -463,7 +462,7 @@ def record_cycle_predictions(*, cycle_id: str | None = None) -> int:
                 # Attribute each source only when this horizon is their preferred live horizon.
                 for source in row.get("sources") or []:
                     sid = str(source)
-                    if sid == "patents":
+                    if sid.replace("_", "-") != "market-predictor":
                         continue
                     try:
                         from agent_constraints import agent_preferred_horizon
@@ -1207,6 +1206,39 @@ def run_live_scoring_cycle(*, rebuild_learning: bool = True) -> dict[str, int]:
     }
 
 
+TAPE_ACCURACY_CLUSTER = frozenset({"markets", "finance", "financial-data"})
+
+
+def _tape_cluster_average(entry: dict[str, Any], agent_id: str) -> dict[str, Any]:
+    """Yahoo-tape clones share one effective accuracy (mean of the three)."""
+    aid = str(agent_id or "").replace("_", "-")
+    if aid not in TAPE_ACCURACY_CLUSTER:
+        return entry
+    agents = _accuracy_store().get("agents") or {}
+    pcts: list[float] = []
+    for other in TAPE_ACCURACY_CLUSTER:
+        row = agents.get(other)
+        if not isinstance(row, dict):
+            continue
+        raw = row.get("combined_accuracy_pct") or row.get("weighted_accuracy_pct") or row.get("accuracy_pct")
+        try:
+            if raw is not None:
+                pcts.append(float(raw))
+        except (TypeError, ValueError):
+            continue
+    if not pcts:
+        return entry
+    avg = round(sum(pcts) / len(pcts), 1)
+    out = dict(entry)
+    out["accuracy_pct"] = avg
+    out["weighted_accuracy_pct"] = avg
+    out["combined_accuracy_pct"] = avg
+    out["fusion_accuracy_pct"] = avg
+    out["tape_cluster_average"] = avg
+    out["tape_cluster_n"] = len(pcts)
+    return out
+
+
 def get_agent_accuracy(agent_id: str) -> dict[str, Any] | None:
     data = _accuracy_store()
     entry = (data.get("agents") or {}).get(agent_id)
@@ -1215,13 +1247,14 @@ def get_agent_accuracy(agent_id: str) -> dict[str, Any] | None:
     try:
         from accuracy_measurement import enrich_agent_accuracy_entry, load_accuracy_measurement_settings
 
-        return enrich_agent_accuracy_entry(
+        enriched = enrich_agent_accuracy_entry(
             entry,
             agent_id,
             settings=load_accuracy_measurement_settings(),
         )
+        return _tape_cluster_average(enriched if isinstance(enriched, dict) else entry, agent_id)
     except Exception:
-        return entry
+        return _tape_cluster_average(entry, agent_id)
 
 
 def pending_prediction_count(agent_id: str) -> int:
