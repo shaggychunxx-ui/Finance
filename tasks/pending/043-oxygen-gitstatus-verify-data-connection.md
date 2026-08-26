@@ -27,7 +27,7 @@ After GROMIT phone reconnect Done line is visible (watcher + bridge installed).
 4. **Send** probe message: `gitstatus-data-probe-gromit`
 5. Wait for **GROMIT** RECEIPT under Done (watcher ~2 min).
 6. Send result: `data connection OK` or `data connection FAIL: <reason>`
-7. Optional: E*TRADE Trader Setup → `http://192.168.1.155:8787` + token from GROMIT config only.
+7. Optional: E*TRADE Trader Setup → GROMIT `/health` `phone_hint` (2026-08-26: `http://192.168.1.177:8787`) + token from GROMIT config only.
 
 ## Pass criteria
 

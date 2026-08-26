@@ -23,6 +23,7 @@ Secrets (consumer keys, access tokens) never leave this machine.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import socket
 import sys
@@ -50,7 +51,9 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.6.1"
+BRIDGE_VERSION = "1.6.2"
+# Phone "data current" if last GROMIT pack/marks are newer than this (refresh is 15 min).
+DATA_CURRENT_MAX_SEC = 20 * 60
 
 # Auto-publish phone dashboard/agents on a timer (config can override).
 # Phone asked for current data from GROMIT around the clock, not RTH-only.
@@ -58,7 +61,7 @@ DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 15
 DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY = False
 DEFAULT_PHONE_REFRESH_ENABLED = True
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (Finance-phone-bridge/1.6.1)"}
+YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (Finance-phone-bridge/1.6.2)"}
 
 # Phone "full data pull" flag for the current request (thread-local).
 _pull_ctx = threading.local()
@@ -586,8 +589,14 @@ def _prefer_snapshot(
     return dict(a if _snapshot_quality(a) >= _snapshot_quality(b) else b)
 
 
+def _path_is_unc(path: Path) -> bool:
+    """True for SMB/UNC paths. is_file() on a dead host hangs ~20s and stalls /health."""
+    text = str(path)
+    return text.startswith("\\\\") or text.startswith("//")
+
+
 def _shared_broker_snapshot_paths() -> list[Path]:
-    """Possible dual-PC share paths for broker account_snapshot.json."""
+    """Local-only broker snapshot paths. Never probe retired BOXONE UNC shares."""
     paths: list[Path] = []
     try:
         from deployment import load_deployment
@@ -595,27 +604,25 @@ def _shared_broker_snapshot_paths() -> list[Path]:
         dep = load_deployment()
         root = str(dep.get("shared_root") or "").strip()
         if root:
-            paths.append(Path(root) / "broker" / "account_snapshot.json")
+            candidate = Path(root) / "broker" / "account_snapshot.json"
+            if not _path_is_unc(candidate):
+                paths.append(candidate)
     except Exception:
         pass
-    # Common dual-PC layouts (HelperDrop + dedicated FinanceShare)
-    for candidate in (
-        Path(r"C:\Users\Public\HelperDrop\FinanceShare\broker\account_snapshot.json"),
-        Path(r"\\10.10.10.1\HelperDrop\FinanceShare\broker\account_snapshot.json"),
-        Path(r"\\10.10.10.1\FinanceShare\broker\account_snapshot.json"),
-    ):
-        if candidate not in paths:
-            paths.append(candidate)
+    # Local HelperDrop only. GROMIT is sole Finance host; UNC to 10.10.10.1 hangs /health.
+    local_share = Path(r"C:\Users\Public\HelperDrop\FinanceShare\broker\account_snapshot.json")
+    if local_share not in paths:
+        paths.append(local_share)
     return paths
 
 
 def _load_shared_broker_snapshot() -> dict[str, Any]:
-    """Best broker snapshot from dual-PC share (BOXONE writer after role flip B)."""
+    """Best broker snapshot from a local share path (never UNC)."""
     best: dict[str, Any] = {}
     best_src = ""
     for path in _shared_broker_snapshot_paths():
         try:
-            if not path.is_file():
+            if _path_is_unc(path) or not path.is_file():
                 continue
             data = _read_json(path)
             if _snapshot_position_count(data) <= 0 and not data.get("balance"):
@@ -672,11 +679,26 @@ def _load_account_snapshot() -> dict[str, Any]:
     return chosen
 
 
+def _freshness_from_refresh() -> tuple[float | None, str | None]:
+    """Age of last GROMIT phone pack: public marks, else refresh timestamp."""
+    last = _read_json(ROOT / "output" / "phone_refresh_last.json")
+    if not isinstance(last, dict) or not last:
+        return None, None
+    pull = last.get("data_pull") if isinstance(last.get("data_pull"), dict) else {}
+    marks_at = pull.get("marks_updated_at")
+    marks_age = _iso_age_sec(marks_at)
+    if marks_age is not None:
+        source = str(pull.get("marks_source") or "marks")
+        return marks_age, source
+    refresh_age = _iso_age_sec(last.get("at"))
+    if refresh_age is not None:
+        return refresh_age, "refresh"
+    return None, None
+
+
 def _data_quality_report() -> dict[str, Any]:
-    """Non-secret snapshot quality for /health and ops."""
+    """Non-secret snapshot quality for /health. Local files only (no SMB)."""
     local = _read_json(ROOT / "output" / "account_snapshot.json")
-    shared = _load_shared_broker_snapshot()
-    best = _prefer_snapshot(local, shared)
     role = "all"
     try:
         from deployment import load_deployment
@@ -684,18 +706,27 @@ def _data_quality_report() -> dict[str, Any]:
         role = str(load_deployment().get("role") or "all")
     except Exception:
         pass
+    broker_age = _snapshot_age_sec(local)
+    marks_age, marks_source = _freshness_from_refresh()
+    serving_age = marks_age if marks_age is not None else broker_age
+    current = serving_age is not None and 0 <= serving_age < DATA_CURRENT_MAX_SEC
     return {
         "role": role,
         "local_positions": _snapshot_position_count(local),
-        "local_age_sec": _snapshot_age_sec(local),
-        "shared_positions": _snapshot_position_count(shared),
-        "shared_age_sec": _snapshot_age_sec(shared),
-        "serving_positions": _snapshot_position_count(best),
-        "serving_age_sec": _snapshot_age_sec(best),
-        "serving_source": best.get("_chosen_from")
-        or best.get("source")
-        or ("none" if not best else "unknown"),
-        "strong": _snapshot_position_count(best) >= _MIN_POS_KEEP_RICHER,
+        "local_age_sec": broker_age,
+        "shared_positions": 0,
+        "shared_age_sec": None,
+        "broker_age_sec": broker_age,
+        "marks_age_sec": marks_age,
+        "marks_source": marks_source,
+        "serving_positions": _snapshot_position_count(local),
+        "serving_age_sec": serving_age,
+        "serving_source": marks_source
+        or local.get("_chosen_from")
+        or local.get("source")
+        or ("none" if not local else "unknown"),
+        "strong": _snapshot_position_count(local) >= _MIN_POS_KEEP_RICHER,
+        "data_current": current,
     }
 
 
@@ -2898,6 +2929,27 @@ def resume_all() -> dict[str, Any]:
     return {"ok": True, "message": "Both sleeves resumed", "paused": False}
 
 
+def _sort_lan_ips(found: list[str]) -> list[str]:
+    """Wi-Fi LAN first. APIPA / WSL last so phone_hint is the address the phone can use."""
+
+    def rank(ip: str) -> tuple[int, str]:
+        if ip.startswith("192.168."):
+            return (0, ip)
+        if ip.startswith("10."):
+            return (1, ip)
+        if ip.startswith("172."):
+            return (2, ip)
+        if ip.startswith("169.254."):
+            return (9, ip)
+        return (5, ip)
+
+    uniq: list[str] = []
+    for ip in found:
+        if ip and ip not in uniq and not ip.startswith("127."):
+            uniq.append(ip)
+    return sorted(uniq, key=rank)
+
+
 def lan_ips() -> list[str]:
     found: list[str] = []
     try:
@@ -2908,10 +2960,7 @@ def lan_ips() -> list[str]:
                 found.append(ip)
     except OSError:
         pass
-    # Prefer common dual-PC LAN
-    preferred = [ip for ip in found if ip.startswith("10.10.10.")]
-    others = [ip for ip in found if ip not in preferred]
-    return preferred + others
+    return _sort_lan_ips(found)
 
 
 def build_agents_for_phone() -> dict[str, Any]:
@@ -3234,6 +3283,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         "orders_path": "/api/orders",
                         "data_quality": quality,
                         "data_strong": bool(quality.get("strong")),
+                        "data_current": bool(quality.get("data_current")),
                         "phone_refresh_enabled": bool(cfg.get("phone_refresh_enabled", True)),
                         "phone_refresh_interval_minutes": rmin,
                         "phone_refresh_market_hours_only": bool(
@@ -3342,14 +3392,51 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._send(400, {"ok": False, "error": str(exc)})
 
 
+def _acquire_instance_lock() -> Any:
+    """Keep a single phone_bridge. Must use use_last_error or GetLastError is stale."""
+    import ctypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.CreateMutexW(None, True, "Local\\FinancePhoneBridge")
+    err = ctypes.get_last_error()
+    already = 183  # ERROR_ALREADY_EXISTS
+    if not handle:
+        _log(f"phone_bridge mutex create failed err={err} - continuing")
+        return "no-mutex"
+    if err == already:
+        kernel32.CloseHandle(handle)
+        _log("phone_bridge already running (mutex) - exit")
+        return None
+    lock_path = ROOT / "output" / "phone_bridge.lock"
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(str(os.getpid()), encoding="utf-8")
+    except OSError:
+        pass
+    return handle
+
+
 def main() -> int:
+    lock = _acquire_instance_lock()
+    if lock is None:
+        return 0
     cfg = load_bridge_config()
     host = str(cfg.get("host") or DEFAULT_HOST)
     port = int(cfg.get("port") or DEFAULT_PORT)
     token = str(cfg.get("bridge_token") or "")
     BridgeHandler.bridge_token = token
 
-    httpd = ThreadingHTTPServer((host, port), BridgeHandler)
+    class BridgeServer(ThreadingHTTPServer):
+        allow_reuse_address = False
+
+    try:
+        httpd = BridgeServer((host, port), BridgeHandler)
+    except OSError as exc:
+        _log(f"phone_bridge bind failed on {host}:{port}: {exc}")
+        return 1
     ips = lan_ips()
     _log(f"Phone bridge v{BRIDGE_VERSION} listening on {host}:{port}")
     for ip in ips:

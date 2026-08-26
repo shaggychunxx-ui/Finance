@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-26
-**Updated by:** PHONE
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -34,12 +34,13 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 ## Next
 
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
-- [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
+- [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
-- [ ] **GROMIT** etrader phone app. data is not current. all data should update regularly from geomit
 
 ## Done
+
+- [x] **GROMIT (PHONE: etrader data not current):** phone_bridge **v1.6.2** on live `:8787`. `/health` ~30ms (was ~21s UNC hang to retired BOXONE). `data_current=true` from 15-min Yahoo marks (16/16 lots), not 14-day broker `fetched_at`. Wi‑Fi **`http://192.168.1.177:8787`**. Tests `test_phone_bridge_publish.py` OK. OAuth still expired (human). Task `tasks/done/050-phone-data-current-from-gromit.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: I put them for sale, not the api):** Your UI sells stay. Worker cancels only its own `FIN*` protective stops/limits — never human tickets and never mutual funds. Funds ETMUX/ETBOX/TAIBX/PHYZX/PRBLX are not proposed on the equity API. Re-place any 2026-08-12 canceled fund sells in the E*TRADE **fund** ticket (NAV). Tests `test_human_ui_orders.py` OK. Worker pid 15712 loaded the fix. OAuth still expired past midnight ET (separate human item). Task `tasks/done/049-human-ui-sells-not-api.md`. **Act on: none**.
 
@@ -88,10 +89,9 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 ## Next
 
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
-- [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.155:8787` + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
+- [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth once real consumer_key/secret are set; dry_run policy human choice.
-- [ ] **GROMIT** etrader phone app. data is not current. all data should update regularly from geomit
 
 ## Blockers
 
@@ -103,17 +103,17 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 
 - **AI workstation + UPS (2026-08-02):** Hardware order on gsw. Binding: Finance primary goal and Role flip B outrank workstation cutover. No RTH reboot that kills broker/pipeline. No live_trading / dry_run flips for hardware payoff. Secrets off-git.
 - **Role flip B (2026-08-01):** BOXONE=broker, AI-CODING=pipeline. Tokens stay on BOXONE only. See ROLE_FLIP_B.md / DUAL_PC_DEPLOYMENT.md.
-- [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-gromit`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + `OXYGEN_GITSTATUS_VERIFY.md`. Bridge URL `http://192.168.1.155:8787`. Never Act on PHONE.
+- [ ] **PHONE (GitStatus / OXYGEN):** Verify Finance **data connection** in GitStatus: open Finance, refresh STATUS, Send `gitstatus-data-probe-gromit`, then Send `data connection OK` or `FAIL`. Checklist: task **043** + `OXYGEN_GITSTATUS_VERIFY.md`. Bridge URL from `/health` `phone_hint` (`http://192.168.1.177:8787`). Never Act on PHONE.
 - **Full day backtest:** Continuous walk-forward from 2000-01-01. `python run_full_day_backtest.py` or `Start Full Day Backtest.bat`.
 - **PL points:** Groups earn points per full 1.0% total trading P/L. See `agent_groups.ROLE_PL_POINTS_PER_PCT` and task **040**.
 - **Dropshipping:** Canonical path `dropshipping/README.md`. ShopifyDS keeps automation.
-- **Phone bus:** FinanceWorkspaceWatch every ~2 min on GROMIT. See `RULES.md` / `AGENTS.md` / `BUS-COMMS.md`.
+- **Phone bus:** FinanceWorkspaceWatch every ~2 min on GROMIT. Bridge v1.6.2 `:8787` refreshes phone pack every 15 min all hours. See `RULES.md` / `AGENTS.md` / `BUS-COMMS.md`.
 - Live runtime: `%USERPROFILE%\Finance` on GROMIT; this clone is `Documents\GitHub\Finance` (git + phone bus). Do not commit secrets from runtime.
 - Standing commit rules: subject + body; no secrets.
-- **Etrader UI info:** `phone_ui_info_enabled: true` on GROMIT live bridge (v1.5.8).
+- **Etrader UI info:** `phone_ui_info_enabled: true` on GROMIT live bridge (v1.6.2).
 - Armed for HUMAN GitStatus: Send any message from phone on Finance window ? **GROMIT** claims and responds.
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
-- PHONE: etrader phone app. data is not current. all data should update regularly from geomit → Act on GROMIT (GROMIT delegates host-local work)
+- Phone LAN: GROMIT `/health` `phone_hint` is `http://192.168.1.177:8787` (2026-08-26). Token in live config only.
 

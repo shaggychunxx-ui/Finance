@@ -110,6 +110,55 @@ def test_overlay_marks_updates_price() -> None:
         pb._yahoo_last_price = orig  # type: ignore[method-assign]
 
 
+def test_shared_paths_never_unc() -> None:
+    for path in pb._shared_broker_snapshot_paths():
+        assert not pb._path_is_unc(path), path
+    assert pb._path_is_unc(Path(r"\\10.10.10.1\FinanceShare\broker\account_snapshot.json"))
+    assert not pb._path_is_unc(Path(r"C:\Users\Public\HelperDrop\FinanceShare\broker\account_snapshot.json"))
+
+
+def test_sort_lan_ips_prefers_wifi() -> None:
+    ordered = pb._sort_lan_ips(["169.254.240.99", "172.23.80.1", "192.168.1.177", "127.0.0.1"])
+    assert ordered[0] == "192.168.1.177"
+    assert "127.0.0.1" not in ordered
+    assert ordered[-1] == "169.254.240.99"
+
+
+def test_data_quality_uses_marks_age_not_broker_book() -> None:
+    orig_read = pb._read_json
+    now = datetime.now(timezone.utc).isoformat()
+
+    def fake_read(path: Path) -> dict:
+        name = path.name
+        if name == "account_snapshot.json":
+            return {
+                "fetched_at": "2026-08-12T13:30:23+00:00",
+                "positions": [{"symbol": "RIVN", "quantity": 1}],
+                "source": "phone_bridge_live_pull",
+            }
+        if name == "phone_refresh_last.json":
+            return {
+                "at": now,
+                "data_pull": {
+                    "marks_updated_at": now,
+                    "marks_source": "yahoo_public",
+                },
+            }
+        return orig_read(path)
+
+    pb._read_json = fake_read  # type: ignore[method-assign]
+    try:
+        report = pb._data_quality_report()
+        assert report["data_current"] is True
+        assert report["marks_source"] == "yahoo_public"
+        assert report["marks_age_sec"] is not None and report["marks_age_sec"] < 60
+        assert report["serving_age_sec"] == report["marks_age_sec"]
+        assert report["broker_age_sec"] is not None and report["broker_age_sec"] > 1000
+        assert report.get("shared_positions") == 0
+    finally:
+        pb._read_json = orig_read  # type: ignore[method-assign]
+
+
 def test_overlay_skips_fresh_broker_book() -> None:
     pb._MARKS_CACHE.clear()
     snap = {
@@ -137,6 +186,9 @@ if __name__ == "__main__":
         test_publish_blocks_held_lot_collapse,
         test_overlay_marks_updates_price,
         test_overlay_skips_fresh_broker_book,
+        test_shared_paths_never_unc,
+        test_sort_lan_ips_prefers_wifi,
+        test_data_quality_uses_marks_age_not_broker_book,
     ]
     failed = 0
     for fn in tests:

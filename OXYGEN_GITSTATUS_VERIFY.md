@@ -14,7 +14,7 @@
    `gitstatus-data-probe-gromit`
    Expect **GROMIT** watcher to claim and leave a RECEIPT under Done (within a few minutes).
 5. Optional E*TRADE data path: open **ETrade Trader** phone app — Setup uses LAN bridge on GROMIT:
-   - Base URL: `http://192.168.1.155:8787` (Wi‑Fi; IP can change — check health on PC)
+   - Base URL: GROMIT `/health` `phone_hint` (2026-08-26: `http://192.168.1.177:8787`; Wi‑Fi DHCP can change)
    - Token: from GROMIT live `phone_bridge_config.json` only (never paste into git/STATUS)
 
 ## Pass / fail
