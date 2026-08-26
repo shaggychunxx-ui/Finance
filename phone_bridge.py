@@ -51,7 +51,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.6.2"
+BRIDGE_VERSION = "1.6.3"
 # Phone "data current" if last GROMIT pack/marks are newer than this (refresh is 15 min).
 DATA_CURRENT_MAX_SEC = 20 * 60
 
@@ -61,7 +61,7 @@ DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 15
 DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY = False
 DEFAULT_PHONE_REFRESH_ENABLED = True
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (Finance-phone-bridge/1.6.2)"}
+YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (Finance-phone-bridge/1.6.3)"}
 
 # Phone "full data pull" flag for the current request (thread-local).
 _pull_ctx = threading.local()
@@ -72,8 +72,11 @@ _pull_ctx = threading.local()
 # (equity, BP, sizing, sellable). They are not trading profit at book-in.
 CALCULATION_START_ISO = "2026-07-24"
 
-# Snapshot quality: never clobber a fuller book with a thin live pull / publish.
-_MIN_POS_KEEP_RICHER = 3  # if prior has >= this many lots and new has fewer -> keep prior
+# Snapshot quality: never clobber a fuller book with a thin pull from a
+# *different* account (e.g. #6854 1-lot vs #8804). Same-account live is truth
+# even when the book shrank (sold down).
+_MIN_POS_KEEP_RICHER = 3  # wrong-account thinner pulls only
+_PREFERRED_ACCOUNT_TAIL = "8804"
 # Public-mark overlay cache: fetched_at -> (monotonic ts, marked snap)
 _MARKS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
@@ -739,6 +742,27 @@ def _set_pull_meta(**kwargs: Any) -> None:
     cur = dict(_last_pull_meta())
     cur.update(kwargs)
     _pull_ctx.meta = cur
+
+
+def same_broker_account(live_key: str, live_label: str, prior: dict[str, Any]) -> bool:
+    """True when a live pull is the same brokerage book as the cached snapshot."""
+    if not isinstance(prior, dict) or not prior:
+        return True
+    key = str(live_key or "").strip()
+    prior_key = str(prior.get("account_id_key") or "").strip()
+    if key and prior_key and key == prior_key:
+        return True
+    live_lab = str(live_label or prior.get("display_label") or "")
+    prior_lab = str(prior.get("display_label") or prior.get("account_name") or "")
+
+    def _has_preferred_tail(text: str) -> bool:
+        t = (text or "").replace("|", "·")
+        tail = _PREFERRED_ACCOUNT_TAIL
+        return f"#{tail}" in t or t.rstrip().endswith(tail)
+
+    if _has_preferred_tail(live_lab) and _has_preferred_tail(prior_lab):
+        return True
+    return False
 
 
 def try_refresh_account_snapshot(
