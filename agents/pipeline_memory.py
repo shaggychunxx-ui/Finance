@@ -216,6 +216,15 @@ def restore_same_cycle_agent_outputs(
     return restored
 
 
+def _load_market_regime() -> dict[str, Any]:
+    try:
+        from agents.market_regime_state import load_regime
+
+        return load_regime()
+    except Exception:
+        return {}
+
+
 def _live_quote_symbols(*, limit: int = 20) -> list[str]:
     try:
         from agents.enhancement import load_enhanced_quotes
@@ -327,6 +336,7 @@ def memory_bundle_for_agent(agent_id: str) -> dict[str, Any]:
         "accuracy_leaderboard_top": list(ctx.get("accuracy_leaderboard") or [])[:5],
         "total_pipeline_runs": int(ctx.get("total_pipeline_runs") or 0),
         "patent_holders": patent_holders,
+        "market_regime": _load_market_regime(),
     }
 
 

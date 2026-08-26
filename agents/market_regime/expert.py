@@ -274,6 +274,12 @@ class MarketRegimeExpert(BaseExpert):
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
         result = self.to_dict(self.analyze())
+        try:
+            from agents.market_regime_state import save_regime
+
+            save_regime(result)
+        except Exception:
+            pass
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")

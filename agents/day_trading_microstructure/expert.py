@@ -250,12 +250,21 @@ class DayTradingMicrostructureExpert(BaseExpert):
         return signals
 
     def analyze(self) -> DayTradingReport:
+        from agents.market_regime_state import load_regime
+        from agents.pipeline_book import held_first_watchlist
+
+        watch = held_first_watchlist(WATCHLIST, max_canned=2, include_benchmark=BENCHMARK)
+        regime = load_regime()
         rows: list[SymbolMicrostructure] = []
-        for symbol, tier in WATCHLIST.items():
+        for symbol, tier in watch.items():
             ohlcv = self.fetch_yahoo_ohlcv(symbol, range_="1mo", interval="1d")
             if not ohlcv["close"]:
                 continue
             orb_high, orb_low, orb_signal = self._orb_signal(ohlcv)
+            if not regime.get("allow_breakouts") and (
+                "breakout" in orb_signal or "breakdown" in orb_signal
+            ):
+                orb_signal = f"regime {regime.get('id')}: no ORB"
             vol_z, tape_signal = self._tape_signal(ohlcv)
             vwap, vwap_z, vwap_signal = self._vwap_signal(ohlcv)
             rows.append(

@@ -258,6 +258,10 @@ class RiskProtectionExpert(BaseExpert):
         return signals
 
     def analyze(self) -> RiskProtectionReport:
+        from agents.market_regime_state import load_regime
+
+        regime = load_regime()
+        size_mult = float(regime.get("size_multiplier") or 1.0)
         position_guards: list[PositionSizeGuard] = []
         kelly_readings: list[KellyReading] = []
         for symbol, label in WATCHLIST.items():
