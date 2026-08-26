@@ -275,6 +275,8 @@ class PatentFinding:
     possible_uses: list[str] = field(default_factory=list)
     market_impacts: list[dict[str, Any]] = field(default_factory=list)
     symbol: str = ""
+    holder_ticker: str = ""
+    holders: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -519,6 +521,8 @@ class PatentLandscapeAnalyst(BaseExpert):
                 possible_uses=list(card.get("possible_uses") or []),
                 market_impacts=list(card.get("market_impacts") or []),
                 symbol=str(item.get("symbol") or ""),
+                holder_ticker=str(card.get("holder_ticker") or ""),
+                holders=list(card.get("holders") or []),
             ))
         return findings
 
@@ -665,6 +669,8 @@ class PatentLandscapeAnalyst(BaseExpert):
                     possible_uses=list(card.get("possible_uses") or []),
                     market_impacts=list(card.get("market_impacts") or []),
                     symbol=str(card.get("symbol") or ""),
+                    holder_ticker=str(card.get("holder_ticker") or card.get("symbol") or ""),
+                    holders=list(card.get("holders") or []),
                 )
             )
         return findings
@@ -685,6 +691,8 @@ class PatentLandscapeAnalyst(BaseExpert):
                     "assignee": f.assignee,
                     "source": f.source,
                     "impact": f.impact,
+                    "holder_ticker": f.holder_ticker or f.symbol,
+                    "holders": list(f.holders),
                 }
             )
         return cards
@@ -848,6 +856,8 @@ class PatentLandscapeAnalyst(BaseExpert):
                     "possible_uses": f.possible_uses,
                     "market_impacts": f.market_impacts,
                     "symbol": f.symbol,
+                    "holder_ticker": f.holder_ticker or f.symbol,
+                    "holders": f.holders,
                 }
                 for f in report.findings
             ],
