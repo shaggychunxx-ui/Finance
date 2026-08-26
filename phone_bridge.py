@@ -1178,6 +1178,63 @@ def _is_plausible_day_pl(day_pl: float | None, account_value: float | None) -> b
     return abs(day_pl) < 50_000
 
 
+def _snapshot_is_live_broker(snap: dict[str, Any]) -> bool:
+    src = str(snap.get("source") or "").lower()
+    if "live" in src or src in {"phone_bridge_live_pull", "etrade_worker"}:
+        return True
+    age = _snapshot_age_sec(snap)
+    return age is not None and 0 <= age < 3600
+
+
+def _overlay_live_broker_account(out: dict[str, Any], snap: dict[str, Any]) -> None:
+    """E*TRADE snapshot is the phone equity/cash source when it is the live book."""
+    if not isinstance(out, dict) or not isinstance(snap, dict) or not snap:
+        return
+    live = _snapshot_is_live_broker(snap)
+    bal_block = snap.get("balance") if isinstance(snap.get("balance"), dict) else {}
+    snap_bal = _f(bal_block.get("total_account_value"))
+    cur_bal = _f(out.get("balance"))
+    if snap_bal is not None and snap_bal > 0:
+        if live or cur_bal is None or cur_bal <= 0:
+            out["balance"] = snap_bal
+        elif snap_bal >= cur_bal:
+            out["balance"] = snap_bal
+    elif snap_bal is not None and out.get("balance") is None:
+        out["balance"] = snap_bal
+    snap_cash = _f(bal_block.get("cash_buying_power") or bal_block.get("cash"))
+    if snap_cash is not None:
+        if live or out.get("cash") is None or _f(out.get("cash"), 0) <= 0:
+            out["cash"] = snap_cash
+    label = str(snap.get("display_label") or "").strip()
+    key = str(snap.get("account_id_key") or "").strip()
+    if key:
+        out["account_id_key"] = key
+    if label:
+        out["account_name"] = label
+    if out.get("usable_capital") is None or live:
+        if out.get("balance") is not None:
+            out["usable_capital"] = out.get("balance")
+    bal = out.get("balance")
+    invested = out.get("invested_capital")
+    if bal is not None and invested is not None and invested > 0:
+        out["total_pl"] = round(float(bal) - float(invested), 2)
+        out["total_pl_pct"] = round(out["total_pl"] / float(invested) * 100.0, 2)
+        out["trend"] = "up" if out["total_pl"] >= 0 else "down"
+    disp = dict(out.get("display") or {}) if isinstance(out.get("display"), dict) else {}
+    if out.get("balance") is not None:
+        disp["balance"] = _money(out.get("balance"))
+    if out.get("cash") is not None:
+        disp["cash"] = _money(out.get("cash"))
+    if out.get("invested_capital") is not None:
+        disp["invested"] = _money(out.get("invested_capital"))
+    if out.get("total_pl") is not None:
+        disp["total_pl"] = _money(out.get("total_pl"))
+    if out.get("total_pl_pct") is not None:
+        disp["total_pl_pct"] = _pct(out.get("total_pl_pct"))
+    if disp:
+        out["display"] = disp
+
+
 def build_account_summary() -> dict[str, Any]:
     """Balance + P/L for phone portfolio UI (best-effort from history + plan).
 
