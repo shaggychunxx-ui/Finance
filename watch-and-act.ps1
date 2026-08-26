@@ -273,6 +273,21 @@ function Test-ShouldAct {
 }
 
 function Invoke-Sync {
+    if ($script:HeadlessSlotsLoaded -and (Get-Command Test-HeadlessRepoLive -ErrorAction SilentlyContinue) -and (Test-HeadlessRepoLive -Repo $repo)) {
+        $statusBusy = Invoke-Git status --porcelain
+        $busyDirty = [string]$statusBusy.Text
+        if ($busyDirty.Trim().Length -gt 0) {
+            Write-Log "Headless act live in this repo and tree is dirty - skip git mutate"
+            return
+        }
+        Write-Log "Headless act live in this repo - fetch/pull only (clean tree)"
+        $null = Invoke-Git fetch origin
+        $pullBusy = Invoke-Git pull --ff-only origin main
+        if ($pullBusy.Code -ne 0) {
+            Write-Log ("Pull skipped while headless live: " + $pullBusy.Text)
+        }
+        return
+    }
     $branch = "main"
     $remote = "origin"
     Write-Log "Sync remote: $remote"
