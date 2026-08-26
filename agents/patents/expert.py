@@ -536,7 +536,7 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "sector": "semiconductor",
                 "source": "Proxy",
                 "link": "",
-                "assignee": "Leading foundry",
+                "assignee": "TSMC",
             },
             {
                 "title": "Transformer-based multimodal model training with sparse attention",
@@ -544,7 +544,7 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "sector": "artificial-intelligence",
                 "source": "Proxy",
                 "link": "",
-                "assignee": "Big Tech",
+                "assignee": "Microsoft",
             },
             {
                 "title": "Solid-state lithium-metal battery electrolyte composition",
@@ -552,7 +552,7 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "sector": "energy",
                 "source": "Proxy",
                 "link": "",
-                "assignee": "Energy storage firm",
+                "assignee": "Tesla",
             },
             {
                 "title": "CRISPR-guided in vivo gene editing delivery system",
@@ -560,7 +560,7 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "sector": "biotechnology",
                 "source": "Proxy",
                 "link": "",
-                "assignee": "Biotech lab",
+                "assignee": "Moderna",
             },
         ]
 
@@ -795,11 +795,13 @@ class PatentLandscapeAnalyst(BaseExpert):
             recs.append(f"[{f.sector}] {f.company or f.assignee or '?'} — {f.title[:70]}")
             recs.extend(f"  {line}" for line in format_card_lines({
                 "company": f.company,
+                "holder_ticker": f.holder_ticker or f.symbol,
+                "holders": f.holders,
                 "industry": f.industry,
                 "intended_use": f.intended_use,
                 "possible_uses": f.possible_uses,
                 "market_impacts": f.market_impacts,
-            })[:3])
+            })[:4])
         offline = [r["name"] for r in resources if r.get("health") == "offline"]
         if offline:
             recs.append(f"Offline resources (check later): {', '.join(offline[:4])}")

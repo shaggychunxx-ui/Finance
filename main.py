@@ -975,9 +975,13 @@ def _print_patents(data: dict[str, Any]) -> None:
     print()
     print("  Recent findings:")
     for f in data.get("findings", [])[:8]:
+        holder = f.get("holder_ticker") or f.get("symbol") or ""
+        who = f.get("company") or f.get("assignee") or "?"
+        if holder:
+            who = f"{who} ({holder})"
         print(
-            f"    • [{f.get('sector', '?')}] {f.get('company') or f.get('assignee') or '?'} — "
-            f"{f.get('title', '')[:60]} ({f.get('source', '')})"
+            f"    • Held by {who} [{f.get('sector', '?')}] "
+            f"{f.get('title', '')[:56]} ({f.get('source', '')})"
         )
         if f.get("intended_use"):
             print(f"      Intended: {str(f.get('intended_use'))[:110]}")
