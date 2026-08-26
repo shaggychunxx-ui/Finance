@@ -464,6 +464,8 @@ def record_cycle_predictions(*, cycle_id: str | None = None) -> int:
                 # Attribute each source only when this horizon is their preferred live horizon.
                 for source in row.get("sources") or []:
                     sid = str(source)
+                    if sid == "patents":
+                        continue
                     try:
                         from agent_constraints import agent_preferred_horizon
 

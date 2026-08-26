@@ -50,3 +50,34 @@ def test_patents_agent_emits_landscape() -> None:
     assert held, "landscape should look at companies that hold the live-book patents"
     findings = result["findings"]
     assert findings[0].get("intended_use")
+
+
+def test_holder_tickers_are_in_patents_domain() -> None:
+    from agent_fusion import agent_in_domain
+
+    assert agent_in_domain("patents", "BRVE", sector_hint="biotech")
+    assert agent_in_domain("patents", "SOFI", sector_hint="fintech")
+    assert agent_in_domain("patents", "MSFT", sector_hint="software")
+
+
+def test_patents_live_extract_does_not_queue_labels() -> None:
+    from prediction_accuracy import _extract_from_agent_file
+
+    pending: list = []
+    data = {
+        "market_signals": [
+            {"bias": "BULLISH", "tickers": ["QQQ", "BRVE"], "sector": "Innovation"},
+        ],
+        "landscape": [
+            {"holder_ticker": "BRVE", "company": "Braveheart Bio", "source": "held-lot landscape"},
+        ],
+    }
+    _extract_from_agent_file(
+        "patents",
+        data,
+        cycle_id="test",
+        recorded_at="2026-08-26T00:00:00+00:00",
+        quotes={"QQQ": 400.0, "BRVE": 27.0},
+        pending=pending,
+    )
+    assert pending == []
