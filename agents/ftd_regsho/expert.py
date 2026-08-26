@@ -342,7 +342,12 @@ class FTDRegShoExpert(BaseExpert):
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
-        result = self.to_dict(self.analyze())
+        from agents.short_data_feed import run_short_agent
+
+        result = run_short_agent(
+            "ftd-regsho",
+            label="Failure-to-Deliver (FTD) & Regulation SHO Expert",
+        )
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")

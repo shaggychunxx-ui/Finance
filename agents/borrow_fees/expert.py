@@ -486,12 +486,12 @@ class BorrowFeeExpert(BaseExpert):
         }
 
     def run(self, output: Path | None = None) -> dict[str, Any]:
-        from agents.short_data_feed import short_feed_status, unavailable_payload
+        from agents.short_data_feed import run_short_agent
 
-        if not short_feed_status().get("available"):
-            result = unavailable_payload("borrow-fees", label="Cost-to-Borrow (Short Borrow Fee) Expert")
-        else:
-            result = self.to_dict(self.analyze())
+        result = run_short_agent(
+            "borrow-fees",
+            label="Cost-to-Borrow (Short Borrow Fee) Expert",
+        )
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(result, indent=2), encoding="utf-8")

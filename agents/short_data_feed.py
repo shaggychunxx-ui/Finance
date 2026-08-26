@@ -96,6 +96,51 @@ def load_short_feed_rows() -> list[dict[str, Any]]:
     return []
 
 
+def live_payload(agent_id: str, *, label: str) -> dict[str, Any]:
+    st = short_feed_status()
+    rows = load_short_feed_rows()
+    signals: list[dict[str, Any]] = []
+    for row in rows:
+        sym = str(row.get("symbol") or "").upper()
+        if not sym:
+            continue
+        try:
+            ctb = float(row.get("ctb_pct") or row.get("ctb_avg_pct") or row.get("borrow_apr_pct") or 0)
+        except (TypeError, ValueError):
+            ctb = 0.0
+        bias = "BEARISH" if ctb >= 20 else "NEUTRAL"
+        signals.append(
+            {
+                "sector": "Short mechanics",
+                "bias": bias,
+                "tickers": [sym],
+                "reason": f"Live short feed {sym} CTB {ctb:.1f}%",
+            }
+        )
+    return {
+        "meta": {
+            "agent": label,
+            "agent_id": agent_id,
+            "feed_available": True,
+            "feed_status": st,
+            "expert_summary": f"{label} using live short feed ({len(rows)} rows). Yahoo proxy off.",
+        },
+        "summary": {"feed_available": True, "row_count": len(rows)},
+        "symbols": rows,
+        "market_signals": signals,
+        "recommendations": [f"Live short feed: {len(rows)} names."],
+        "data_source": str(st.get("path") or st.get("kind") or "short_feed"),
+    }
+
+
+def run_short_agent(agent_id: str, *, label: str) -> dict[str, Any]:
+    st = short_feed_status()
+    rows = load_short_feed_rows() if st.get("available") else []
+    if st.get("available") and rows:
+        return live_payload(agent_id, label=label)
+    return unavailable_payload(agent_id, label=label)
+
+
 def unavailable_payload(agent_id: str, *, label: str) -> dict[str, Any]:
     st = short_feed_status()
     return {
