@@ -398,7 +398,44 @@ class BorrowFeeExpert(BaseExpert):
         return recs
 
     def analyze(self) -> BorrowFeeReport:
+        from agents.short_data_feed import load_short_feed_rows, short_feed_status
+
+        st = short_feed_status()
+        if not st.get("available"):
+            raise RuntimeError("SHORT_FEED_UNAVAILABLE")
         symbols: list[SymbolBorrowFee] = []
+        for row in load_short_feed_rows():
+            sym = str(row.get("symbol") or "").upper()
+            if not sym:
+                continue
+            try:
+                symbols.append(
+                    SymbolBorrowFee(
+                        symbol=sym,
+                        name=str(row.get("name") or sym),
+                        last_close=float(row.get("last_close") or 0),
+                        atr_pct=float(row.get("atr_pct") or 0),
+                        ctb_avg_pct=float(row.get("ctb_avg_pct") or row.get("ctb_pct") or 0),
+                        borrow_category=str(row.get("borrow_category") or "feed"),
+                        squeeze_risk=float(row.get("squeeze_risk") or 0),
+                        rationale=str(row.get("rationale") or "Live short feed"),
+                    )
+                )
+            except Exception:
+                continue
+        if symbols:
+            assessment = self._assessment(symbols)
+            return BorrowFeeReport(
+                symbols=symbols,
+                assessment=assessment,
+                avg_ctb_pct=round(sum(s.ctb_avg_pct for s in symbols) / max(len(symbols), 1), 2),
+                htb_count=sum(1 for s in symbols if "Hard" in str(s.borrow_category)),
+                expert_summary="Borrow fees from live short feed (Yahoo proxy off).",
+                market_signals=self._market_signals(symbols),
+                recommendations=self._recommendations(symbols, assessment),
+                data_source=str(st.get("path") or "short_feed"),
+            )
+        symbols = []
         for symbol, name in WATCHLIST.items():
             row = self._analyze_symbol(symbol, name)
             if row:
