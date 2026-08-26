@@ -484,6 +484,7 @@ class PatentLandscapeAnalyst(BaseExpert):
             "energy": "Clean-tech patent cluster — storage and materials",
             "automotive": "Mobility IP — EV powertrain and autonomy",
             "telecom": "Connectivity standards and SEP exposure",
+            "fintech": "Consumer finance process IP — origination and payments",
             "general": "General innovation activity",
         }
         base = notes.get(sector, notes["general"])
@@ -497,15 +498,27 @@ class PatentLandscapeAnalyst(BaseExpert):
                 continue
             sector = item.get("sector") or self._classify_sector(title)
             impact = self._classify_impact(title, sector)
+            card = research_finding(
+                title=title,
+                assignee=str(item.get("assignee", "")),
+                sector=sector,
+                description=str(item.get("description") or ""),
+            )
             findings.append(PatentFinding(
                 title=title,
                 date=item.get("date") or item.get("pub_date", ""),
-                sector=sector,
+                sector=str(card.get("sector") or sector),
                 source=item.get("source", "Unknown"),
                 link=item.get("link", ""),
-                assignee=str(item.get("assignee", "")),
+                assignee=str(card.get("assignee") or item.get("assignee", "")),
                 impact=impact,
-                notes=self._finding_notes(sector, item.get("source", "")),
+                notes=self._finding_notes(str(card.get("sector") or sector), item.get("source", "")),
+                company=str(card.get("company") or ""),
+                industry=str(card.get("industry") or ""),
+                intended_use=str(card.get("intended_use") or ""),
+                possible_uses=list(card.get("possible_uses") or []),
+                market_impacts=list(card.get("market_impacts") or []),
+                symbol=str(item.get("symbol") or ""),
             ))
         return findings
 
@@ -595,6 +608,86 @@ class PatentLandscapeAnalyst(BaseExpert):
                 deduped.append(item)
 
         return self._normalize_findings(deduped), sources
+
+    def _held_symbols(self) -> list[str]:
+        """Live GROMIT book lots (equities only)."""
+        roots = [
+            Path.home() / "Finance" / "output" / "account_snapshot.json",
+            Path("output") / "account_snapshot.json",
+        ]
+        for path in roots:
+            if not path.is_file():
+                continue
+            try:
+                snap = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(snap, dict):
+                continue
+            out: list[str] = []
+            for row in snap.get("positions") or []:
+                if not isinstance(row, dict):
+                    continue
+                sym = str(row.get("symbol") or "").upper().strip()
+                if not sym or len(sym) > 5 or sym.endswith("X"):
+                    continue
+                qty = row.get("quantity") or 0
+                try:
+                    if float(qty) == 0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                out.append(sym)
+            if out:
+                return out
+        return []
+
+    def _merge_holdings(self, findings: list[PatentFinding]) -> list[PatentFinding]:
+        cards = holdings_landscape(self._held_symbols())
+        existing = {f.title.lower()[:80] for f in findings}
+        for card in cards:
+            title = str(card.get("title") or "")
+            if title.lower()[:80] in existing:
+                continue
+            findings.append(
+                PatentFinding(
+                    title=title,
+                    date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    sector=str(card.get("sector") or "general"),
+                    source=str(card.get("source") or "held-lot landscape"),
+                    link="",
+                    assignee=str(card.get("assignee") or ""),
+                    impact="medium",
+                    notes=self._finding_notes(str(card.get("sector") or "general"), "held-lot"),
+                    company=str(card.get("company") or ""),
+                    industry=str(card.get("industry") or ""),
+                    intended_use=str(card.get("intended_use") or ""),
+                    possible_uses=list(card.get("possible_uses") or []),
+                    market_impacts=list(card.get("market_impacts") or []),
+                    symbol=str(card.get("symbol") or ""),
+                )
+            )
+        return findings
+
+    def _landscape_cards(self, findings: list[PatentFinding]) -> list[dict[str, Any]]:
+        cards: list[dict[str, Any]] = []
+        for f in findings:
+            cards.append(
+                {
+                    "title": f.title,
+                    "symbol": f.symbol,
+                    "company": f.company,
+                    "industry": f.industry,
+                    "sector": f.sector,
+                    "intended_use": f.intended_use,
+                    "possible_uses": list(f.possible_uses),
+                    "market_impacts": list(f.market_impacts),
+                    "assignee": f.assignee,
+                    "source": f.source,
+                    "impact": f.impact,
+                }
+            )
+        return cards
 
     def _innovation_score(self, by_sector: dict[str, int], online: int) -> tuple[float, str]:
         hot_sectors = sum(1 for c in by_sector.values() if c >= 3)
