@@ -262,9 +262,12 @@ class RiskProtectionExpert(BaseExpert):
 
         regime = load_regime()
         size_mult = float(regime.get("size_multiplier") or 1.0)
+        from agents.pipeline_book import held_first_watchlist
+
+        watch = held_first_watchlist(WATCHLIST, max_canned=3, include_benchmark=BENCHMARK)
         position_guards: list[PositionSizeGuard] = []
         kelly_readings: list[KellyReading] = []
-        for symbol, label in WATCHLIST.items():
+        for symbol, label in watch.items():
             ohlcv = self.fetch_yahoo_ohlcv(symbol, range_="3mo", interval="1d")
             if not ohlcv["close"]:
                 continue
@@ -285,9 +288,14 @@ class RiskProtectionExpert(BaseExpert):
                 sector_closes[symbol] = closes
         sector_correlations = self._sector_correlations(sector_closes)
 
+        if size_mult < 0.999:
+            for g in position_guards:
+                g.max_shares = max(0, int(g.max_shares * size_mult))
+                g.max_risk_dollars = round(float(g.max_risk_dollars) * size_mult, 2)
         capped_count = sum(1 for c in sector_correlations if c.capped)
         summary = (
             f"Sized {len(position_guards)} symbols under the 1% rule (${self.account_equity:,.0f} equity), "
+            f"regime {regime.get('id')} size x{size_mult}, "
             f"computed Kelly fractions for {len(kelly_readings)} symbols, "
             f"and flagged {capped_count} sector pairs above the {CORRELATION_CAP_THRESHOLD} correlation cap."
         )
