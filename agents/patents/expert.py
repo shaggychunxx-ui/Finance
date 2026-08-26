@@ -741,6 +741,10 @@ class PatentLandscapeAnalyst(BaseExpert):
         online = sum(1 for r in resources if r.get("health") in {"online", "catalog"})
 
         findings, sources = self._collect_findings()
+        findings = self._merge_holdings(findings)
+        if any(f.source == "held-lot landscape" for f in findings):
+            if "Held-lot landscape" not in sources:
+                sources.append("Held-lot landscape")
 
         by_sector: dict[str, int] = {}
         by_source: dict[str, int] = {}
@@ -750,12 +754,18 @@ class PatentLandscapeAnalyst(BaseExpert):
 
         innovation_score, landscape_label = self._innovation_score(by_sector, online)
         top_sector = max(by_sector, key=by_sector.get) if by_sector else "none"
+        landscape = self._landscape_cards(findings)
+        companies = sorted({f.company for f in findings if f.company})[:6]
+        industries = sorted({f.industry for f in findings if f.industry})[:5]
 
         summary = (
             f"Tracking {len(resources)} patent resources ({online} online). "
-            f"Surfaced {len(findings)} innovation signals from {', '.join(sources)}. "
+            f"Surfaced {len(findings)} landscape cards from {', '.join(sources)}. "
+            f"Companies: {', '.join(companies) or 'n/a'}. "
+            f"Industries: {', '.join(industries) or 'n/a'}. "
             f"Leading sector: {top_sector.replace('-', ' ')} ({by_sector.get(top_sector, 0)}). "
-            f"Landscape: {landscape_label} (score {innovation_score})."
+            f"Landscape: {landscape_label} (score {innovation_score}). "
+            "Each card covers intended use, possible uses, company, industry, and market impact."
         )
 
         signals = self._market_signals(
@@ -773,8 +783,15 @@ class PatentLandscapeAnalyst(BaseExpert):
         recs.append("Top patent databases: Google Patents, Espacenet, PATENTSCOPE, PatentsView")
         for sector, count in sorted(by_sector.items(), key=lambda x: -x[1])[:5]:
             recs.append(f"{sector.replace('-', ' ').title()}: {count} signals")
-        for f in findings[:6]:
-            recs.append(f"[{f.sector}] {f.title[:75]} — {f.source}")
+        for f in findings[:8]:
+            recs.append(f"[{f.sector}] {f.company or f.assignee or '?'} — {f.title[:70]}")
+            recs.extend(f"  {line}" for line in format_card_lines({
+                "company": f.company,
+                "industry": f.industry,
+                "intended_use": f.intended_use,
+                "possible_uses": f.possible_uses,
+                "market_impacts": f.market_impacts,
+            })[:3])
         offline = [r["name"] for r in resources if r.get("health") == "offline"]
         if offline:
             recs.append(f"Offline resources (check later): {', '.join(offline[:4])}")
@@ -791,6 +808,7 @@ class PatentLandscapeAnalyst(BaseExpert):
             market_signals=signals,
             recommendations=recs,
             data_sources=sources,
+            landscape=landscape,
         )
 
     def to_dict(self, report: PatentReport) -> dict[str, Any]:
@@ -809,8 +827,11 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "resources_online": report.resources_online,
                 "innovation_score": report.innovation_score,
                 "landscape_label": report.landscape_label,
+                "companies": sorted({f.company for f in report.findings if f.company}),
+                "industries": sorted({f.industry for f in report.findings if f.industry}),
             },
             "resources": report.resources,
+            "landscape": report.landscape,
             "findings": [
                 {
                     "title": f.title,
@@ -821,6 +842,12 @@ class PatentLandscapeAnalyst(BaseExpert):
                     "assignee": f.assignee,
                     "impact": f.impact,
                     "notes": f.notes,
+                    "company": f.company,
+                    "industry": f.industry,
+                    "intended_use": f.intended_use,
+                    "possible_uses": f.possible_uses,
+                    "market_impacts": f.market_impacts,
+                    "symbol": f.symbol,
                 }
                 for f in report.findings
             ],

@@ -782,6 +782,10 @@ PATENT_SECTOR_MARKET_MAP: dict[str, tuple[list[str], str]] = {
         ["XLC", "SPY"],
         "Telecom IP cluster — communications sector macro tilt",
     ),
+    "fintech": (
+        ["XLF", "QQQ"],
+        "Fintech process IP — financials and digital-finance overlay",
+    ),
 }
 
 

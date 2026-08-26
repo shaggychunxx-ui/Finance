@@ -976,9 +976,13 @@ def _print_patents(data: dict[str, Any]) -> None:
     print("  Recent findings:")
     for f in data.get("findings", [])[:8]:
         print(
-            f"    • [{f.get('sector', '?')}] {f.get('title', '')[:68]} "
-            f"— {f.get('source', '')}"
+            f"    • [{f.get('sector', '?')}] {f.get('company') or f.get('assignee') or '?'} — "
+            f"{f.get('title', '')[:60]} ({f.get('source', '')})"
         )
+        if f.get("intended_use"):
+            print(f"      Intended: {str(f.get('intended_use'))[:110]}")
+        if f.get("industry"):
+            print(f"      Industry: {f.get('industry')}")
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
