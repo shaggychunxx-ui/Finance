@@ -264,6 +264,128 @@ def holdings_landscape(symbols: list[str]) -> list[dict[str, Any]]:
     return cards
 
 
+# Short = product/news/catalyst window. Long = exclusivity / platform / process.
+_SHORT_HORIZONS = ("24h", "1wk")
+_LONG_HORIZONS = ("1mo", "1yr")
+_RETURN_PCT = {"24h": 0.5, "1wk": 1.6, "1mo": 4.5, "1yr": 14.0}
+_CONFIDENCE = {"24h": 0.42, "1wk": 0.48, "1mo": 0.51, "1yr": 0.46}
+
+# Sector-wide listed expressions (price projection targets, not just overlays).
+SECTOR_PRICE_TICKERS: dict[str, list[str]] = {
+    "semiconductor": ["XLK", "TSM", "INTC", "ASML"],
+    "artificial-intelligence": ["QQQ", "MSFT", "GOOGL", "AMZN"],
+    "biotechnology": ["XLV", "MRNA", "AMGN", "PFE"],
+    "energy": ["XLE", "TSLA"],
+    "automotive": ["XLI", "TSLA"],
+    "telecom": ["XLC", "QCOM", "ERIC"],
+    "fintech": ["XLF", "SOFI"],
+    "general": ["SPY", "QQQ"],
+}
+
+
+def terms_for_card(card: dict[str, Any]) -> tuple[str, ...]:
+    """Which price windows this innovation can reasonably move."""
+    source = str(card.get("source") or "")
+    sector = str(card.get("sector") or "")
+    held = source.startswith("held-lot")
+    if held:
+        return ("short", "long")
+    if source.lower() in {"ipwatchdog", "proxy"} and sector in {
+        "artificial-intelligence",
+        "fintech",
+        "telecom",
+    }:
+        return ("short", "long")
+    if sector in {"semiconductor", "biotechnology", "energy"}:
+        return ("long",)
+    if sector in {"automotive"}:
+        return ("short", "long")
+    return ("long",)
+
+
+def _prediction_row(
+    *,
+    symbol: str,
+    horizon: str,
+    company: str,
+    intended: str,
+    term: str,
+    sector: str,
+) -> dict[str, Any]:
+    ret = float(_RETURN_PCT.get(horizon, 3.0))
+    conf = float(_CONFIDENCE.get(horizon, 0.45))
+    if term == "short":
+        why = (
+            f"Near-term innovation discount: {company or symbol} "
+            f"({intended[:120]})"
+        )
+    else:
+        why = (
+            f"Long-horizon exclusivity/platform: {company or symbol} "
+            f"({intended[:120]})"
+        )
+    return {
+        "symbol": str(symbol).upper(),
+        "predicted_direction": "up",
+        "predicted_return_pct": ret,
+        "confidence": conf,
+        "horizon": horizon,
+        "term": term,
+        "sector": sector,
+        "company": company,
+        "reason": why,
+    }
+
+
+def project_innovation_prices(cards: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Map landscape cards to up-only price projections across short and long horizons."""
+    out: dict[str, list[dict[str, Any]]] = {h: [] for h in (*_SHORT_HORIZONS, *_LONG_HORIZONS)}
+    seen: set[tuple[str, str]] = set()
+
+    def _add(row: dict[str, Any]) -> None:
+        key = (str(row.get("symbol") or ""), str(row.get("horizon") or ""))
+        if not key[0] or key in seen:
+            return
+        seen.add(key)
+        out[row["horizon"]].append(row)
+
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+        tick = str(card.get("holder_ticker") or card.get("symbol") or "").upper()
+        sector = str(card.get("sector") or "general")
+        company = str(card.get("company") or tick)
+        intended = str(card.get("intended_use") or card.get("title") or "new innovation")
+        terms = terms_for_card(card)
+        if tick:
+            if "short" in terms:
+                for h in _SHORT_HORIZONS:
+                    _add(_prediction_row(
+                        symbol=tick, horizon=h, company=company,
+                        intended=intended, term="short", sector=sector,
+                    ))
+            if "long" in terms:
+                for h in _LONG_HORIZONS:
+                    _add(_prediction_row(
+                        symbol=tick, horizon=h, company=company,
+                        intended=intended, term="long", sector=sector,
+                    ))
+        # Sector-wide listed names so uncovered sectors still get a price path.
+        for proxy in (SECTOR_PRICE_TICKERS.get(sector) or SECTOR_PRICE_TICKERS["general"])[:2]:
+            if proxy == tick:
+                continue
+            _add(_prediction_row(
+                symbol=proxy,
+                horizon="1yr",
+                company=company or sector,
+                intended=f"sector diffusion of {sector} innovation",
+                term="long",
+                sector=sector,
+            ))
+
+    return {h: rows for h, rows in out.items() if rows}
+
+
 def format_holder_label(card: dict[str, Any]) -> str:
     company = str(card.get("company") or card.get("assignee") or "Unknown holder")
     tick = str(card.get("holder_ticker") or card.get("symbol") or "").upper().strip()
