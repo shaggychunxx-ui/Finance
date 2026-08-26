@@ -219,7 +219,7 @@ def research_finding(
         intended = f"{intended}. Filing focus: {title.strip()[:160]}"
     ticker = str(holder_ticker or mapped_ticker or "").upper().strip()
     holder = _holder_block(company, ticker)
-    return {
+    return attach_impact_window({
         "title": title.strip(),
         "company": company,
         "holder_ticker": ticker,
@@ -230,7 +230,7 @@ def research_finding(
         "possible_uses": list(play["possible"]),
         "market_impacts": [dict(row) for row in play["impacts"]],
         "assignee": str(assignee or company),
-    }
+    })
 
 
 def holdings_landscape(symbols: list[str]) -> list[dict[str, Any]]:
@@ -246,20 +246,22 @@ def holdings_landscape(symbols: list[str]) -> list[dict[str, Any]]:
         if not known:
             continue
         cards.append(
-            {
-                "title": known["title"],
-                "symbol": sym,
-                "company": known["company"],
-                "holder_ticker": sym,
-                "holders": [_holder_block(known["company"], sym)],
-                "industry": known["industry"],
-                "sector": known["sector"],
-                "intended_use": known["intended"],
-                "possible_uses": list(known["possible"]),
-                "market_impacts": [dict(row) for row in known["impacts"]],
-                "assignee": known["company"],
-                "source": "held-lot landscape",
-            }
+            attach_impact_window(
+                {
+                    "title": known["title"],
+                    "symbol": sym,
+                    "company": known["company"],
+                    "holder_ticker": sym,
+                    "holders": [_holder_block(known["company"], sym)],
+                    "industry": known["industry"],
+                    "sector": known["sector"],
+                    "intended_use": known["intended"],
+                    "possible_uses": list(known["possible"]),
+                    "market_impacts": [dict(row) for row in known["impacts"]],
+                    "assignee": known["company"],
+                    "source": "held-lot landscape",
+                }
+            )
         )
     return cards
 
@@ -325,6 +327,14 @@ def format_card_lines(card: dict[str, Any]) -> list[str]:
     ]
     if uses:
         lines.append(f"Possible uses: {uses}")
+    terms = card.get("impact_terms") or []
+    windows = card.get("impact_windows") or {}
+    if terms:
+        bits = []
+        for t in terms:
+            hs = "/".join((windows.get(t) or IMPACT_WINDOWS.get(t) or ()))
+            bits.append(f"{t} ({hs})" if hs else str(t))
+        lines.append("Impact window: " + " + ".join(bits) + " — pipeline prices this, not this agent")
     if impact_bits:
         lines.append("Sector overlay: " + " | ".join(impact_bits))
     return lines

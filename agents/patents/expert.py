@@ -1,9 +1,9 @@
 """
 Patent Landscape Analyst Agent
 ==============================
-Project stock-price *increases* from new innovation across sectors.
-Some catalysts are short (24h–1wk news/product), some are long
-(1mo–1yr exclusivity, process, and platform IP).
+Research new innovation (holders, intended/possible uses, industry, short vs
+long impact window) across sectors. The pipeline fuses this with other agents
+to form price predictions — this agent does not predict.
 
 Data: OpenAlex, IPWatchdog RSS, USPTO IP feeds (+ optional USPTO ODP API key).
 """
@@ -23,9 +23,9 @@ import requests
 
 from agents.base import BaseExpert
 from agents.patents.landscape import (
+    attach_impact_window,
     format_card_lines,
     holdings_landscape,
-    project_innovation_prices,
     research_finding,
 )
 
@@ -299,7 +299,6 @@ class PatentReport:
     recommendations: list[str]
     data_sources: list[str]
     landscape: list[dict[str, Any]] = field(default_factory=list)
-    predictions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -780,7 +779,7 @@ class PatentLandscapeAnalyst(BaseExpert):
             f"Industries: {', '.join(industries) or 'n/a'}. "
             f"Leading sector: {top_sector.replace('-', ' ')} ({by_sector.get(top_sector, 0)}). "
             f"Landscape: {landscape_label} (score {innovation_score}). "
-            "Price path: project UP from new innovation — short (24h/1wk) and long (1mo/1yr)."
+            "Pipeline uses these cards (short 24h/1wk vs long 1mo/1yr windows) with other agents to predict."
         )
 
         signals = self._market_signals(
