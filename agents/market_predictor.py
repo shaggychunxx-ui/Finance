@@ -552,6 +552,40 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                     ignore_accuracy_floor=True,
                 )
 
+        preds = data.get("predictions")
+        if source == "patents" and isinstance(preds, dict):
+            horizon_scale = {"24h": 0.12, "1wk": 0.20, "1mo": 0.28, "1yr": 0.36}
+            for horizon, rows in preds.items():
+                scale = float(horizon_scale.get(str(horizon), 0.18))
+                if not isinstance(rows, list):
+                    continue
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("predicted_direction") or "").lower() != "up":
+                        continue
+                    try:
+                        ret = float(row.get("predicted_return_pct") or 0.0)
+                    except (TypeError, ValueError):
+                        ret = 0.0
+                    tick = str(row.get("symbol") or "").upper()
+                    if not tick:
+                        continue
+                    term = str(row.get("term") or horizon)
+                    bump(
+                        tick,
+                        min(0.42, max(0.08, (ret / 12.0) * scale)),
+                        source=source,
+                        note=(
+                            f"Innovation price {term} {horizon}: "
+                            f"{row.get('company') or tick} "
+                            f"{(row.get('reason') or '')[:80]}"
+                        ),
+                        confidence=float(row.get("confidence") or 0.48),
+                        sector_hint=str(row.get("sector") or "patent"),
+                        ignore_accuracy_floor=True,
+                    )
+
         if source == "finance":
             for opp in data.get("trading_opportunities", []):
                 score_val = float(opp.get("opportunity_score", 0))

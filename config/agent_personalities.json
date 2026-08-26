@@ -131,10 +131,10 @@
       "volatility_tolerance": 0.58,
       "group": "intelligence",
       "group_label": "Intelligence & Events",
-      "posture": "defensive",
-      "trading_role": "risk_overlay",
-      "preferred_horizon": "1wk",
-      "conduct": "Surface event and disclosure risk. Prefer BEARISH/defensive when severity is high. Do not chase momentum; protect capital when headlines are adverse."
+      "posture": "opportunistic",
+      "trading_role": "alpha",
+      "preferred_horizon": "1mo",
+      "conduct": "Project stock-price increases from new innovation across sectors. Map short catalysts (24h/1wk) and long exclusivity/platform IP (1mo/1yr) to the companies that hold the patents. Do not use patents to rewrite historical accuracy."
     },
     "electricity": {
       "label": "The Grid Steward",

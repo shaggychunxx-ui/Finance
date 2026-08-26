@@ -68,6 +68,24 @@ def test_patents_live_extract_does_not_queue_labels() -> None:
         "market_signals": [
             {"bias": "BULLISH", "tickers": ["QQQ", "BRVE"], "sector": "Innovation"},
         ],
+        "predictions": {
+            "1wk": [
+                {
+                    "symbol": "BRVE",
+                    "predicted_direction": "up",
+                    "predicted_return_pct": 1.6,
+                    "confidence": 0.48,
+                }
+            ],
+            "1yr": [
+                {
+                    "symbol": "SOFI",
+                    "predicted_direction": "up",
+                    "predicted_return_pct": 14.0,
+                    "confidence": 0.46,
+                }
+            ],
+        },
         "landscape": [
             {"holder_ticker": "BRVE", "company": "Braveheart Bio", "source": "held-lot landscape"},
         ],
@@ -77,7 +95,22 @@ def test_patents_live_extract_does_not_queue_labels() -> None:
         data,
         cycle_id="test",
         recorded_at="2026-08-26T00:00:00+00:00",
-        quotes={"QQQ": 400.0, "BRVE": 27.0},
+        quotes={"QQQ": 400.0, "BRVE": 27.0, "SOFI": 19.0},
         pending=pending,
     )
     assert pending == []
+
+
+def test_innovation_price_path_short_and_long() -> None:
+    from agents.patents.expert import PatentLandscapeAnalyst
+
+    result = PatentLandscapeAnalyst().run(output=None)
+    preds = result.get("predictions") or {}
+    assert "1wk" in preds or "24h" in preds
+    assert "1yr" in preds or "1mo" in preds
+    rows = [r for rows in preds.values() for r in rows]
+    assert rows
+    assert all(str(r.get("predicted_direction")) == "up" for r in rows)
+    syms = {str(r.get("symbol")) for r in rows}
+    assert "BRVE" in syms
+    assert "SOFI" in syms
