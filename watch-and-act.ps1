@@ -12,6 +12,7 @@ $logPath = Join-Path $localDir "watch.log"
 $statePath = Join-Path $localDir "last-acted-sha.txt"
 $lockPath = Join-Path $localDir "act.lock"
 $machine = $env:COMPUTERNAME
+$script:HeadlessSlotsLoaded = $false
 
 if (-not (Test-Path $localDir)) { New-Item -ItemType Directory -Path $localDir -Force | Out-Null }
 
