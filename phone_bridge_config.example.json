@@ -5,8 +5,8 @@
   "phone_ui_info_enabled": true,
   "phone_ui_info_note": "Set false to stop outbound phone UI info (/api/agents + idea rows). OAuth/controls/balances still work. Restart phone_bridge after change.",
   "phone_refresh_enabled": true,
-  "phone_refresh_interval_minutes": 30,
-  "phone_refresh_market_hours_only": true,
-  "phone_refresh_note": "While phone_bridge runs: rebuild/publish dashboard+agents every N minutes during US RTH (Mon–Fri 9:30–16:00 ET). Pulls broker share first on dual-PC. Set phone_refresh_enabled false to disable. Restart phone_bridge after change.",
+  "phone_refresh_interval_minutes": 15,
+  "phone_refresh_market_hours_only": false,
+  "phone_refresh_note": "While phone_bridge runs: rebuild/publish dashboard+agents every N minutes all hours (not RTH-only). When E*TRADE session is expired, held-lot marks are overlaid from Yahoo so the phone is not frozen on the last broker book. Restart phone_bridge after change.",
   "features_note": "phone_bridge v1.5+ exposes GET /api/features and dashboard.shared_api so the E*TRADE phone app stays aligned: one shared API (keys/sandbox/tokens/account), independent practice mode per sleeve."
 }

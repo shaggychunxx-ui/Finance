@@ -50,12 +50,15 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.6.0"
+BRIDGE_VERSION = "1.6.1"
 
-# Auto-publish phone dashboard/agents during RTH (config can override).
-DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 30
-DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY = True
+# Auto-publish phone dashboard/agents on a timer (config can override).
+# Phone asked for current data from GROMIT around the clock, not RTH-only.
+DEFAULT_PHONE_REFRESH_INTERVAL_MIN = 15
+DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY = False
 DEFAULT_PHONE_REFRESH_ENABLED = True
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (Finance-phone-bridge/1.6.1)"}
 
 # Phone "full data pull" flag for the current request (thread-local).
 _pull_ctx = threading.local()
@@ -68,6 +71,8 @@ CALCULATION_START_ISO = "2026-07-24"
 
 # Snapshot quality: never clobber a fuller book with a thin live pull / publish.
 _MIN_POS_KEEP_RICHER = 3  # if prior has >= this many lots and new has fewer -> keep prior
+# Public-mark overlay cache: fetched_at -> (monotonic ts, marked snap)
+_MARKS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def _log(msg: str) -> None:
@@ -344,6 +349,221 @@ def _snapshot_age_sec(snap: dict[str, Any] | None) -> float | None:
         return None
 
 
+def _is_held_lot(row: Any) -> bool:
+    """True for a real broker lot (qty != 0), not a TARGET / idea stub."""
+    if not isinstance(row, dict):
+        return False
+    if str(row.get("side") or "").upper() == "TARGET":
+        return False
+    status = str(row.get("proposed_status") or "").strip().lower()
+    if status in ("idea", "target"):
+        return False
+    action = str(row.get("proposed_action") or "").upper()
+    if "TARGET" in action and (_f(row.get("quantity")) or 0.0) == 0.0:
+        return False
+    return (_f(row.get("quantity")) or 0.0) != 0.0
+
+
+def _pack_held_lot_count(pack: dict[str, Any] | None) -> int:
+    """Held broker lots in a phone pack. Never use idea-row count as quality."""
+    if not isinstance(pack, dict):
+        return 0
+    rows = pack.get("positions") if isinstance(pack.get("positions"), list) else []
+    counted = sum(1 for row in rows if _is_held_lot(row))
+    if counted > 0:
+        return counted
+    port = pack.get("portfolio") if isinstance(pack.get("portfolio"), dict) else {}
+    for key in ("held_position_count", "position_count"):
+        raw = port.get(key)
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            return n
+    pull = pack.get("data_pull") if isinstance(pack.get("data_pull"), dict) else {}
+    try:
+        n = int(pull.get("held_position_count") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n if n > 0 else 0
+
+
+def _iso_age_sec(value: Any) -> float | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds()
+    except Exception:
+        return None
+
+
+def _yahoo_last_price(symbol: str, timeout: float = 8.0) -> float | None:
+    """Last regular-market price from Yahoo chart meta (no E*TRADE session)."""
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return None
+    try:
+        import requests
+
+        resp = requests.get(
+            YAHOO_CHART_URL.format(symbol=sym),
+            params={"range": "5d", "interval": "1d"},
+            headers=YAHOO_HEADERS,
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            return None
+        result = (resp.json().get("chart") or {}).get("result") or []
+        if not result:
+            return None
+        meta = result[0].get("meta") if isinstance(result[0], dict) else {}
+        px = (meta or {}).get("regularMarketPrice")
+        if px is None:
+            closes = ((result[0].get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+            for val in reversed(closes):
+                if val is not None:
+                    px = val
+                    break
+        out = float(px)
+        return out if out > 0 else None
+    except Exception:
+        return None
+
+
+def _latest_public_quotes(symbols: list[str], *, overall_timeout: float = 20.0) -> dict[str, float]:
+    """Best-effort Yahoo last prices for held lots when the broker session is down."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for raw in symbols:
+        sym = str(raw or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        uniq.append(sym)
+    if not uniq:
+        return {}
+    out: dict[str, float] = {}
+    workers = min(8, len(uniq))
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = {pool.submit(_yahoo_last_price, sym): sym for sym in uniq}
+            try:
+                for fut in as_completed(futs, timeout=overall_timeout):
+                    sym = futs[fut]
+                    try:
+                        px = fut.result()
+                    except Exception:
+                        px = None
+                    if px is not None and px > 0:
+                        out[sym] = px
+            except TimeoutError:
+                pass
+    except Exception as exc:
+        _log(f"public quote overlay skipped: {exc}")
+    return out
+
+
+def _overlay_public_marks(snap: dict[str, Any] | None) -> dict[str, Any]:
+    """Mark a stale broker snapshot with public last prices so the phone is not frozen.
+
+    Does not overwrite output/account_snapshot.json (that stays the last E*TRADE book).
+    Skips when the broker pull itself is fresh.
+    """
+    if not isinstance(snap, dict):
+        return {}
+    positions = snap.get("positions")
+    if not isinstance(positions, list) or not positions:
+        return dict(snap)
+    marks_age = _iso_age_sec(snap.get("marks_updated_at"))
+    if marks_age is not None and 0 <= marks_age < 600:
+        return dict(snap)
+    cache_key = str(snap.get("fetched_at") or "none")
+    cached = _MARKS_CACHE.get(cache_key)
+    if cached and (time.time() - cached[0]) < 600:
+        return dict(cached[1])
+    broker_age = _snapshot_age_sec(snap)
+    if broker_age is not None and 0 <= broker_age < 900:
+        return dict(snap)
+    symbols = [
+        str(row.get("symbol") or "")
+        for row in positions
+        if _is_held_lot(row)
+    ]
+    quotes = _latest_public_quotes(symbols)
+    if not quotes:
+        return dict(snap)
+    from datetime import datetime, timezone
+
+    marked: list[dict[str, Any]] = []
+    applied = 0
+    mv_sum = 0.0
+    for row in positions:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        sym = str(item.get("symbol") or "").strip().upper()
+        px = quotes.get(sym)
+        qty = _f(item.get("quantity"))
+        if px is not None and _is_held_lot(item) and qty:
+            item["price"] = round(px, 6)
+            item["market_value"] = round(qty * px, 4)
+            cost = _f(item.get("cost_basis"))
+            if cost:
+                item["unrealized_pl"] = round(item["market_value"] - cost * qty, 4)
+                if qty:
+                    item["unrealized_pl_pct"] = round((px / cost - 1.0) * 100.0, 4) if cost else None
+            applied += 1
+        mv_sum += abs(_f(item.get("market_value")) or 0.0)
+        marked.append(item)
+    out = dict(snap)
+    out["positions"] = marked
+    out["marks_updated_at"] = datetime.now(timezone.utc).isoformat()
+    out["marks_source"] = "yahoo_public"
+    out["marks_count"] = applied
+    bal = dict(out.get("balance") or {}) if isinstance(out.get("balance"), dict) else {}
+    cash = _f(bal.get("cash")) if bal.get("cash") is not None else None
+    if cash is not None:
+        bal["total_account_value"] = round(cash + mv_sum, 4)
+        out["balance"] = bal
+    _log(f"public marks overlay: {applied}/{len(symbols)} lots from Yahoo")
+    _MARKS_CACHE[cache_key] = (time.time(), out)
+    return out
+
+
+def _phone_snapshot(snap: dict[str, Any] | None) -> dict[str, Any]:
+    """Snapshot served to the phone: broker book + public marks when session is stale."""
+    base = dict(snap) if isinstance(snap, dict) else {}
+    marked = _overlay_public_marks(base)
+    if marked.get("marks_updated_at"):
+        _set_pull_meta(
+            marks_updated_at=marked.get("marks_updated_at"),
+            marks_source=marked.get("marks_source"),
+            marks_count=int(marked.get("marks_count") or 0),
+        )
+    return marked
+
+
+def _oxygen_dashboard_path() -> Path:
+    return (
+        Path.home()
+        / "Documents"
+        / "GitHub"
+        / "Oxygen-OS"
+        / "work"
+        / "phone"
+        / "etrade-dashboard.json"
+    )
+
+
 def _snapshot_quality(snap: dict[str, Any] | None) -> tuple[int, float]:
     """Higher is better: (position_count, -age_seconds). Missing age -> treat as old."""
     n = _snapshot_position_count(snap)
@@ -522,7 +742,7 @@ def try_refresh_account_snapshot(
                             f"source={prior.get('_chosen_from') or prior.get('source') or 'cache'})"
                         ),
                     )
-                    return prior
+                    return _phone_snapshot(prior)
         except Exception:
             pass
 
@@ -552,7 +772,7 @@ def try_refresh_account_snapshot(
                 fetched_at=prior.get("fetched_at"),
                 message="No local API config - serving best local/share snapshot",
             )
-            return prior
+            return _phone_snapshot(prior)
         client = ETradeClient(cfg)
         accounts: list[Any] = []
         if hasattr(client, "list_accounts"):
@@ -608,7 +828,7 @@ def try_refresh_account_snapshot(
                 fetched_at=prior.get("fetched_at"),
                 message="No account id - serving best local/share snapshot",
             )
-            return prior
+            return _phone_snapshot(prior)
         _log(
             f"live pull account={label or key[:12]} "
             f"(selected={bool(selected and selected.get('account_id_key'))})"
@@ -625,7 +845,7 @@ def try_refresh_account_snapshot(
                 fetched_at=prior.get("fetched_at"),
                 message="Live empty - kept fuller snapshot",
             )
-            return prior
+            return _phone_snapshot(prior)
         # Quality gate: partial OAuth / wrong account must not clobber full book
         if prior_n >= _MIN_POS_KEEP_RICHER and live_n < prior_n:
             _log(
@@ -644,7 +864,7 @@ def try_refresh_account_snapshot(
                     f"(check selected_account if wrong book)"
                 ),
             )
-            return prior
+            return _phone_snapshot(prior)
 
         from datetime import datetime, timezone
 
@@ -682,55 +902,37 @@ def try_refresh_account_snapshot(
             fetched_at=prior.get("fetched_at"),
             message="PC live pull failed - serving best local/share snapshot",
         )
-        return prior
+        return _phone_snapshot(prior)
 
 
 def _publish_dashboard_to_oxygen(payload: dict[str, Any]) -> None:
     """Write non-secret dashboard JSON for phone GitHub bus (cellular path).
 
-    Quality gate: never replace a richer published pack with a thinner one
-    (e.g. pipeline host 1-lot stub overwriting 14-lot broker publish).
+    Quality gate: never replace a richer HELD-LOT book with a collapse
+    (e.g. 1-lot stub overwriting 14-lot broker publish). Idea-row count
+    fluctuates and must not block a regular GROMIT refresh.
     """
     try:
-        oxygen = (
-            Path.home()
-            / "Documents"
-            / "GitHub"
-            / "Oxygen-OS"
-            / "work"
-            / "phone"
-            / "etrade-dashboard.json"
-        )
+        oxygen = _oxygen_dashboard_path()
         oxygen.parent.mkdir(parents=True, exist_ok=True)
 
-        def _held_n(pack: dict[str, Any]) -> int:
-            port = pack.get("portfolio") if isinstance(pack.get("portfolio"), dict) else {}
-            held = port.get("held_position_count")
-            try:
-                if held is not None:
-                    return int(held)
-            except (TypeError, ValueError):
-                pass
-            return len(pack.get("positions") or [])
-
-        new_n = _held_n(payload)
+        new_n = _pack_held_lot_count(payload)
         if oxygen.is_file():
             try:
                 prev = json.loads(oxygen.read_text(encoding="utf-8-sig"))
                 if isinstance(prev, dict):
-                    old_n = _held_n(prev)
-                    if old_n >= _MIN_POS_KEEP_RICHER and new_n < old_n:
-                        # Allow overwrite only if new pack has real balance and is explicitly live
+                    old_n = _pack_held_lot_count(prev)
+                    # Collapse only: fewer than half the held lots (and below the keep-richer floor).
+                    if (
+                        old_n >= _MIN_POS_KEEP_RICHER
+                        and new_n < old_n
+                        and new_n < max(1, old_n // 2)
+                    ):
                         pull = payload.get("data_pull") if isinstance(payload.get("data_pull"), dict) else {}
                         if not pull.get("live"):
                             _log(
-                                f"oxygen publish skipped: new {new_n} pos < prior {old_n} "
-                                f"(non-live thinner pack)"
-                            )
-                            return
-                        if new_n < max(1, old_n // 2):
-                            _log(
-                                f"oxygen publish blocked: new {new_n} pos << prior {old_n}"
+                                f"oxygen publish skipped: held lots {new_n} << prior {old_n} "
+                                f"(non-live collapse)"
                             )
                             return
             except (OSError, json.JSONDecodeError, TypeError):
@@ -742,7 +944,7 @@ def _publish_dashboard_to_oxygen(payload: dict[str, Any]) -> None:
         tmp = oxygen.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(safe, indent=2, default=str), encoding="utf-8")
         tmp.replace(oxygen)
-        _log(f"published dashboard -> {oxygen} ({new_n} pos)")
+        _log(f"published dashboard -> {oxygen} ({new_n} held lots)")
     except Exception as exc:
         _log(f"oxygen dashboard publish failed: {exc}")
 
@@ -1280,7 +1482,7 @@ def build_positions(force_refresh: bool = False) -> list[dict[str, Any]]:
             max_age_sec=0.0 if force_refresh else 600.0,
             force=force_refresh,
         )
-        snap = _load_account_snapshot()
+        snap = _phone_snapshot(_load_account_snapshot())
         snap_pos = snap.get("positions") if isinstance(snap, dict) else None
         if isinstance(snap_pos, list) and snap_pos:
             live = snap_pos
@@ -3007,6 +3209,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if path == "/health":
                 ips = lan_ips()
                 quality = _data_quality_report()
+                cfg = load_bridge_config()
+                try:
+                    rmin = float(
+                        cfg.get("phone_refresh_interval_minutes") or DEFAULT_PHONE_REFRESH_INTERVAL_MIN
+                    )
+                except (TypeError, ValueError):
+                    rmin = float(DEFAULT_PHONE_REFRESH_INTERVAL_MIN)
+                last = _read_json(ROOT / "output" / "phone_refresh_last.json")
                 self._send(
                     200,
                     {
@@ -3024,6 +3234,12 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         "orders_path": "/api/orders",
                         "data_quality": quality,
                         "data_strong": bool(quality.get("strong")),
+                        "phone_refresh_enabled": bool(cfg.get("phone_refresh_enabled", True)),
+                        "phone_refresh_interval_minutes": rmin,
+                        "phone_refresh_market_hours_only": bool(
+                            cfg.get("phone_refresh_market_hours_only", DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY)
+                        ),
+                        "phone_refresh_last_at": last.get("at") if isinstance(last, dict) else None,
                     },
                 )
                 return
@@ -3144,8 +3360,10 @@ def main() -> int:
         rmin = float(cfg.get("phone_refresh_interval_minutes") or DEFAULT_PHONE_REFRESH_INTERVAL_MIN)
     except (TypeError, ValueError):
         rmin = float(DEFAULT_PHONE_REFRESH_INTERVAL_MIN)
+    market_only = bool(cfg.get("phone_refresh_market_hours_only", DEFAULT_PHONE_REFRESH_MARKET_HOURS_ONLY))
+    hours_note = "during market hours" if market_only else "all hours"
     _log(
-        f"  Phone data refresh: every {rmin:g} min during market hours "
+        f"  Phone data refresh: every {rmin:g} min {hours_note} "
         f"(enabled={bool(cfg.get('phone_refresh_enabled', True))})"
     )
 
@@ -3157,7 +3375,7 @@ def main() -> int:
     if ips:
         print(f"  Base URL:  http://{ips[0]}:{port}")
     print(f"  Token:     {token}")
-    print(f"  Auto-refresh: every {rmin:g} min (market hours)")
+    print(f"  Auto-refresh: every {rmin:g} min ({'market hours' if market_only else 'all hours'})")
     print("  Enter both in the phone app Setup screen.")
     print("=" * 56)
     print("")
