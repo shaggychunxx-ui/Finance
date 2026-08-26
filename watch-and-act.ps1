@@ -540,7 +540,25 @@ while ($true) {
     if ($assigned) {
         $wake = $true
         $reason = "Work assigned to this machine (STATUS / tasks / inbox)"
-        break
+        $inFlight = $false
+        if ($script:HeadlessSlotsLoaded -and (Get-Command Test-HeadlessShaInFlight -ErrorAction SilentlyContinue)) {
+            $inFlight = Test-HeadlessShaInFlight -Repo $repo -Sha $head
+        }
+        if ($inFlight) {
+            Write-Log "Headless act already running for this send - keep polling"
+        } else {
+            $summary = Get-NewCommitSummary $last $head
+            $ok = Invoke-GrokAct -reason $reason -commitSummary $summary
+            if ($ok) {
+                Write-Log "Spawned headless Grok after poll $poll (non-blocking)"
+            } else {
+                Write-Log "Headless spawn skipped or queued after poll $poll"
+            }
+        }
+        if ($head.Length -gt 0) {
+            Set-Content -Path $statePath -Value $head -Encoding ASCII
+            $last = $head
+        }
     }
     elseif ($newActivity) {
         $onlySelf = Test-OnlySelfAutoSync $last $head
@@ -563,31 +581,11 @@ while ($true) {
     }
 
     if ((Get-Date) -ge $deadline) {
-        Write-Log "Watch window complete (no act; polls=$poll)"
+        Write-Log "Watch window complete (polls=$poll)"
         exit 0
     }
     Start-Sleep -Seconds $pollSeconds
 }
 
-$summary = Get-NewCommitSummary $last $head
-$ok = Invoke-GrokAct -reason $reason -commitSummary $summary
-
-try {
-    Invoke-Sync
-}
-catch {
-    Write-Log ("Post-act sync error: " + $_.Exception.Message)
-}
-
-$head2 = Get-HeadSha
-if ($head2.Length -gt 0) {
-    Set-Content -Path $statePath -Value $head2 -Encoding ASCII
-}
-
-if ($ok) {
-    Write-Log "Watch cycle complete (acted after poll $poll)"
-    exit 0
-} else {
-    Write-Log "Watch cycle complete (act failed or skipped after poll $poll)"
-    exit 1
-}
+Write-Log "Watch window ended (polls=$poll)"
+exit 0
