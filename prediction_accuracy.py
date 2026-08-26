@@ -294,6 +294,10 @@ def _extract_from_agent_file(
     event_day: bool = False,
 ) -> None:
     from agent_constraints import agent_preferred_horizon
+    # Patents innovation-price votes go to fusion; do not mint live labels
+    # (would rewrite walk-forward accuracy_pct).
+    if str(agent_id or "") == "patents":
+        return
     preds = data.get("predictions", {})
     if isinstance(preds, dict):
         for horizon, rows in preds.items():
@@ -323,12 +327,7 @@ def _extract_from_agent_file(
                     return_source="explicit" if explicit_ret is not None else "estimated",
                 )
 
-    # Patents landscape/holder research votes in fusion but must not mint live
-    # labels (would rewrite walk-forward accuracy_pct).
-    skip_live_labels = str(agent_id or "") == "patents"
     for sig in data.get("market_signals", []):
-        if skip_live_labels:
-            continue
         if not isinstance(sig, dict):
             continue
         if sig.get("learning_exempt") is True:

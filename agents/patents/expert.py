@@ -1,8 +1,9 @@
 """
 Patent Landscape Analyst Agent
 ==============================
-Tracks global patent databases, APIs, and monitoring resources while
-surfacing recent innovation activity by technology sector.
+Project stock-price *increases* from new innovation across sectors.
+Some catalysts are short (24h–1wk news/product), some are long
+(1mo–1yr exclusivity, process, and platform IP).
 
 Data: OpenAlex, IPWatchdog RSS, USPTO IP feeds (+ optional USPTO ODP API key).
 """
@@ -21,7 +22,12 @@ from typing import Any
 import requests
 
 from agents.base import BaseExpert
-from agents.patents.landscape import format_card_lines, holdings_landscape, research_finding
+from agents.patents.landscape import (
+    format_card_lines,
+    holdings_landscape,
+    project_innovation_prices,
+    research_finding,
+)
 
 HEADERS = {"User-Agent": "Finance-Patent-Landscape/1.0 (shaggychunxx@gmail.com)"}
 OPENALEX_URL = "https://api.openalex.org/works"
@@ -293,6 +299,7 @@ class PatentReport:
     recommendations: list[str]
     data_sources: list[str]
     landscape: list[dict[str, Any]] = field(default_factory=list)
+    predictions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -773,7 +780,7 @@ class PatentLandscapeAnalyst(BaseExpert):
             f"Industries: {', '.join(industries) or 'n/a'}. "
             f"Leading sector: {top_sector.replace('-', ' ')} ({by_sector.get(top_sector, 0)}). "
             f"Landscape: {landscape_label} (score {innovation_score}). "
-            "Each card covers intended use, possible uses, company, industry, and market impact."
+            "Price path: project UP from new innovation — short (24h/1wk) and long (1mo/1yr)."
         )
 
         signals = self._market_signals(
@@ -819,6 +826,7 @@ class PatentLandscapeAnalyst(BaseExpert):
             recommendations=recs,
             data_sources=sources,
             landscape=landscape,
+            predictions=project_innovation_prices(landscape),
         )
 
     def to_dict(self, report: PatentReport) -> dict[str, Any]:
@@ -839,6 +847,9 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "landscape_label": report.landscape_label,
                 "companies": sorted({f.company for f in report.findings if f.company}),
                 "industries": sorted({f.industry for f in report.findings if f.industry}),
+                "price_path": "innovation_up",
+                "short_horizons": ["24h", "1wk"],
+                "long_horizons": ["1mo", "1yr"],
             },
             "resources": report.resources,
             "landscape": report.landscape,
@@ -863,6 +874,7 @@ class PatentLandscapeAnalyst(BaseExpert):
                 }
                 for f in report.findings
             ],
+            "predictions": report.predictions,
             "market_signals": report.market_signals,
             "recommendations": self.append_memory_recommendations(report.recommendations),
         }
