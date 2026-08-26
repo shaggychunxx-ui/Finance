@@ -327,8 +327,19 @@ class FundamentalAnalystExpert(BaseExpert):
         return recs
 
     def analyze(self) -> FundamentalAnalystReport:
+        from agents.pipeline_book import TICKER_META, pipeline_held_positions
+
+        universe: dict[str, tuple[int, str]] = {}
+        for row in pipeline_held_positions():
+            cik = int(row.get("cik") or (TICKER_META.get(row["symbol"]) or {}).get("cik") or 0)
+            sector = str(row.get("sector") or "default")
+            universe[row["symbol"]] = (cik, sector)
+        for symbol, pair in list(WATCHLIST.items())[:4]:
+            universe.setdefault(symbol, pair)
         snapshots: list[FundamentalSnapshot] = []
-        for symbol, (cik, sector) in WATCHLIST.items():
+        for symbol, (cik, sector) in universe.items():
+            if not cik:
+                continue
             snap = self._analyze_symbol(symbol, cik, sector)
             if snap:
                 snapshots.append(snap)

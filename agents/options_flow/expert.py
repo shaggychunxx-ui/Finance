@@ -455,10 +455,10 @@ class OptionsFlowExpert(BaseExpert):
 
     def analyze(self) -> OptionsFlowReport:
         symbols: list[OptionsFlowSignal] = []
-        # Fixed liquid watchlist only — expanding via pipeline symbols + option-chain
-        # fetches was hanging agent 60 for 10+ minutes under Yahoo rate limits.
-        watch: dict[str, str] = dict(WATCHLIST)
-        watch.setdefault(BENCHMARK, WATCHLIST.get(BENCHMARK, "S&P 500"))
+        from agents.pipeline_book import held_first_watchlist
+
+        # Pipeline lots first, then a tiny liquid chain set (Yahoo hangs on long lists).
+        watch = held_first_watchlist(WATCHLIST, max_canned=2, include_benchmark=BENCHMARK)
 
         for symbol, name in watch.items():
             if self.pipeline_should_skip_symbol(symbol):

@@ -164,14 +164,14 @@ class EquityTrackerExpert(BaseExpert):
         return round(max(0.0, min(100.0, s)), 2)
 
     def analyze(self) -> dict[str, Any]:
-        held = self._held_equities()
-        universe = dict(CORE_EQUITIES)
-        for sym in held:
-            universe.setdefault(sym, f"Held equity — {sym}")
-        # Pipeline watchlist merge
-        for sym in self.pipeline_watchlist_symbols(list(universe.keys()), limit=40):
-            if sym in CORE_EQUITIES or sym in held:
-                universe.setdefault(sym, CORE_EQUITIES.get(sym, f"Watchlist equity — {sym}"))
+        from agents.pipeline_book import held_first_watchlist, held_symbols
+
+        held = set(held_symbols()) or self._held_equities()
+        # Pipeline-opened lots first; canned mega-caps are benchmarks only.
+        universe = held_first_watchlist(CORE_EQUITIES, extra=list(held), max_canned=6)
+        for extra in self.pipeline_watchlist_symbols(list(universe.keys()), limit=12):
+            if extra in held or extra in CORE_EQUITIES:
+                universe.setdefault(extra, CORE_EQUITIES.get(extra, f"Watchlist equity — {extra}"))
 
         spy_closes = self.fetch_yahoo_closes("SPY", range_="1y", interval="1d")
         spy_1m = self._pct(spy_closes, 21) if spy_closes else None

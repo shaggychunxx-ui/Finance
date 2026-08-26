@@ -346,10 +346,20 @@ class TechnicalPatternExpert(BaseExpert):
         return recs
 
     def analyze(self) -> TechnicalPatternReport:
+        from agents.market_regime_state import load_regime
+        from agents.pipeline_book import held_first_watchlist
+
+        watch = held_first_watchlist(WATCHLIST, max_canned=3)
+        regime = load_regime()
         snapshots: list[TechnicalSnapshot] = []
-        for symbol, name in WATCHLIST.items():
+        for symbol, name in watch.items():
             snap = self._analyze_symbol(symbol, name)
             if snap:
+                if not regime.get("allow_breakouts") and snap.entry_grade == "High-Probability Entry":
+                    snap.entry_grade = "Regime block — no breakouts"
+                    snap.rationale = (
+                        f"{regime.get('id')}: {snap.rationale}"
+                    )
                 snapshots.append(snap)
 
         high_prob = [s.symbol for s in snapshots if s.entry_grade == "High-Probability Entry"]
