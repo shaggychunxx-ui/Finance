@@ -987,21 +987,6 @@ def _print_patents(data: dict[str, Any]) -> None:
             print(f"      Intended: {str(f.get('intended_use'))[:110]}")
         if f.get("industry"):
             print(f"      Industry: {f.get('industry')}")
-    preds = data.get("predictions") or {}
-    if isinstance(preds, dict) and preds:
-        print()
-        print("  Innovation price path (UP):")
-        for h in ("24h", "1wk", "1mo", "1yr"):
-            rows = preds.get(h) or []
-            if not rows:
-                continue
-            print(f"    {h}:")
-            for row in rows[:6]:
-                print(
-                    f"      {row.get('symbol')} {row.get('predicted_direction')} "
-                    f"{row.get('predicted_return_pct')}%  ({row.get('term')})  "
-                    f"{row.get('company') or ''}"
-                )
     print()
     _print_signals(data.get("market_signals", []))
     _print_recs(data.get("recommendations", []))
