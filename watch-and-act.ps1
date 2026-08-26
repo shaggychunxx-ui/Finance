@@ -418,9 +418,12 @@ Rules:
 9) No secrets in git.
 10) Live trading runtime is %USERPROFILE%\Finance on GROMIT; this git clone is bus/code only.
 "@
+    if (Get-Command Get-HeadlessConcurrentRules -ErrorAction SilentlyContinue) {
+        $prompt = $prompt.TrimEnd() + "`r`n`r`n" + (Get-HeadlessConcurrentRules)
+    }
     Set-Content -Path $promptPath -Value $prompt -Encoding UTF8
 
-    $runLog = Join-Path $localDir ("act-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
+    $runLog = Join-Path $localDir ("act-" + $stamp + ".log")
     Write-Log "Starting headless Grok (log: $runLog) [no-window]"
 
     $argList = @(
@@ -432,6 +435,30 @@ Rules:
         "--output-format", "plain",
         "--rules", "Stay inside this repo. Do not disable watchers. No secrets in commits."
     )
+
+    if ($useSlots) {
+        $slot = New-HeadlessSlot -Repo $repo -Sha $headSha -Reason $reason -Machine $machine
+        if (-not $slot) {
+            Write-Log ("Headless cap full (max {0}) - queue this send" -f (Get-HeadlessMax))
+            return $false
+        }
+        $started = Start-HeadlessGrokDetached -GrokExe $grok -Cwd $repo -PromptPath $promptPath -RunLog $runLog -ArgList $argList -SlotPath $slot.Path
+        if ($started) {
+            Write-Log ("Spawned headless slot {0} live={1}/{2}" -f $slot.Id, $slot.LiveCount, $slot.Max)
+            return $true
+        }
+        Remove-HeadlessSlot -Path $slot.Path
+        Write-Log "Failed to spawn headless wrapper"
+        return $false
+    }
+
+    $lockBody = @{
+        machine = $machine
+        started = (Get-Date).ToString("o")
+        pid     = $PID
+        reason  = $reason
+    } | ConvertTo-Json
+    Set-Content -Path $lockPath -Value $lockBody -Encoding UTF8
 
     try {
         $psi = New-Object System.Diagnostics.ProcessStartInfo
