@@ -809,7 +809,9 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "intended_use": f.intended_use,
                 "possible_uses": f.possible_uses,
                 "market_impacts": f.market_impacts,
-            })[:4])
+                "source": f.source,
+                "sector": f.sector,
+            })[:5])
         offline = [r["name"] for r in resources if r.get("health") == "offline"]
         if offline:
             recs.append(f"Offline resources (check later): {', '.join(offline[:4])}")
