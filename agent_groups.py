@@ -1192,8 +1192,8 @@ GROUP_DOMAIN_HINTS: dict[str, dict[str, frozenset[str]]] = {
         "sectors": frozenset({"sec", "filing", "disclosure", "10-k", "8-k"}),
     },
     "patents": {
-        "tickers": frozenset({"XBI", "IBB", "XLK", "QQQ", "ARKK"}),
-        "sectors": frozenset({"patent", "innovation", "biotech", "technology"}),
+        "tickers": frozenset({"XBI", "IBB", "XLK", "QQQ", "ARKK", "XLV", "XLF"}),
+        "sectors": frozenset({"patent", "innovation", "biotech", "technology", "fintech", "healthcare"}),
     },
     "events": {
         "tickers": frozenset({"SPY", "GLD", "TLT", "UUP", "VIX"}),
