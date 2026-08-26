@@ -774,8 +774,10 @@ def try_refresh_account_snapshot(
     Phone "full data pull from PC" needs real lots + qty, not offline TARGET stubs.
     When force=True (phone Refresh / /api/full?refresh=1), always attempt a live pull.
 
-    Quality gate: never overwrite a fuller snapshot (local or share) with a thinner
-    live response - common on pipeline hosts with partial OAuth.
+    Quality gate: never overwrite a fuller snapshot with a thinner live response
+    from a *different* account (partial OAuth / accounts[0] vs #8804). A thinner
+    book on the same selected account is the real E*TRADE book and must replace
+    the stale snapshot so the phone matches the broker.
     """
     snap_path = ROOT / "output" / "account_snapshot.json"
     prior = _load_account_snapshot()
@@ -891,7 +893,8 @@ def try_refresh_account_snapshot(
         balance = client.get_balance(key) or {}
         positions = client.get_portfolio(key) or []
         live_n = len(positions) if isinstance(positions, list) else 0
-        if live_n == 0 and prior_n > 0:
+        same = same_broker_account(key, label, prior)
+        if live_n == 0 and prior_n > 0 and (not same or not balance):
             _set_pull_meta(
                 live=False,
                 source=str(prior.get("_chosen_from") or "account_snapshot"),
@@ -901,11 +904,16 @@ def try_refresh_account_snapshot(
                 message="Live empty - kept fuller snapshot",
             )
             return _phone_snapshot(prior)
-        # Quality gate: partial OAuth / wrong account must not clobber full book
-        if prior_n >= _MIN_POS_KEEP_RICHER and live_n < prior_n:
+        # Wrong-account protection only. Same selected book is E*TRADE truth.
+        if (
+            prior_n >= _MIN_POS_KEEP_RICHER
+            and live_n < prior_n
+            and not same
+        ):
             _log(
                 f"live pull thinner ({live_n} < prior {prior_n}) "
-                f"account={label or key[:12]} - keeping fuller snapshot"
+                f"account={label or key[:12]} - keeping fuller snapshot "
+                f"(different account)"
             )
             _set_pull_meta(
                 live=False,
@@ -920,6 +928,11 @@ def try_refresh_account_snapshot(
                 ),
             )
             return _phone_snapshot(prior)
+        if prior_n >= _MIN_POS_KEEP_RICHER and live_n < prior_n and same:
+            _log(
+                f"live pull same account thinner ({live_n} < prior {prior_n}) "
+                f"account={label or key[:12]} - accepting live E*TRADE book"
+            )
 
         from datetime import datetime, timezone
 
@@ -977,14 +990,20 @@ def _publish_dashboard_to_oxygen(payload: dict[str, Any]) -> None:
                 prev = json.loads(oxygen.read_text(encoding="utf-8-sig"))
                 if isinstance(prev, dict):
                     old_n = _pack_held_lot_count(prev)
-                    # Collapse only: fewer than half the held lots (and below the keep-richer floor).
+                    # Collapse only: fewer than half the held lots from a non-live
+                    # (Yahoo/stale) rebuild. Live same-account books must publish.
                     if (
                         old_n >= _MIN_POS_KEEP_RICHER
                         and new_n < old_n
                         and new_n < max(1, old_n // 2)
                     ):
                         pull = payload.get("data_pull") if isinstance(payload.get("data_pull"), dict) else {}
-                        if not pull.get("live"):
+                        if pull.get("live"):
+                            _log(
+                                f"oxygen publish live book {new_n} lots "
+                                f"(was {old_n}) - replacing stale pack"
+                            )
+                        else:
                             _log(
                                 f"oxygen publish skipped: held lots {new_n} << prior {old_n} "
                                 f"(non-live collapse)"
