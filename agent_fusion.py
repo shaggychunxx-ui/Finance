@@ -144,8 +144,16 @@ AGENT_DOMAINS: dict[str, dict[str, frozenset[str]]] = {
         "sectors": frozenset({"logistics", "shipping", "freight", "supply chain"}),
     },
     "patents": {
-        "tickers": frozenset({"XBI", "IBB", "ARKK", "QQQ", "XLK", "ABCL", "MRNA"}),
-        "sectors": frozenset({"biotech", "patent", "innovation", "technology", "pharma"}),
+        "tickers": frozenset({
+            "XBI", "IBB", "ARKK", "QQQ", "XLK", "XLV", "XLF",
+            "ABCL", "MRNA", "BRVE", "SOFI", "MSFT", "TSM", "TSLA",
+            "GOOGL", "INTC", "ASML", "AMZN", "META", "PFE", "AMGN",
+            "REGN", "BMY", "QCOM", "ERIC",
+        }),
+        "sectors": frozenset({
+            "biotech", "patent", "innovation", "technology", "pharma",
+            "fintech", "healthcare", "semiconductor", "software",
+        }),
     },
     "sales-analytics": {
         "tickers": frozenset({"XRT", "WMT", "TGT", "COST", "HD", "LOW", "AMZN", "MCD"}),
