@@ -1,0 +1,267 @@
+"""Patent landscape research: intended use, possible uses, company, industry, market impact.
+
+Used by the Patent Landscape Analyst. Market *signals* stay ETF-only
+(MARKET_IMPACT_TICKERS). Company names live on the landscape card.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+# Sector -> industry, intended use, adjacent uses, ETF impact channels.
+SECTOR_LANDSCAPE: dict[str, dict[str, Any]] = {
+    "semiconductor": {
+        "industry": "Semiconductors and electronics manufacturing",
+        "intended": "Chip design, fabrication, packaging, or lithography of the claimed device/process",
+        "possible": [
+            "AI/GPU accelerators and high-bandwidth memory",
+            "Foundry process nodes and yield tools",
+            "Automotive and industrial power electronics",
+        ],
+        "impacts": [
+            {"sector": "Technology", "tickers": ["XLK", "QQQ"], "bias": "BULLISH",
+             "reason": "Process/device IP supports semiconductor capex and growth risk appetite"},
+        ],
+    },
+    "artificial-intelligence": {
+        "industry": "Software, cloud, and AI systems",
+        "intended": "Model architecture, training, inference, or data-pipeline methods claimed in the filing",
+        "possible": [
+            "Enterprise copilot and search products",
+            "On-device inference and edge silicon pairing",
+            "Autonomous systems and industrial inspection",
+        ],
+        "impacts": [
+            {"sector": "Growth / Tech", "tickers": ["QQQ", "XLK"], "bias": "BULLISH",
+             "reason": "AI method IP is a growth-capex and software multiple signal"},
+        ],
+    },
+    "biotechnology": {
+        "industry": "Biopharma and life sciences",
+        "intended": "Therapeutic, diagnostic, delivery, or manufacturing method for the claimed biology",
+        "possible": [
+            "Follow-on indications in the same disease family",
+            "Platform licensing to larger pharma",
+            "Companion diagnostics and manufacturing scale-up",
+        ],
+        "impacts": [
+            {"sector": "Healthcare", "tickers": ["XLV", "QQQ"], "bias": "NEUTRAL",
+             "reason": "Composition/method patents set exclusivity and pipeline optionality"},
+        ],
+    },
+    "energy": {
+        "industry": "Energy, storage, and materials",
+        "intended": "Generation, storage, conversion, or materials process claimed in the filing",
+        "possible": [
+            "Grid-scale storage and EV pack chemistry",
+            "Industrial heat and hydrogen",
+            "Critical-mineral processing",
+        ],
+        "impacts": [
+            {"sector": "Energy / Tech", "tickers": ["XLE", "XLK"], "bias": "NEUTRAL",
+             "reason": "Storage and generation IP feeds energy-transition and commodity transmission"},
+        ],
+    },
+    "automotive": {
+        "industry": "Autos, mobility, and industrial machinery",
+        "intended": "Powertrain, autonomy sensors, or vehicle-control methods",
+        "possible": [
+            "Robotaxi / ADAS stacks",
+            "Commercial EV fleets",
+            "Supplier licensing of drivetrain IP",
+        ],
+        "impacts": [
+            {"sector": "Industrials", "tickers": ["XLI", "SPY"], "bias": "NEUTRAL",
+             "reason": "Mobility IP is an industrial-cycle and auto-capex signal"},
+        ],
+    },
+    "telecom": {
+        "industry": "Communications equipment and networks",
+        "intended": "Wireless, optical, or network protocol implementation",
+        "possible": [
+            "5G/6G infrastructure and SEPs",
+            "Satellite and backhaul",
+            "Standards licensing programs",
+        ],
+        "impacts": [
+            {"sector": "Communications", "tickers": ["XLC", "SPY"], "bias": "NEUTRAL",
+             "reason": "Standards-essential IP can reprice comms equipment and carriers"},
+        ],
+    },
+    "fintech": {
+        "industry": "Consumer finance and digital banking",
+        "intended": "Origination, servicing, payments, identity, or credit-decision methods",
+        "possible": [
+            "AI underwriting and fraud models",
+            "Account-opening KYC and ledger systems",
+            "Loan marketplace and brokerage bundling",
+        ],
+        "impacts": [
+            {"sector": "Financials", "tickers": ["XLF", "QQQ"], "bias": "NEUTRAL",
+             "reason": "Fintech process IP is a financials + digital-finance growth overlay"},
+        ],
+    },
+    "general": {
+        "industry": "Cross-industry innovation",
+        "intended": "The claimed apparatus, composition, or method as titled",
+        "possible": ["Licensing, defensive portfolio, or product feature lock-in"],
+        "impacts": [
+            {"sector": "Broad Market", "tickers": ["SPY"], "bias": "NEUTRAL",
+             "reason": "No concentrated industry read from title/assignee"},
+        ],
+    },
+}
+
+# Assignee / institution substring -> (company, sector key)
+ASSIGNEE_COMPANY: list[tuple[str, str, str]] = [
+    ("nvidia", "NVIDIA", "semiconductor"),
+    ("tsmc", "TSMC", "semiconductor"),
+    ("taiwan semiconductor", "TSMC", "semiconductor"),
+    ("samsung", "Samsung Electronics", "semiconductor"),
+    ("intel", "Intel", "semiconductor"),
+    ("asml", "ASML", "semiconductor"),
+    ("microsoft", "Microsoft", "artificial-intelligence"),
+    ("google", "Google / Alphabet", "artificial-intelligence"),
+    ("alphabet", "Google / Alphabet", "artificial-intelligence"),
+    ("openai", "OpenAI", "artificial-intelligence"),
+    ("amazon", "Amazon", "artificial-intelligence"),
+    ("meta", "Meta", "artificial-intelligence"),
+    ("tesla", "Tesla", "automotive"),
+    ("moderna", "Moderna", "biotechnology"),
+    ("pfizer", "Pfizer", "biotechnology"),
+    ("amgen", "Amgen", "biotechnology"),
+    ("regeneron", "Regeneron", "biotechnology"),
+    ("bristol", "Bristol Myers Squibb", "biotechnology"),
+    ("hengrui", "Hengrui Pharma / licensees", "biotechnology"),
+    ("sofi", "SoFi Technologies", "fintech"),
+    ("braveheart", "Braveheart Bio", "biotechnology"),
+    ("qualcomm", "Qualcomm", "telecom"),
+    ("ericsson", "Ericsson", "telecom"),
+    ("huawei", "Huawei", "telecom"),
+]
+
+# Held-lot research when the live book is known (GROMIT snapshot).
+HOLDING_LANDSCAPE: dict[str, dict[str, Any]] = {
+    "BRVE": {
+        "company": "Braveheart Bio",
+        "industry": "Clinical-stage biopharma (cardiovascular)",
+        "sector": "biotechnology",
+        "title": "Cardiac myosin inhibitor franchise (BHB-1893 / HRS-1893) for hypertrophic cardiomyopathy",
+        "intended": "Oral small-molecule cardiac myosin inhibitor for obstructive and non-obstructive HCM",
+        "possible": [
+            "Broader cardiomyopathy and heart-failure indications",
+            "Combo or sequential use vs Camzyos-class CMIs",
+            "License/manufacturing IP around the Hengrui-origin compound",
+        ],
+        "impacts": [
+            {"sector": "Healthcare", "tickers": ["XLV", "QQQ"], "bias": "NEUTRAL",
+             "reason": "HCM CMI IP and trial exclusivity can reprice biotech risk appetite (XLV/QQQ), not only the name"},
+        ],
+    },
+    "SOFI": {
+        "company": "SoFi Technologies",
+        "industry": "Consumer fintech / digital banking",
+        "sector": "fintech",
+        "title": "Digital origination, banking, and brokerage product stack",
+        "intended": "Student-loan, personal-loan, deposit, and brokerage workflows",
+        "possible": [
+            "Model-driven underwriting and collections",
+            "Payments rails and account-opening KYC",
+            "Cross-sell of crypto, advice, and workplace benefits",
+        ],
+        "impacts": [
+            {"sector": "Financials", "tickers": ["XLF", "QQQ"], "bias": "NEUTRAL",
+             "reason": "Consumer-fintech process IP is a financials + growth overlay if origination scales"},
+        ],
+    },
+}
+
+
+def company_from_assignee(assignee: str, sector: str) -> tuple[str, str]:
+    raw = str(assignee or "").strip()
+    lower = raw.lower()
+    for needle, company, mapped_sector in ASSIGNEE_COMPANY:
+        if needle in lower:
+            return company, mapped_sector
+    if raw:
+        return raw, sector
+    play = SECTOR_LANDSCAPE.get(sector) or SECTOR_LANDSCAPE["general"]
+    return "Unnamed assignee", str(play.get("industry") and sector or sector)
+
+
+def research_finding(
+    *,
+    title: str,
+    assignee: str = "",
+    sector: str = "general",
+    description: str = "",
+) -> dict[str, Any]:
+    """Fill intended use, possible uses, company, industry, market impacts."""
+    sec = sector if sector in SECTOR_LANDSCAPE else "general"
+    company, mapped = company_from_assignee(assignee, sec)
+    if mapped in SECTOR_LANDSCAPE:
+        sec = mapped
+    play = SECTOR_LANDSCAPE[sec]
+    intended = str(play["intended"])
+    title_l = f"{title} {description}".strip()
+    if title_l:
+        intended = f"{intended}. Filing focus: {title.strip()[:160]}"
+    return {
+        "title": title.strip(),
+        "company": company,
+        "industry": str(play["industry"]),
+        "sector": sec,
+        "intended_use": intended,
+        "possible_uses": list(play["possible"]),
+        "market_impacts": [dict(row) for row in play["impacts"]],
+        "assignee": str(assignee or company),
+    }
+
+
+def holdings_landscape(symbols: list[str]) -> list[dict[str, Any]]:
+    """Research cards for live brokerage lots (company, uses, industry, market)."""
+    cards: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in symbols:
+        sym = str(raw or "").upper().strip()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        known = HOLDING_LANDSCAPE.get(sym)
+        if not known:
+            continue
+        cards.append(
+            {
+                "title": known["title"],
+                "symbol": sym,
+                "company": known["company"],
+                "industry": known["industry"],
+                "sector": known["sector"],
+                "intended_use": known["intended"],
+                "possible_uses": list(known["possible"]),
+                "market_impacts": [dict(row) for row in known["impacts"]],
+                "assignee": known["company"],
+                "source": "held-lot landscape",
+            }
+        )
+    return cards
+
+
+def format_card_lines(card: dict[str, Any]) -> list[str]:
+    uses = "; ".join(str(u) for u in (card.get("possible_uses") or [])[:3])
+    impacts = card.get("market_impacts") or []
+    impact_bits = []
+    for row in impacts[:2]:
+        if not isinstance(row, dict):
+            continue
+        tickers = ",".join(row.get("tickers") or [])
+        impact_bits.append(f"{row.get('sector', '')} [{row.get('bias', '')}] {tickers}")
+    lines = [
+        f"{card.get('company') or 'Unknown'} | {card.get('industry') or ''}",
+        f"Intended: {card.get('intended_use') or ''}",
+    ]
+    if uses:
+        lines.append(f"Possible uses: {uses}")
+    if impact_bits:
+        lines.append("Market impact: " + " | ".join(impact_bits))
+    return lines
