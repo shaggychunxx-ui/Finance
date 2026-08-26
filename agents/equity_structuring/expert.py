@@ -330,6 +330,28 @@ class EquityStructuringAnalyst(BaseExpert):
         collected: list[EquityOffering] = []
         sources: list[str] = []
         used_proxy = False
+        try:
+            from agents.pipeline_book import pipeline_held_positions
+
+            for row in pipeline_held_positions():
+                company = str(row.get("company") or "")
+                tick = str(row["symbol"])
+                if not company:
+                    continue
+                items = self._fetch_full_text_search(
+                    "held-lot-shelf",
+                    company,
+                    ["S-3", "424B5", "S-1"],
+                    [tick],
+                    "shelf",
+                    "NEUTRAL",
+                )
+                if items:
+                    collected.extend(items)
+                    if "EDGAR Full Text Search" not in sources:
+                        sources.append("EDGAR Full Text Search")
+        except Exception:
+            pass
         for category, query, forms, tickers, offering_type, bias in WATCH_QUERIES:
             items = self._fetch_full_text_search(category, query, forms, tickers, offering_type, bias)
             if items:
