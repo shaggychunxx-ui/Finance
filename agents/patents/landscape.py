@@ -1,7 +1,8 @@
-"""Patent landscape research: intended use, possible uses, company, industry, market impact.
+"""Patent landscape research: holders, intended/possible uses, industry, market overlay.
 
-Used by the Patent Landscape Analyst. Market *signals* stay ETF-only
-(MARKET_IMPACT_TICKERS). Company names live on the landscape card.
+The primary look-at is the company that holds the patent (assignee / listed
+ticker when public). ETF tickers (XLV, QQQ, …) are only a sector overlay for
+fusion — they are not a substitute for the holder.
 """
 
 from __future__ import annotations
@@ -112,32 +113,32 @@ SECTOR_LANDSCAPE: dict[str, dict[str, Any]] = {
     },
 }
 
-# Assignee / institution substring -> (company, sector key)
-ASSIGNEE_COMPANY: list[tuple[str, str, str]] = [
-    ("nvidia", "NVIDIA", "semiconductor"),
-    ("tsmc", "TSMC", "semiconductor"),
-    ("taiwan semiconductor", "TSMC", "semiconductor"),
-    ("samsung", "Samsung Electronics", "semiconductor"),
-    ("intel", "Intel", "semiconductor"),
-    ("asml", "ASML", "semiconductor"),
-    ("microsoft", "Microsoft", "artificial-intelligence"),
-    ("google", "Google / Alphabet", "artificial-intelligence"),
-    ("alphabet", "Google / Alphabet", "artificial-intelligence"),
-    ("openai", "OpenAI", "artificial-intelligence"),
-    ("amazon", "Amazon", "artificial-intelligence"),
-    ("meta", "Meta", "artificial-intelligence"),
-    ("tesla", "Tesla", "automotive"),
-    ("moderna", "Moderna", "biotechnology"),
-    ("pfizer", "Pfizer", "biotechnology"),
-    ("amgen", "Amgen", "biotechnology"),
-    ("regeneron", "Regeneron", "biotechnology"),
-    ("bristol", "Bristol Myers Squibb", "biotechnology"),
-    ("hengrui", "Hengrui Pharma / licensees", "biotechnology"),
-    ("sofi", "SoFi Technologies", "fintech"),
-    ("braveheart", "Braveheart Bio", "biotechnology"),
-    ("qualcomm", "Qualcomm", "telecom"),
-    ("ericsson", "Ericsson", "telecom"),
-    ("huawei", "Huawei", "telecom"),
+# Assignee substring -> (company, sector, listed ticker or "")
+ASSIGNEE_COMPANY: list[tuple[str, str, str, str]] = [
+    ("nvidia", "NVIDIA", "semiconductor", "NVDA"),
+    ("tsmc", "TSMC", "semiconductor", "TSM"),
+    ("taiwan semiconductor", "TSMC", "semiconductor", "TSM"),
+    ("samsung", "Samsung Electronics", "semiconductor", ""),
+    ("intel", "Intel", "semiconductor", "INTC"),
+    ("asml", "ASML", "semiconductor", "ASML"),
+    ("microsoft", "Microsoft", "artificial-intelligence", "MSFT"),
+    ("google", "Alphabet", "artificial-intelligence", "GOOGL"),
+    ("alphabet", "Alphabet", "artificial-intelligence", "GOOGL"),
+    ("openai", "OpenAI", "artificial-intelligence", ""),
+    ("amazon", "Amazon", "artificial-intelligence", "AMZN"),
+    ("meta", "Meta", "artificial-intelligence", "META"),
+    ("tesla", "Tesla", "automotive", "TSLA"),
+    ("moderna", "Moderna", "biotechnology", "MRNA"),
+    ("pfizer", "Pfizer", "biotechnology", "PFE"),
+    ("amgen", "Amgen", "biotechnology", "AMGN"),
+    ("regeneron", "Regeneron", "biotechnology", "REGN"),
+    ("bristol", "Bristol Myers Squibb", "biotechnology", "BMY"),
+    ("hengrui", "Hengrui Pharma / licensees", "biotechnology", ""),
+    ("sofi", "SoFi Technologies", "fintech", "SOFI"),
+    ("braveheart", "Braveheart Bio", "biotechnology", "BRVE"),
+    ("qualcomm", "Qualcomm", "telecom", "QCOM"),
+    ("ericsson", "Ericsson", "telecom", "ERIC"),
+    ("huawei", "Huawei", "telecom", ""),
 ]
 
 # Held-lot research when the live book is known (GROMIT snapshot).
@@ -177,16 +178,25 @@ HOLDING_LANDSCAPE: dict[str, dict[str, Any]] = {
 }
 
 
-def company_from_assignee(assignee: str, sector: str) -> tuple[str, str]:
+def company_from_assignee(assignee: str, sector: str) -> tuple[str, str, str]:
+    """Return (company name, sector key, holder ticker or empty)."""
     raw = str(assignee or "").strip()
     lower = raw.lower()
-    for needle, company, mapped_sector in ASSIGNEE_COMPANY:
+    for needle, company, mapped_sector, ticker in ASSIGNEE_COMPANY:
         if needle in lower:
-            return company, mapped_sector
+            return company, mapped_sector, ticker
     if raw:
-        return raw, sector
-    play = SECTOR_LANDSCAPE.get(sector) or SECTOR_LANDSCAPE["general"]
-    return "Unnamed assignee", str(play.get("industry") and sector or sector)
+        return raw, sector, ""
+    return "Unnamed assignee", sector, ""
+
+
+def _holder_block(company: str, ticker: str) -> dict[str, Any]:
+    tick = str(ticker or "").upper().strip()
+    return {
+        "company": company,
+        "ticker": tick,
+        "listed": bool(tick),
+    }
 
 
 def research_finding(
@@ -195,10 +205,11 @@ def research_finding(
     assignee: str = "",
     sector: str = "general",
     description: str = "",
+    holder_ticker: str = "",
 ) -> dict[str, Any]:
-    """Fill intended use, possible uses, company, industry, market impacts."""
+    """Fill holder company/ticker plus uses, industry, and ETF sector overlay."""
     sec = sector if sector in SECTOR_LANDSCAPE else "general"
-    company, mapped = company_from_assignee(assignee, sec)
+    company, mapped, mapped_ticker = company_from_assignee(assignee, sec)
     if mapped in SECTOR_LANDSCAPE:
         sec = mapped
     play = SECTOR_LANDSCAPE[sec]
@@ -206,9 +217,13 @@ def research_finding(
     title_l = f"{title} {description}".strip()
     if title_l:
         intended = f"{intended}. Filing focus: {title.strip()[:160]}"
+    ticker = str(holder_ticker or mapped_ticker or "").upper().strip()
+    holder = _holder_block(company, ticker)
     return {
         "title": title.strip(),
         "company": company,
+        "holder_ticker": ticker,
+        "holders": [holder],
         "industry": str(play["industry"]),
         "sector": sec,
         "intended_use": intended,
@@ -235,6 +250,8 @@ def holdings_landscape(symbols: list[str]) -> list[dict[str, Any]]:
                 "title": known["title"],
                 "symbol": sym,
                 "company": known["company"],
+                "holder_ticker": sym,
+                "holders": [_holder_block(known["company"], sym)],
                 "industry": known["industry"],
                 "sector": known["sector"],
                 "intended_use": known["intended"],
@@ -247,6 +264,18 @@ def holdings_landscape(symbols: list[str]) -> list[dict[str, Any]]:
     return cards
 
 
+def format_holder_label(card: dict[str, Any]) -> str:
+    company = str(card.get("company") or card.get("assignee") or "Unknown holder")
+    tick = str(card.get("holder_ticker") or card.get("symbol") or "").upper().strip()
+    if not tick:
+        holders = card.get("holders") or []
+        if holders and isinstance(holders[0], dict):
+            tick = str(holders[0].get("ticker") or "").upper().strip()
+    if tick:
+        return f"{company} ({tick})"
+    return company
+
+
 def format_card_lines(card: dict[str, Any]) -> list[str]:
     uses = "; ".join(str(u) for u in (card.get("possible_uses") or [])[:3])
     impacts = card.get("market_impacts") or []
@@ -257,11 +286,12 @@ def format_card_lines(card: dict[str, Any]) -> list[str]:
         tickers = ",".join(row.get("tickers") or [])
         impact_bits.append(f"{row.get('sector', '')} [{row.get('bias', '')}] {tickers}")
     lines = [
-        f"{card.get('company') or 'Unknown'} | {card.get('industry') or ''}",
+        f"Held by: {format_holder_label(card)}",
+        f"Industry: {card.get('industry') or ''}",
         f"Intended: {card.get('intended_use') or ''}",
     ]
     if uses:
         lines.append(f"Possible uses: {uses}")
     if impact_bits:
-        lines.append("Market impact: " + " | ".join(impact_bits))
+        lines.append("Sector overlay: " + " | ".join(impact_bits))
     return lines
