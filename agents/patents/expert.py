@@ -21,6 +21,7 @@ from typing import Any
 import requests
 
 from agents.base import BaseExpert
+from agents.patents.landscape import format_card_lines, holdings_landscape, research_finding
 
 HEADERS = {"User-Agent": "Finance-Patent-Landscape/1.0 (shaggychunxx@gmail.com)"}
 OPENALEX_URL = "https://api.openalex.org/works"
@@ -228,6 +229,10 @@ SECTOR_KEYWORDS: dict[str, list[str]] = {
     "telecom": [
         "5g", "6g", "wireless", "telecommunication", "antenna", "network",
     ],
+    "fintech": [
+        "fintech", "underwriting", "payments", "digital bank", "origination",
+        "kyc", "lending", "brokerage",
+    ],
 }
 
 SECTOR_TICKERS: dict[str, list[str]] = {
@@ -237,6 +242,7 @@ SECTOR_TICKERS: dict[str, list[str]] = {
     "energy": ["XLE", "TAN", "ENPH", "FSLR"],
     "automotive": ["TSLA", "RIVN", "GM", "F"],
     "telecom": ["XLC", "T", "VZ", "ERIC"],
+    "fintech": ["XLF", "SOFI", "SQ", "PYPL"],
 }
 
 OPENALEX_QUERIES = [
@@ -263,6 +269,12 @@ class PatentFinding:
     assignee: str
     impact: str
     notes: str
+    company: str = ""
+    industry: str = ""
+    intended_use: str = ""
+    possible_uses: list[str] = field(default_factory=list)
+    market_impacts: list[dict[str, Any]] = field(default_factory=list)
+    symbol: str = ""
 
 
 @dataclass
@@ -278,6 +290,7 @@ class PatentReport:
     market_signals: list[dict[str, Any]]
     recommendations: list[str]
     data_sources: list[str]
+    landscape: list[dict[str, Any]] = field(default_factory=list)
     analyzed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
