@@ -32,6 +32,8 @@ def _predictor_regime() -> dict:
         return load_regime()
     except Exception:
         return {}
+
+
 SYMBOL_RETURN_HINT_WEIGHT = 0.58
 # Keep enrich small so post-fusion finishes under pipeline stall/timeouts.
 ENRICH_PRICE_RETURNS_LIMIT = 25
