@@ -395,6 +395,7 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
         confidence: float | None = None,
         price: float | None = None,
         sector_hint: str = "",
+        ignore_accuracy_floor: bool = False,
     ) -> None:
         sym = _normalize_symbol(symbol)
         if not sym:
@@ -415,16 +416,22 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
             fusion_horizon = agent_preferred_horizon(source)
         except Exception:
             fusion_horizon = "24h"
-        weight = fusion_weight(
-            source,
-            horizon=fusion_horizon,
-            symbol=sym,
-            sector_hint=sector_hint,
-            regime_posture=posture,
-            for_trading=True,
-        )
-        if weight <= 0:
-            return
+        if ignore_accuracy_floor:
+            # Patent-holder (and similar) research must still vote in fusion even
+            # when the specialist's directional accuracy is below the exclude floor.
+            # Do not use this path for live accuracy labels.
+            weight = 0.28
+        else:
+            weight = fusion_weight(
+                source,
+                horizon=fusion_horizon,
+                symbol=sym,
+                sector_hint=sector_hint,
+                regime_posture=posture,
+                for_trading=True,
+            )
+            if weight <= 0:
+                return
         try:
             from agent_learning import get_agent_learning
 
@@ -522,6 +529,27 @@ def _collect_ticker_scores(output_dir: Path) -> dict[str, dict[str, Any]]:
                     note=note,
                     confidence=confidence,
                     sector_hint=sector,
+                )
+
+        landscape = data.get("landscape")
+        if isinstance(landscape, list):
+            for card in landscape:
+                if not isinstance(card, dict):
+                    continue
+                tick = str(card.get("holder_ticker") or card.get("symbol") or "").upper()
+                if not tick:
+                    continue
+                held = str(card.get("source") or "").startswith("held-lot")
+                company = card.get("company") or tick
+                intended = str(card.get("intended_use") or "")[:90]
+                bump(
+                    tick,
+                    0.28 if held else 0.14,
+                    source=source,
+                    note=f"Patent holder {company} ({tick}): {intended}",
+                    confidence=0.52 if held else 0.48,
+                    sector_hint=str(card.get("industry") or card.get("sector") or "patent"),
+                    ignore_accuracy_floor=True,
                 )
 
         if source == "finance":

@@ -323,8 +323,15 @@ def _extract_from_agent_file(
                     return_source="explicit" if explicit_ret is not None else "estimated",
                 )
 
+    # Patents landscape/holder research votes in fusion but must not mint live
+    # labels (would rewrite walk-forward accuracy_pct).
+    skip_live_labels = str(agent_id or "") == "patents"
     for sig in data.get("market_signals", []):
+        if skip_live_labels:
+            continue
         if not isinstance(sig, dict):
+            continue
+        if sig.get("learning_exempt") is True:
             continue
         direction = _bias_direction(sig.get("bias", "NEUTRAL"))
         conf = 0.55 if direction == "up" else 0.45 if direction == "down" else 0.35
