@@ -685,21 +685,23 @@ class PatentLandscapeAnalyst(BaseExpert):
         cards: list[dict[str, Any]] = []
         for f in findings:
             cards.append(
-                {
-                    "title": f.title,
-                    "symbol": f.symbol,
-                    "company": f.company,
-                    "industry": f.industry,
-                    "sector": f.sector,
-                    "intended_use": f.intended_use,
-                    "possible_uses": list(f.possible_uses),
-                    "market_impacts": list(f.market_impacts),
-                    "assignee": f.assignee,
-                    "source": f.source,
-                    "impact": f.impact,
-                    "holder_ticker": f.holder_ticker or f.symbol,
-                    "holders": list(f.holders),
-                }
+                attach_impact_window(
+                    {
+                        "title": f.title,
+                        "symbol": f.symbol,
+                        "company": f.company,
+                        "industry": f.industry,
+                        "sector": f.sector,
+                        "intended_use": f.intended_use,
+                        "possible_uses": list(f.possible_uses),
+                        "market_impacts": list(f.market_impacts),
+                        "assignee": f.assignee,
+                        "source": f.source,
+                        "impact": f.impact,
+                        "holder_ticker": f.holder_ticker or f.symbol,
+                        "holders": list(f.holders),
+                    }
+                )
             )
         return cards
 
@@ -825,7 +827,6 @@ class PatentLandscapeAnalyst(BaseExpert):
             recommendations=recs,
             data_sources=sources,
             landscape=landscape,
-            predictions=project_innovation_prices(landscape),
         )
 
     def to_dict(self, report: PatentReport) -> dict[str, Any]:
@@ -846,9 +847,7 @@ class PatentLandscapeAnalyst(BaseExpert):
                 "landscape_label": report.landscape_label,
                 "companies": sorted({f.company for f in report.findings if f.company}),
                 "industries": sorted({f.industry for f in report.findings if f.industry}),
-                "price_path": "innovation_up",
-                "short_horizons": ["24h", "1wk"],
-                "long_horizons": ["1mo", "1yr"],
+                "role": "innovation_inputs_for_pipeline",
             },
             "resources": report.resources,
             "landscape": report.landscape,
@@ -873,7 +872,6 @@ class PatentLandscapeAnalyst(BaseExpert):
                 }
                 for f in report.findings
             ],
-            "predictions": report.predictions,
             "market_signals": report.market_signals,
             "recommendations": self.append_memory_recommendations(report.recommendations),
         }

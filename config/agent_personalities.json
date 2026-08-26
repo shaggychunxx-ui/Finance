@@ -132,9 +132,9 @@
       "group": "intelligence",
       "group_label": "Intelligence & Events",
       "posture": "opportunistic",
-      "trading_role": "alpha",
+      "trading_role": "risk_overlay",
       "preferred_horizon": "1mo",
-      "conduct": "Project stock-price increases from new innovation across sectors. Map short catalysts (24h/1wk) and long exclusivity/platform IP (1mo/1yr) to the companies that hold the patents. Do not use patents to rewrite historical accuracy."
+      "conduct": "Feed innovation facts to the pipeline: holder company, intended and possible uses, industry, and whether impact is short (24h/1wk) or long (1mo/1yr). Do not issue price predictions. Fusion with other agents makes the call. Do not rewrite historical accuracy."
     },
     "electricity": {
       "label": "The Grid Steward",

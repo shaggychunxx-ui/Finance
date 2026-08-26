@@ -101,16 +101,18 @@ def test_patents_live_extract_does_not_queue_labels() -> None:
     assert pending == []
 
 
-def test_innovation_price_path_short_and_long() -> None:
+def test_landscape_stamps_short_and_long_windows_not_predictions() -> None:
     from agents.patents.expert import PatentLandscapeAnalyst
 
     result = PatentLandscapeAnalyst().run(output=None)
-    preds = result.get("predictions") or {}
-    assert "1wk" in preds or "24h" in preds
-    assert "1yr" in preds or "1mo" in preds
-    rows = [r for rows in preds.values() for r in rows]
-    assert rows
-    assert all(str(r.get("predicted_direction")) == "up" for r in rows)
-    syms = {str(r.get("symbol")) for r in rows}
-    assert "BRVE" in syms
-    assert "SOFI" in syms
+    assert not result.get("predictions")
+    cards = result.get("landscape") or []
+    assert cards
+    held = [c for c in cards if c.get("holder_ticker") in {"BRVE", "SOFI"}]
+    assert held
+    for c in held:
+        terms = c.get("impact_terms") or []
+        assert "short" in terms and "long" in terms
+        windows = c.get("impact_windows") or {}
+        assert windows.get("short") == ["24h", "1wk"]
+        assert windows.get("long") == ["1mo", "1yr"]

@@ -293,6 +293,9 @@ def memory_bundle_for_agent(agent_id: str) -> dict[str, Any]:
                 "company": card.get("company"),
                 "industry": card.get("industry"),
                 "intended_use": card.get("intended_use"),
+                "possible_uses": card.get("possible_uses"),
+                "impact_terms": card.get("impact_terms"),
+                "impact_windows": card.get("impact_windows"),
                 "held_lot": str(card.get("source") or "").startswith("held-lot"),
             }
         )
