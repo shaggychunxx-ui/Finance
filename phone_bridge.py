@@ -1331,21 +1331,7 @@ def build_account_summary() -> dict[str, Any]:
             or str(out.get("account_name")).lower().startswith("offline")
         ):
             out["account_name"] = label
-        bal_block = snap.get("balance") if isinstance(snap.get("balance"), dict) else {}
-        snap_bal = _f(bal_block.get("total_account_value"))
-        # Prefer live broker equity over missing/zero/stale history (0 must not stick).
-        cur_bal = _f(out.get("balance"))
-        if snap_bal is not None and snap_bal > 0:
-            if cur_bal is None or cur_bal <= 0 or snap_bal >= cur_bal:
-                out["balance"] = snap_bal
-        elif snap_bal is not None and out.get("balance") is None:
-            out["balance"] = snap_bal
-        snap_cash = _f(bal_block.get("cash_buying_power") or bal_block.get("cash"))
-        if snap_cash is not None and (out.get("cash") is None or _f(out.get("cash"), 0) <= 0):
-            out["cash"] = snap_cash
-        # If history never seeded invested capital, use cash+positions book as usable.
-        if out.get("usable_capital") is None and out.get("balance") is not None:
-            out["usable_capital"] = out.get("balance")
+        _overlay_live_broker_account(out, snap)
 
     # Re-apply formula after balance merges (stale plan must not invent P/L).
     bal = out.get("balance")
@@ -2169,28 +2155,7 @@ def build_dashboard(force_refresh: bool = False, *, publish: bool = True) -> dic
     # Re-merge account from snapshot after positions refresh (snapshot may be newer).
     snap_after = _load_account_snapshot()
     if isinstance(snap_after, dict) and snap_after:
-        bal_block = snap_after.get("balance") if isinstance(snap_after.get("balance"), dict) else {}
-        snap_bal = _f(bal_block.get("total_account_value"))
-        cur_bal = _f(account.get("balance"))
-        if snap_bal is not None and snap_bal > 0 and (cur_bal is None or cur_bal <= 0 or snap_bal >= cur_bal):
-            account["balance"] = snap_bal
-            account["usable_capital"] = account.get("usable_capital") or snap_bal
-        snap_cash = _f(bal_block.get("cash_buying_power") or bal_block.get("cash"))
-        if snap_cash is not None and (_f(account.get("cash")) is None or _f(account.get("cash"), 0) <= 0):
-            account["cash"] = snap_cash
-        label = str(snap_after.get("display_label") or "").strip()
-        key = str(snap_after.get("account_id_key") or "").strip()
-        if key:
-            account["account_id_key"] = key
-        if label:
-            account["account_name"] = label
-        # Refresh display money strings after merge
-        account["display"] = {
-            **(account.get("display") if isinstance(account.get("display"), dict) else {}),
-            "balance": _money(account.get("balance")) if account.get("balance") is not None else "-",
-            "cash": _money(account.get("cash")) if account.get("cash") is not None else "-",
-            "invested": _money(account.get("invested_capital")) if account.get("invested_capital") is not None else "-",
-        }
+        _overlay_live_broker_account(account, snap_after)
     # Mark known transfer lots (cost-only deposit capital; never MTM).
     transfer_symbols = _load_transfer_deposit_symbols()
     transfer_deposit = 0.0
