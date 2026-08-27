@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-26
-**Updated by:** GROMIT
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -37,6 +37,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth reconnect after midnight ET (keys are set; session died 21:00 PT 2026-08-26). Live root `begin_etrade_login.py` / `finish_etrade_login.py`.
+- [ ] **GROMIT** Re enteing Oath sould be autmatic
 
 ## Done
 
@@ -94,6 +95,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [ ] **GROMIT / human:** E*TRADE OAuth reconnect after midnight ET (keys are set; session died 21:00 PT 2026-08-26). Live root `begin_etrade_login.py` / `finish_etrade_login.py`.
+- [ ] **GROMIT** Re enteing Oath sould be autmatic
 
 ## Blockers
 
@@ -122,4 +124,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
 - Phone LAN: GROMIT `/health` `phone_hint` is `http://192.168.1.177:8787` (2026-08-26). Token in live config only.
 - PHONE: why are there no orders? → answered 2026-08-26 (task **051**). 0 submitted: bullish-gate stale plan + PDT 6/3 + closed/OAuth.
+- PHONE: Re enteing Oath sould be autmatic → Act on GROMIT (GROMIT delegates host-local work)
 
