@@ -822,7 +822,7 @@ def _write_live_blocker(reason: str) -> None:
             f"time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"machine: {os.environ.get('COMPUTERNAME', '')}\n"
             f"reason: {reason}\n"
-            f"fix: python begin_etrade_login.py then finish_etrade_login.py <CODE>\n"
+            f"fix: complete_etrade_oauth.py (taskbar Chrome). Manual: finish_etrade_login.py <CODE>\n"
             f"verify: python check_etrade_live_status.py\n",
             encoding="utf-8",
         )

@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""E*TRADE RTH live watchdog — MUST NOT silently stay down during market hours.
+"""E*TRADE live watchdog — MUST NOT silently stay down.
 
 Every run (schedule every 1 min):
-  1) If outside US RTH → exit 0 (quiet)
-  2) Probe session (list-accounts / keepalive)
-  3) If OK → clear blockers, exit 0
-  4) If FAIL → diagnose + auto-repair:
-       - ensure worker process running
-       - ensure phone_bridge listening :8787
-       - re-probe
-  5) If still FAIL → write LIVE_BLOCKER + NEED_HUMAN_OAUTH, open Chrome authorize URL
-     (only when dead — never start OAuth while live)
+  1) Ensure supervisor/worker/phone_bridge
+  2) Probe session (list-accounts)
+  3) If dead → auto OAuth (taskbar Chrome). Human only if that fails.
+  4) If live during RTH → diagnose trader/pipeline (1037 loop, stale plan,
+     pipeline stall) and write FORCE_TRADER_REPAIR so the worker rebuilds
+     and re-previews. Do not leave a broken trader running.
 
 Exit: 0 ok/closed, 1 down needs human OAuth, 2 hard error
 """
@@ -49,6 +46,11 @@ OAUTH_OPENED_MARK = ROOT / "output" / "oauth_browser_opened.txt"
 PENDING_REUSE_SEC = 20 * 60
 # Hard floor: never open browser more often than this even if pending missing.
 BROWSER_OPEN_COOLDOWN_SEC = 15 * 60
+WORKER_LOG = ROOT / "output" / "etrade_worker.log"
+WORKER_STATE = ROOT / "output" / "etrade_worker_state.json"
+REPAIR_FLAG = ROOT / "output" / "FORCE_TRADER_REPAIR.txt"
+REPAIR_MARK = ROOT / "output" / "trader_repair_mark.txt"
+REPAIR_COOLDOWN_SEC = 10 * 60
 
 
 def _log(msg: str) -> None:
@@ -166,6 +168,34 @@ def _port_listen(port: int) -> bool:
         return False
 
 
+def _ensure_stack() -> None:
+    """If supervisor heartbeat is stale, start the immortal stack (VBS, no flash)."""
+    hb = ROOT / "output" / "finance_supervisor_heartbeat.txt"
+    try:
+        age = time.time() - hb.stat().st_mtime if hb.exists() else 9_999.0
+    except OSError:
+        age = 9_999.0
+    if age < 180 and _process_running("finance_supervisor.py"):
+        return
+    vbs = ROOT / "Ensure ETrade Stack.vbs"
+    if not vbs.is_file():
+        _ensure_worker()
+        return
+    _log(f"REPAIR: Ensure ETrade Stack.vbs (supervisor hb age={age:.0f}s)")
+    try:
+        from process_guard import spawn_detached
+
+        spawn_detached(["wscript.exe", "//B", "//Nologo", str(vbs)], cwd=ROOT)
+    except Exception:
+        subprocess.Popen(
+            ["wscript.exe", "//B", "//Nologo", str(vbs)],
+            cwd=str(ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+        )
+
+
 def _ensure_worker() -> None:
     if _process_running("etrade_worker.py"):
         return
@@ -243,8 +273,8 @@ def _write_blocker(reason: str) -> None:
         f"time: {datetime.now().isoformat()}\n"
         f"machine: {os.environ.get('COMPUTERNAME', '')}\n"
         f"reason: {reason}\n"
-        "auto: worker/bridge restart attempted; OAuth URL opened if needed\n"
-        "human: finish_etrade_login.py <CODE> then verify check_etrade_live_status.py\n"
+        "auto: worker/bridge restart + complete_etrade_oauth.py (taskbar Chrome)\n"
+        "human: only if auto-oauth failed — then finish_etrade_login.py <CODE>\n"
         "phone: do NOT start a second OAuth while PC is re-authing\n"
     )
     BLOCKER.write_text(text, encoding="utf-8")
@@ -335,6 +365,14 @@ def _open_browser_once(url: str) -> None:
     If the mark says we opened but Chrome is not running, clear the mark and
     open again (fixes false-positive marks that blocked login all morning).
     """
+    try:
+        import chrome_oauth_ui as ui
+
+        if ui.etrade_chrome_window() is not None:
+            _log("OAUTH browser suppressed — E*TRADE tab already open")
+            return
+    except Exception:
+        pass
     age = _browser_opened_age_sec()
     if age is not None and age < BROWSER_OPEN_COOLDOWN_SEC:
         if _chrome_running():
@@ -395,6 +433,79 @@ def _open_browser_once(url: str) -> None:
         _log("OAUTH browser open failed — use Desktop ETrade-Authorize.url")
 
 
+def _worker_last_lines(n: int = 50) -> str:
+    try:
+        text = WORKER_LOG.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    lines = text.splitlines()
+    return "\n".join(lines[-n:])
+
+
+def _repair_mark_age_sec() -> float | None:
+    try:
+        if not REPAIR_MARK.exists():
+            return None
+        return max(0.0, time.time() - REPAIR_MARK.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _request_trader_repair(reason: str) -> bool:
+    """Ask the worker to rebuild plan + re-preview. Cooldown so we do not loop."""
+    age = _repair_mark_age_sec()
+    if age is not None and age < REPAIR_COOLDOWN_SEC:
+        _log(f"REPAIR suppressed ({age:.0f}s < {REPAIR_COOLDOWN_SEC}s) reason={reason}")
+        return False
+    try:
+        REPAIR_FLAG.parent.mkdir(parents=True, exist_ok=True)
+        REPAIR_FLAG.write_text(
+            f"{datetime.now().isoformat()}\n{reason}\n",
+            encoding="utf-8",
+        )
+        REPAIR_MARK.write_text(f"{time.time():.3f}\n{reason}\n", encoding="utf-8")
+        _log(f"REPAIR requested: {reason}")
+        return True
+    except OSError as exc:
+        _log(f"REPAIR flag write failed: {exc}")
+        return False
+
+
+def _diagnose_trader_pipeline(*, rth: bool) -> str | None:
+    """Return a repair reason if the trader or pipeline is malfunctioning."""
+    tail = _worker_last_lines(60)
+    if not tail:
+        return "worker_log_missing" if rth else None
+    if "token_rejected" in tail or "session expired" in tail:
+        if "Connected to E*TRADE (production)" not in tail[-1200:]:
+            return "oauth_dead"
+    if not rth:
+        return None
+    if "No orders passed E*TRADE preview" in tail and "1037" in tail:
+        if "LIVE orders submitted to E*TRADE" not in tail:
+            return "preview_1037"
+    try:
+        import json
+
+        state = json.loads(WORKER_STATE.read_text(encoding="utf-8"))
+        last_pipe = float(state.get("last_pipeline_at") or 0)
+        if last_pipe and (time.time() - last_pipe) > 20 * 60:
+            return "pipeline_stale"
+    except Exception:
+        pass
+    return None
+
+
+def _auto_oauth() -> tuple[bool, str]:
+    """Full OAuth in taskbar Chrome. No-op if live. Cooldown inside helper."""
+    try:
+        from complete_etrade_oauth import complete_oauth_if_needed
+
+        return complete_oauth_if_needed(force=False)
+    except Exception as exc:
+        return False, f"auto-oauth import/run: {exc}"
+
+
 def _open_oauth() -> str | None:
     """Ensure a single pending OAuth exists; open browser at most once.
 
@@ -403,6 +514,14 @@ def _open_oauth() -> str | None:
     spams browser windows.
     """
     try:
+        try:
+            import chrome_oauth_ui as ui
+
+            if ui.etrade_chrome_window() is not None:
+                _log("OAUTH open skipped — E*TRADE tab already open (no new token)")
+                return _read_pending_url()
+        except Exception:
+            pass
         age = _pending_age_sec()
         url = _read_pending_url()
         if url and age is not None and age < PENDING_REUSE_SEC:
@@ -449,54 +568,80 @@ def _open_oauth() -> str | None:
 
 
 def main() -> int:
-    if not _is_rth():
-        print("Watchdog: outside RTH window (09:00–16:00 ET) — idle.")
-        return 0
+    rth = _is_rth()
+    _log("watchdog tick " + ("RTH" if rth else "off-hours"))
+    _ensure_stack()
+    _ensure_worker()
+    _ensure_bridge()
 
-    _log("RTH watchdog tick")
     try:
         ok, detail = _probe()
     except Exception as exc:
         ok, detail = False, f"probe_error: {exc}"
 
     if ok:
-        # Double-check flags via full status script periodically
-        status_ok, status_out = _check_live_status_script()
-        if status_ok:
-            _clear_blocker()
-            _log(f"LIVE OK {detail}")
-            print("WATCHDOG OK — live")
+        _clear_blocker()
+        malfunction = _diagnose_trader_pipeline(rth=rth)
+        if malfunction == "oauth_dead":
+            auto_ok, auto_msg = _auto_oauth()
+            _log(f"AUTO OAUTH (worker expired) ok={auto_ok} {auto_msg}")
+            if not auto_ok:
+                _write_blocker(auto_msg)
+                return 1
+            print("WATCHDOG RECOVERED — auto OAuth")
             return 0
-        # Probe ok but status script unhappy (e.g. worker log stale) — still repair processes
-        _log(f"Probe ok but status script not OK — repairing processes. {status_out[-200:]}")
-    else:
-        _log(f"LIVE FAIL: {detail}")
+        if malfunction:
+            _request_trader_repair(malfunction)
+            _log(f"LIVE OK but trader/pipeline repair: {malfunction}")
+            print(f"WATCHDOG REPAIR — {malfunction}")
+            return 0
+        _log(f"LIVE OK {detail}")
+        print("WATCHDOG OK — live")
+        return 0
 
-    # --- AUTO REPAIR ---
-    _ensure_worker()
-    _ensure_bridge()
-    time.sleep(4)
-
+    _log(f"LIVE FAIL: {detail}")
+    time.sleep(2)
     try:
         ok2, detail2 = _probe()
     except Exception as exc:
         ok2, detail2 = False, str(exc)
 
     if ok2:
-        status_ok, _ = _check_live_status_script()
-        if status_ok or ok2:
-            _clear_blocker()
-            _log(f"RECOVERED after process repair: {detail2}")
-            print("WATCHDOG RECOVERED")
-            return 0
+        _clear_blocker()
+        _log(f"RECOVERED after process repair: {detail2}")
+        print("WATCHDOG RECOVERED")
+        return 0
 
-    # Hard failure — human OAuth required (browser at most once; never spam)
-    _write_blocker(detail2 if not ok2 else detail)
-    url = _open_oauth()
-    _log(f"NEEDS HUMAN OAUTH url_set={bool(url)} reason={detail2 if not ok2 else detail}")
+    auto_ok, auto_msg = _auto_oauth()
+    _log(f"AUTO OAUTH ok={auto_ok} {auto_msg}")
+    if auto_ok:
+        _clear_blocker()
+        print("WATCHDOG RECOVERED — auto OAuth")
+        return 0
+
+    reason = detail2 if not ok2 else detail
+    _write_blocker(f"{reason} | auto_oauth: {auto_msg}")
+    url = None
+    skip_second_open = any(
+        s in (auto_msg or "")
+        for s in ("cooldown", "already running", "existing E*TRADE tab", "not opening another")
+    )
+    tab_already = False
+    try:
+        import chrome_oauth_ui as ui
+
+        tab_already = ui.etrade_chrome_window() is not None
+    except Exception:
+        tab_already = False
+    if tab_already:
+        _log("NEEDS HUMAN OAUTH — tab already open, not minting/opening another")
+    elif not skip_second_open:
+        # Last resort: park authorize URL in taskbar Chrome once (reuse pending).
+        url = _open_oauth()
+    _log(f"NEEDS HUMAN OAUTH url_set={bool(url)} reason={reason}")
     print(
-        "WATCHDOG FAIL — need human verification code "
-        "(browser opens once only; finish_etrade_login.py <CODE>)"
+        "WATCHDOG FAIL — auto OAuth did not complete "
+        f"({auto_msg}); finish_etrade_login.py <CODE> if a code is on screen"
     )
     return 1
 

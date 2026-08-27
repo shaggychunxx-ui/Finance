@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-08-26
-**Updated by:** PHONE
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -36,10 +36,10 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [ ] **GROMIT / human:** E*TRADE OAuth reconnect after midnight ET (keys are set; session died 21:00 PT 2026-08-26). Live root `begin_etrade_login.py` / `finish_etrade_login.py`.
-- [ ] **GROMIT** Re enteing Oath sould be autmatic
 
 ## Done
+
+- [x] **GROMIT (PHONE: Re enteing Oath sould be autmatic):** Midnight re-login is automatic. `complete_etrade_oauth.py` drives taskbar Chrome Default (PrintWindow, not overlay BitBlt): Log on → left Accept → verifier → tokens on live root. Tonight **LIVE STATUS: OK** production; worker `Connected to E*TRADE (production)`. Watchdog + keepalive retry on expiry. 2FA still human if prompted. Task `tasks/done/052-oauth-reentry-automatic.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: why are there no orders?):** **0 submitted today.** Not a dead phone/broker: live flags ON, worker role=all. Stack: (1) swing plan stuck **2026-08-20** — rebuild fails *not enough bullish signals* (risk-off); leftover CISS SELL qty 0 skipped available qty; (2) **PDT 6/3 day trades in 5d** blocked 3/3 day orders 51×; (3) market closed after 1pm PT, OAuth expired again **9pm PT / midnight ET**. Book now BRVE+SOFI only. Human: re-login on GROMIT; day trades stay capped until the 5d window rolls. Task `tasks/done/051-why-no-orders.md`. **Act on: none**.
 
@@ -94,12 +94,9 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [ ] **GROMIT / human:** E*TRADE OAuth reconnect after midnight ET (keys are set; session died 21:00 PT 2026-08-26). Live root `begin_etrade_login.py` / `finish_etrade_login.py`.
-- [ ] **GROMIT** Re enteing Oath sould be autmatic
 
 ## Blockers
 
-- **E*TRADE OAuth expired** (past midnight ET 2026-08-26 21:00 PT) — human re-login on GROMIT live root. Worker waiting for GUI OAuth.
 - **PDT 6/3 day trades in 5d** — day-trade sleeve blocked until the rolling window drops under 3. Not a code bug.
 - **Swing plan bullish gate** — portfolio rebuild fails (risk-off / not enough bullish affordable names). Stale plan 2026-08-20. Do not lower the gate from a why-Send.
 - **US market closed (off-RTH)** — LIVE flags on; no submit until next RTH **and** OAuth.
@@ -124,5 +121,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
 - Phone LAN: GROMIT `/health` `phone_hint` is `http://192.168.1.177:8787` (2026-08-26). Token in live config only.
 - PHONE: why are there no orders? → answered 2026-08-26 (task **051**). 0 submitted: bullish-gate stale plan + PDT 6/3 + closed/OAuth.
-- PHONE: Re enteing Oath sould be autmatic → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: Re enteing Oath sould be autmatic → done 2026-08-26 (task **052**). Auto OAuth LIVE STATUS OK.
 

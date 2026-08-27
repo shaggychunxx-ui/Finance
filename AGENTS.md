@@ -52,6 +52,6 @@ Mistakes here cost money. **False “logged in / live” is a critical failure.*
 
 ### Hard rules
 
-1. **OAuth** only via live root on GROMIT: `begin_etrade_login.py` / `finish_etrade_login.py`.
+1. **OAuth** only via live root on GROMIT. Auto-complete on expiry: `complete_etrade_oauth.py` (taskbar Chrome Default / shaggychunxx — never Playwright `~\.grok\browser-profile`). Manual fallback: `begin_etrade_login.py` / `finish_etrade_login.py <CODE>`.
 2. **BOXONE is not a Finance host** — no broker, no pipeline, no E*TRADE worker there.
 3. Prefer `deployment.role = all` on GROMIT (single machine).

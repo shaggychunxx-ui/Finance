@@ -20,6 +20,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+try:
+    from process_guard import ensure_finance_packages
+
+    ensure_finance_packages()
+except Exception:
+    site = ROOT / ".venv" / "Lib" / "site-packages"
+    if site.is_dir() and str(site) not in sys.path:
+        sys.path.insert(0, str(site))
 
 from etrade_runtime import resolve_live_root, ensure_sys_path  # noqa: E402
 
@@ -55,16 +63,32 @@ def main() -> int:
         print(f"KEEPALIVE OK {detail}")
         return 0
 
+    try:
+        from complete_etrade_oauth import complete_oauth_if_needed
+
+        auto_ok, auto_msg = complete_oauth_if_needed(force=False)
+    except Exception as exc:
+        auto_ok, auto_msg = False, str(exc)
+    if auto_ok:
+        if blocker.exists():
+            try:
+                blocker.unlink()
+            except OSError:
+                pass
+        print(f"KEEPALIVE RECOVERED auto-oauth {auto_msg}")
+        return 0
+
     blocker.parent.mkdir(parents=True, exist_ok=True)
     blocker.write_text(
         "LIVE BLOCKER\n"
         f"reason: keepalive failed: {detail}\n"
-        "fix: On GROMIT run begin_etrade_login.py ONLY if session is dead,\n"
-        "      then finish_etrade_login.py <CODE>. Do NOT re-login on phone if PC is live.\n"
+        f"auto_oauth: {auto_msg}\n"
+        "fix: complete_etrade_oauth.py uses taskbar Chrome. If that failed,\n"
+        "      finish_etrade_login.py <CODE>. Do NOT start a second OAuth on the phone.\n"
         "verify: python check_etrade_live_status.py\n",
         encoding="utf-8",
     )
-    print(f"KEEPALIVE FAIL {detail}")
+    print(f"KEEPALIVE FAIL {detail} | auto_oauth: {auto_msg}")
     return 1
 
 
