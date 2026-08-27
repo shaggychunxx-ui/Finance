@@ -1663,6 +1663,62 @@ def _run_day_trading(
     return True
 
 
+def _plan_iso_age_sec(iso: str) -> float:
+    raw = (iso or "").strip()
+    if not raw:
+        return 9_999_999.0
+    try:
+        text = raw.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, time.time() - dt.timestamp())
+    except Exception:
+        return 9_999_999.0
+
+
+def _plan_should_rebuild(data: dict[str, Any] | None) -> str | None:
+    """Stale or all-1037 plans must not keep driving live sells."""
+    if not data:
+        return "missing_plan"
+    age = _plan_iso_age_sec(str(data.get("generated_at") or ""))
+    if age > 4 * 3600:
+        return f"plan_age_{int(age // 3600)}h"
+    sells = [
+        o
+        for o in (data.get("orders") or [])
+        if isinstance(o, dict) and str(o.get("action") or "").upper() == "SELL"
+    ]
+    if sells and all("1037" in str(o.get("message") or "") for o in sells):
+        return "all_sells_1037"
+    return None
+
+
+def _repair_flag_path() -> Path:
+    return OUTPUT / "FORCE_TRADER_REPAIR.txt"
+
+
+def consume_repair_flag() -> str | None:
+    path = _repair_flag_path()
+    try:
+        if not path.exists():
+            return None
+        reason = path.read_text(encoding="utf-8").strip()[:300] or "unspecified"
+        path.unlink(missing_ok=True)
+        return reason
+    except OSError:
+        return None
+
+
+def request_trader_repair(reason: str) -> None:
+    path = _repair_flag_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{datetime.now(timezone.utc).isoformat()}\n{reason}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _run_live_execute(
     client: ETradeClient,
     *,
@@ -1673,9 +1729,32 @@ def _run_live_execute(
 
     state = load_worker_state()
     settings = worker_settings(config_path)
+    repair = consume_repair_flag()
     data = load_strategy_plan(PLAN_FILE)
+    why = repair or _plan_should_rebuild(data)
+    if why:
+        due = bool(repair) or _interval_due(
+            state.get("last_plan_at"),
+            settings.get("plan_interval_minutes", 30),
+            force=False,
+        )
+        if due:
+            _log(f"REPAIR: rebuilding strategy plan ({why})")
+            state.pop("last_executed_plan_sig", None)
+            save_worker_state(state)
+            rebuilt = _run_plan_build(client, force=True, config_path=config_path)
+            if rebuilt is not None:
+                data = load_strategy_plan(PLAN_FILE)
+                state = load_worker_state()
+            force = True
+        else:
+            _log(f"REPAIR deferred ({why}) — not submitting stale plan")
+            return False
     if not data:
         _log("No saved strategy plan - run plan task first.")
+        return False
+    if _plan_should_rebuild(data):
+        _log("REPAIR: plan still stale/missing after rebuild — skip submit")
         return False
     plan = plan_from_dict(data)
     executed = _submit_plan_orders(client, plan, settings, state, force=force)

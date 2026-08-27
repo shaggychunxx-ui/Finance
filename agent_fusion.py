@@ -235,26 +235,44 @@ def agent_in_domain(agent_id: str, symbol: str, *, sector_hint: str = "") -> boo
 
 
 def current_regime() -> dict[str, Any]:
-    portfolio = _load_json(OUTPUT / "portfolio.json")
-    if portfolio and isinstance(portfolio.get("regime"), dict):
-        return portfolio["regime"]
+    """Live tape regime for entry gates.
+
+    Prefer markets.json (refreshed by the markets agent). Do not prefer
+    portfolio.json — that file is a prior plan snapshot. Using it first can
+    freeze extreme_risk_off and block every new order until a plan rebuild
+    succeeds, which itself cannot succeed while the gate is stuck.
+    """
     markets = _load_json(OUTPUT / "markets.json")
-    if markets and isinstance(markets.get("regime"), dict):
+    if markets and isinstance(markets.get("regime"), dict) and markets["regime"].get("posture"):
         return markets["regime"]
     score = 0.5
     posture = "neutral"
     if markets:
         metrics = markets.get("metrics", {}) or {}
-        score = float(metrics.get("risk_on_score", 0.5) or 0.5)
+        try:
+            score = float(metrics.get("risk_on_score", 0.5) or 0.5)
+        except (TypeError, ValueError):
+            score = 0.5
         assessment = markets.get("assessment") or {}
-        regime_label = str(assessment.get("regime", "") or markets.get("trend_label", "")).lower()
+        raw_regime = markets.get("regime")
+        regime_label = str(
+            assessment.get("regime", "")
+            or (raw_regime if isinstance(raw_regime, str) else "")
+            or metrics.get("trend_label", "")
+            or markets.get("trend_label", "")
+        ).lower()
         if any(token in regime_label for token in ("risk-on", "risk on", "bull", "expansion")):
             posture = "risk-on"
         elif any(token in regime_label for token in ("risk-off", "risk off", "bear", "contraction", "defensive")):
             posture = "risk-off"
         else:
             posture = "risk-on" if score >= 0.58 else "risk-off" if score <= 0.42 else "neutral"
-    return {"label": posture.title(), "posture": posture, "risk_on_score": score}
+        return {"label": posture.title(), "posture": posture, "risk_on_score": score}
+
+    portfolio = _load_json(OUTPUT / "portfolio.json")
+    if portfolio and isinstance(portfolio.get("regime"), dict):
+        return portfolio["regime"]
+    return {"label": "Neutral", "posture": "neutral", "risk_on_score": 0.5}
 
 
 def agent_default_horizon(agent_id: str) -> str:
