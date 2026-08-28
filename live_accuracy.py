@@ -168,19 +168,22 @@ def merge_live_and_benchmark(
     else:
         blended_pct = bench_pct
 
+    # Displayed % stays live. Blend is stored as a reference only — never resets live %.
+    displayed = live_pct if live_pct is not None else blended_pct
     row = dict(live_entry or {})
     row.update(
         {
-            "combined_accuracy_pct": blended_pct,
-            "weighted_accuracy_pct": blended_pct,
-            "accuracy_pct": blended_pct,
-            "accuracy_source": BLENDED_ACCURACY_SOURCE,
+            "combined_accuracy_pct": displayed,
+            "weighted_accuracy_pct": displayed,
+            "accuracy_pct": displayed,
+            "accuracy_source": LIVE_ACCURACY_SOURCE,
             "live_scored": live_total,
             "benchmark_scored": bench_total,
-            "live_weight": round(live_weight, 3),
+            "live_weight": 1.0,
             "live_accuracy_pct": live_pct,
             "benchmark_accuracy_pct": bench_pct,
-            "weight_multiplier": _weight_multiplier(blended_pct),
+            "benchmark_blend_pct": blended_pct,
+            "weight_multiplier": _weight_multiplier(displayed),
             "benchmark_reference_pct": bench_pct,
         }
     )
