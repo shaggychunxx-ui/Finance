@@ -363,6 +363,17 @@ def _bar_walk_forward(
             continue
 
         step = max(1, int(signal_step_bars))
+        from backtest_labels import (
+            binary_brier,
+            family_for_agent,
+            net_return_pct,
+            purged_keep,
+            regime_from_closes,
+        )
+
+        spy_for_regime = proxy_closes if proxy_closes else closes
+        family = family_for_agent(agent_id)
+        source = _signal_source(agent_id)
         for idx in range(min_start, max_start, step):
             if max_trials is not None and len(trials) >= max_trials:
                 return trials
@@ -371,10 +382,13 @@ def _bar_walk_forward(
             )
             predicted_return = _estimate_return(direction, confidence)
             simulated_at = dates[idx].isoformat() if idx < len(dates) else _now_iso()
+            regime = regime_from_closes(spy_for_regime, min(idx, len(spy_for_regime) - 1))
 
             for horizon in horizons:
                 if max_trials is not None and len(trials) >= max_trials:
                     return trials
+                if not purged_keep(idx, min_start, horizon, step):
+                    continue
                 fwd = HORIZON_BARS.get(horizon, 1)
                 actual_ret = forward_return_pct(closes, idx, fwd)
                 if actual_ret is None:
@@ -392,8 +406,12 @@ def _bar_walk_forward(
                         actual_return_pct=round(actual_ret, 3),
                         hit=hit,
                         confidence=round(confidence, 3),
-                        source="bar_walk_forward",
+                        source=source,
                         simulated_at=simulated_at,
+                        net_return_pct=net_return_pct(direction, actual_ret, symbol=symbol),
+                        regime=regime,
+                        family=family,
+                        brier=binary_brier(direction, hit, confidence),
                     )
                 )
     return trials
@@ -546,6 +564,10 @@ def _snapshot_replay(
                     continue
                 predicted = str(pred.get("predicted_direction", "flat")).lower()
                 actual_dir = _actual_direction(actual_ret, horizon=horizon)
+                hit = _prediction_hit(predicted, actual_dir)
+                conf = float(pred.get("confidence", 0.5))
+                from backtest_labels import binary_brier, family_for_agent, net_return_pct, regime_from_closes
+
                 trials.append(
                     SimTrial(
                         agent_id=agent_id,
@@ -559,10 +581,14 @@ def _snapshot_replay(
                             else None
                         ),
                         actual_return_pct=round(actual_ret, 3),
-                        hit=_prediction_hit(predicted, actual_dir),
-                        confidence=float(pred.get("confidence", 0.5)),
+                        hit=hit,
+                        confidence=conf,
                         source="snapshot_replay",
                         simulated_at=recorded_at,
+                        net_return_pct=net_return_pct(predicted, actual_ret, symbol=sym),
+                        regime=regime_from_closes(closes, start_idx),
+                        family=family_for_agent(agent_id),
+                        brier=binary_brier(predicted, hit, conf),
                     )
                 )
     return trials
@@ -578,7 +604,9 @@ def _aggregate_trials(trials: list[SimTrial]) -> tuple[dict[str, dict[str, Any]]
                 "hits": 0,
                 "by_horizon": {},
                 "by_source": {},
+                "by_regime": {},
                 "avg_return_when_hit": [],
+                "net_returns": [],
             },
         )
         bucket["total"] += 1
@@ -589,8 +617,14 @@ def _aggregate_trials(trials: list[SimTrial]) -> tuple[dict[str, dict[str, Any]]
         sb = bucket["by_source"].setdefault(trial.source, {"total": 0, "hits": 0})
         sb["total"] += 1
         sb["hits"] += 1 if trial.hit else 0
+        regime = trial.regime or "neutral"
+        rb = bucket["by_regime"].setdefault(regime, {"total": 0, "hits": 0})
+        rb["total"] += 1
+        rb["hits"] += 1 if trial.hit else 0
         if trial.hit:
             bucket["avg_return_when_hit"].append(trial.actual_return_pct)
+        if trial.net_return_pct is not None:
+            bucket["net_returns"].append(trial.net_return_pct)
 
     leaderboard: list[dict[str, Any]] = []
     for aid, bucket in agents.items():
