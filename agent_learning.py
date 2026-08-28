@@ -437,6 +437,37 @@ def _build_learning(
     )
 
 
+def _sticky_accuracy(
+    *,
+    prior_pct: float | None,
+    prior_n: int,
+    merged_pct: float | None,
+    merged_n: int,
+    live_pct: float | None,
+    live_n: int,
+) -> tuple[float | None, int]:
+    """Keep published live agent %; never reset to 0 or a tiny live slice.
+
+    Advances only when live matured samples strictly exceed the stored count.
+    """
+    if (prior_pct is None or (float(prior_pct) == 0.0 and prior_n < MIN_AGENT_SAMPLES)) and (
+        merged_pct is not None and merged_n >= MIN_AGENT_SAMPLES
+    ):
+        prior_pct, prior_n = merged_pct, merged_n
+    if prior_pct is not None:
+        sticky_pct, sticky_n = float(prior_pct), int(prior_n)
+    elif merged_pct is not None:
+        sticky_pct, sticky_n = float(merged_pct), int(merged_n)
+    elif live_pct is not None and live_n >= MIN_AGENT_SAMPLES:
+        sticky_pct, sticky_n = float(live_pct), int(live_n)
+    else:
+        sticky_pct = float(live_pct) if live_pct is not None else None
+        sticky_n = max(int(prior_n), int(live_n))
+    if live_pct is not None and live_n > sticky_n and live_n >= MIN_AGENT_SAMPLES:
+        return float(live_pct), int(live_n)
+    return sticky_pct, sticky_n
+
+
 def rebuild_agent_learning() -> dict[str, Any]:
     """Rebuild per-agent learning from live accuracy, walk-forward journal, and blame.
 
@@ -461,9 +492,8 @@ def rebuild_agent_learning() -> dict[str, Any]:
         trial_rows = []
 
     live_agents = accuracy.get("live_agents") if isinstance(accuracy.get("live_agents"), dict) else {}
-    accuracy_agents = live_agents or (
-        accuracy.get("agents") if isinstance(accuracy.get("agents"), dict) else {}
-    )
+    merged_agents = accuracy.get("agents") if isinstance(accuracy.get("agents"), dict) else {}
+    accuracy_agents = live_agents or merged_agents
     benchmark_agents = benchmark.get("agents") if isinstance(benchmark.get("agents"), dict) else {}
     blame_map = {
         str(aid): float((row or {}).get("blame_score") or 0.0)
@@ -532,18 +562,34 @@ def rebuild_agent_learning() -> dict[str, Any]:
             source = "live"
             entry = {"accuracy_pct": live_pct, "total_scored": live_n}
 
-        # Sticky: keep the stored live % if this rebuild has no live labels.
-        # Never copy proxy/benchmark % into accuracy_pct.
-        if live_pct is not None and live_n > 0:
-            sticky_pct = live_pct
-            sticky_n = live_n
-        elif prior_pct is not None:
-            sticky_pct = float(prior_pct)
-            sticky_n = max(prior_n, live_n)
-            source = "live_sticky" if source == "default" else source
-        else:
-            sticky_pct = None
-            sticky_n = live_n
+        # Sticky: keep the stored/published %; never reset to a tiny live slice.
+        merged_row = merged_agents.get(aid) if isinstance(merged_agents.get(aid), dict) else {}
+        merged_pct = None
+        merged_n = 0
+        if merged_row:
+            raw = (
+                merged_row.get("combined_accuracy_pct")
+                or merged_row.get("weighted_accuracy_pct")
+                or merged_row.get("accuracy_pct")
+            )
+            if raw is not None:
+                merged_pct = float(raw)
+            merged_n = int(merged_row.get("total_scored") or merged_row.get("total") or 0)
+        if prior_pct is not None:
+            try:
+                prior_pct = float(prior_pct)
+            except (TypeError, ValueError):
+                prior_pct = None
+        sticky_pct, sticky_n = _sticky_accuracy(
+            prior_pct=prior_pct,
+            prior_n=prior_n,
+            merged_pct=merged_pct,
+            merged_n=merged_n,
+            live_pct=live_pct,
+            live_n=live_n,
+        )
+        if sticky_pct is not None and live_n < sticky_n:
+            source = "live_sticky"
 
         if isinstance(entry, dict) and aid in benchmark_agents:
             bench_row = benchmark_agents[aid]

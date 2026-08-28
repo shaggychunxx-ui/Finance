@@ -223,6 +223,80 @@ def test_sticky_live_pct_not_reset_by_proxy(trial_paths):
     assert grid["proxy_accuracy_pct"] < 40
 
 
+def test_sticky_ignores_tiny_zero_live_slice(trial_paths):
+    store, learning, tmp = trial_paths
+    (tmp / "accuracy_benchmark.json").write_text(json.dumps({"agents": {}}), encoding="utf-8")
+    live_rows = []
+    for i in range(7):
+        live_rows.append(
+            {
+                "agent_id": "grid",
+                "symbol": "SPY",
+                "horizon": "24h",
+                "predicted_direction": "up",
+                "actual_direction": "down",
+                "hit": False,
+            }
+        )
+    (tmp / "prediction_accuracy.json").write_text(
+        json.dumps(
+            {
+                "live_agents": {
+                    "grid": {
+                        "accuracy_pct": 0.0,
+                        "combined_accuracy_pct": 0.0,
+                        "total_scored": 7,
+                    }
+                },
+                "agents": {
+                    "grid": {
+                        "accuracy_pct": 44.9,
+                        "combined_accuracy_pct": 44.9,
+                        "total_scored": 136,
+                    }
+                },
+                "scored": live_rows,
+            }
+        ),
+        encoding="utf-8",
+    )
+    learning.LEARNING_FILE.write_text(
+        json.dumps(
+            {
+                "agents": {
+                    "grid": {"agent_id": "grid", "accuracy_pct": 0.0, "sample_trials": 7}
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    store.append_trials(
+        [
+            {
+                "agent_id": "grid",
+                "symbol": "SPY",
+                "horizon": "24h",
+                "predicted_direction": "up",
+                "actual_direction": "down",
+                "hit": False,
+                "source": "bar_walk_forward",
+            }
+        ]
+        * 8,
+        cycle_id="bt_zero",
+    )
+    import agents.platform_catalog as catalog
+
+    original = catalog.active_agent_sources
+    catalog.active_agent_sources = lambda check_remote=False: [{"id": "grid"}]  # type: ignore
+    try:
+        payload = learning.rebuild_agent_learning()
+    finally:
+        catalog.active_agent_sources = original  # type: ignore
+    assert payload["agents"]["grid"]["accuracy_pct"] == 44.9
+    assert payload["agents"]["grid"]["sample_trials"] == 136
+
+
 def test_labels_net_and_purge():
     from backtest_labels import net_return_pct, purged_keep, round_trip_cost_pct, source_bucket
 
