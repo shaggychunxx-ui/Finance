@@ -121,18 +121,22 @@ def merge_live_and_benchmark(
     )
 
     if live_total < min_blend:
+        if live_entry and live_total > 0:
+            # Keep live % even with few samples — do not replace with proxy/benchmark.
+            row = dict(live_entry)
+            row["accuracy_source"] = LIVE_ACCURACY_SOURCE
+            row["live_scored"] = live_total
+            row["benchmark_scored"] = bench_total
+            row["live_weight"] = 1.0
+            if benchmark_entry:
+                row["benchmark_reference_pct"] = _pct(benchmark_entry)
+            return row
         if benchmark_entry and bench_total >= MIN_SAMPLES_BENCHMARK:
             row = dict(benchmark_entry)
             row["accuracy_source"] = BENCHMARK_SOURCE
             row["live_scored"] = live_total
             row["benchmark_scored"] = bench_total
             row["live_weight"] = 0.0
-            return row
-        if live_entry and live_total > 0:
-            row = dict(live_entry)
-            row["accuracy_source"] = LIVE_ACCURACY_SOURCE
-            row["live_scored"] = live_total
-            row["live_weight"] = 1.0
             return row
         return dict(benchmark_entry) if benchmark_entry else None
 

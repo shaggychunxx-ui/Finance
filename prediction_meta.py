@@ -60,17 +60,23 @@ def _score_bucket(score: float) -> str:
     return "s_strong"
 
 
-def _collect_labeled_rows() -> list[dict[str, Any]]:
+def _collect_labeled_rows(*, live_only: bool = True) -> list[dict[str, Any]]:
+    """Live scored rows for trading calibration. Proxy backtest is opt-in."""
     rows: list[dict[str, Any]] = []
     acc = _load_json(HISTORY / "prediction_accuracy.json") or {}
     for row in acc.get("scored") or []:
         if isinstance(row, dict) and row.get("predicted_direction") not in (None, "flat"):
             rows.append(row)
+    if live_only:
+        return rows
     try:
+        from backtest_labels import source_bucket
         from backtest_trial_store import load_recent_trials
 
         for row in load_recent_trials(max_rows=15_000):
-            if isinstance(row, dict) and row.get("predicted_direction") not in (None, "flat"):
+            if not isinstance(row, dict) or row.get("predicted_direction") in (None, "flat"):
+                continue
+            if source_bucket(str(row.get("source") or "")) == "replay":
                 rows.append(row)
     except Exception:
         pass

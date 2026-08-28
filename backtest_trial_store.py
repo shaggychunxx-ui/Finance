@@ -67,6 +67,10 @@ def trial_to_row(trial: Any, *, cycle_id: str) -> dict[str, Any]:
             "confidence": getattr(trial, "confidence", None),
             "source": getattr(trial, "source", ""),
             "simulated_at": getattr(trial, "simulated_at", ""),
+            "net_return_pct": getattr(trial, "net_return_pct", None),
+            "regime": getattr(trial, "regime", ""),
+            "family": getattr(trial, "family", ""),
+            "brier": getattr(trial, "brier", None),
         }
     row["cycle_id"] = cycle_id
     row["agent_id"] = str(row.get("agent_id") or "")

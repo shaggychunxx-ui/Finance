@@ -72,9 +72,43 @@ def main() -> int:
     print(f"agent_learning agents_tracked: {learning.get('meta', {}).get('agents_tracked')} "
           f"live_scored_rows: {learning.get('meta', {}).get('live_scored_rows')}")
     print(f"learning agents keys: {len(agents_learn)}")
+    print(f"backtest_trial_rows_merged: {learning.get('meta', {}).get('backtest_trial_rows_merged')}")
     print(f"policy boost/cut: {policy.get('boost_agents')} / {policy.get('cut_agents')}")
     print(f"fusion_weights present: {bool(fusion)} size_bytes: "
           f"{(HISTORY / 'fusion_weights.json').stat().st_size if (HISTORY / 'fusion_weights.json').exists() else 0}")
+
+    poisoned = 0
+    unique_sim = set()
+    live_proxy_deltas = []
+    for aid, row in agents_learn.items():
+        if not isinstance(row, dict):
+            continue
+        live_pct = row.get("live_accuracy_pct")
+        proxy_pct = row.get("proxy_accuracy_pct")
+        live_n = int(row.get("live_sample_trials") or 0)
+        if live_pct is not None and proxy_pct is not None and live_n >= 8:
+            delta = float(proxy_pct) - float(live_pct)
+            live_proxy_deltas.append((aid, round(delta, 1), live_pct, proxy_pct))
+            if aid in (policy.get("boost_agents") or []) and delta >= 12:
+                poisoned += 1
+    if live_proxy_deltas:
+        live_proxy_deltas.sort(key=lambda x: abs(x[1]), reverse=True)
+        print("live vs proxy accuracy (top 8 |delta|):")
+        for aid, delta, live_pct, proxy_pct in live_proxy_deltas[:8]:
+            print(f"  {aid}: live={live_pct}% proxy={proxy_pct}% delta={delta}")
+    print(f"boost-vs-proxy poison flags: {poisoned}")
+    try:
+        from backtest_trial_store import JSONL_FILE, load_latest_cycle_meta, load_recent_trials
+
+        meta = load_latest_cycle_meta()
+        print(f"latest trial cycle: {meta.get('cycle_id')} window_end={ (meta.get('meta') or {}).get('window_end') }")
+        for row in load_recent_trials(max_rows=4000)[:4000]:
+            unique_sim.add(str(row.get("simulated_at") or "")[:10])
+        print(f"unique simulated_at dates in recent journal: {len(unique_sim)}")
+    except Exception as exc:
+        print(f"trial journal: unavailable ({exc})")
+    full_day = HISTORY / "full_day_backtest.json"
+    print(f"full_day_2000 report present: {full_day.exists()}")
 
     # Wiring smoke (imports)
     try:
