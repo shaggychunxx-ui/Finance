@@ -1080,7 +1080,7 @@ def main() -> int:
         review_path = None
 
     if args.no_gui:
-        if review_path and sys.platform == "win32":
+        if review_path and sys.platform == "win32" and args.review_seconds > 0:
             try:
                 os.startfile(str(review_path))  # type: ignore[attr-defined]
             except OSError:
