@@ -46,6 +46,17 @@ class AgentLearning:
     horizon_weights: tuple[tuple[str, float], ...] = ()
     min_confidence_to_emit: float = 0.35
     source: str = "mixed"
+    live_accuracy_pct: float | None = None
+    proxy_accuracy_pct: float | None = None
+    replay_accuracy_pct: float | None = None
+    proxy_edge_score: float = 0.0
+    family: str = ""
+    avg_net_return_pct: float | None = None
+    live_sample_trials: int = 0
+    proxy_sample_trials: int = 0
+    replay_sample_trials: int = 0
+    by_regime: tuple[tuple[str, float], ...] = ()
+    brier_score: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -67,6 +78,17 @@ class AgentLearning:
             "horizon_weights": {h: round(w, 4) for h, w in self.horizon_weights},
             "min_confidence_to_emit": round(self.min_confidence_to_emit, 4),
             "source": self.source,
+            "live_accuracy_pct": self.live_accuracy_pct,
+            "proxy_accuracy_pct": self.proxy_accuracy_pct,
+            "replay_accuracy_pct": self.replay_accuracy_pct,
+            "proxy_edge_score": round(self.proxy_edge_score, 4),
+            "family": self.family,
+            "avg_net_return_pct": self.avg_net_return_pct,
+            "live_sample_trials": int(self.live_sample_trials),
+            "proxy_sample_trials": int(self.proxy_sample_trials),
+            "replay_sample_trials": int(self.replay_sample_trials),
+            "by_regime": {k: round(v, 4) for k, v in self.by_regime},
+            "brier_score": self.brier_score,
             "updated_at": self.updated_at,
         }
 
