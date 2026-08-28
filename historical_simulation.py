@@ -633,6 +633,8 @@ def _aggregate_trials(trials: list[SimTrial]) -> tuple[dict[str, dict[str, Any]]
         accuracy_pct = round(hits / total * 100, 1) if total else None
         hit_returns = bucket.get("avg_return_when_hit") or []
         avg_hit_return = round(sum(hit_returns) / len(hit_returns), 3) if hit_returns else None
+        nets = bucket.get("net_returns") or []
+        avg_net = round(sum(nets) / len(nets), 4) if nets else None
         weight_multiplier = (
             round(max(0.5, min(1.5, 0.5 + float(accuracy_pct) / 100.0)), 3)
             if total >= MIN_SIM_SAMPLES and accuracy_pct is not None
@@ -644,6 +646,7 @@ def _aggregate_trials(trials: list[SimTrial]) -> tuple[dict[str, dict[str, Any]]
             "hits": hits,
             "accuracy_pct": accuracy_pct,
             "avg_return_when_hit_pct": avg_hit_return,
+            "avg_net_return_pct": avg_net,
             "weight_multiplier": weight_multiplier,
             "by_horizon": {
                 h: {
@@ -660,6 +663,14 @@ def _aggregate_trials(trials: list[SimTrial]) -> tuple[dict[str, dict[str, Any]]
                     "accuracy_pct": round(v["hits"] / v["total"] * 100, 1) if v["total"] else None,
                 }
                 for s, v in bucket.get("by_source", {}).items()
+            },
+            "by_regime": {
+                s: {
+                    "total": v["total"],
+                    "hits": v["hits"],
+                    "accuracy_pct": round(v["hits"] / v["total"] * 100, 1) if v["total"] else None,
+                }
+                for s, v in bucket.get("by_regime", {}).items()
             },
         }
         bucket.clear()
@@ -765,7 +776,7 @@ def run_historical_simulation(
         all_trials = _subsample_trials(all_trials, trial_cap)
 
     agents, leaderboard = _aggregate_trials(all_trials)
-    bar_count = sum(1 for t in all_trials if t.source == "bar_walk_forward")
+    bar_count = sum(1 for t in all_trials if t.source in {"bar_walk_forward", "expert_replay"})
     snap_count = sum(1 for t in all_trials if t.source == "snapshot_replay")
 
     if leaderboard:
@@ -800,6 +811,7 @@ def run_historical_simulation(
                 "bar_walk_trials": bar_count,
                 "snapshot_trials": snap_count,
                 "total_trials": total_trials,
+                "window_end": _window_end_from_cache(bar_cache),
             },
         )
     except Exception:
@@ -905,22 +917,45 @@ def get_agent_historical_accuracy(agent_id: str) -> dict[str, Any] | None:
     return entry if isinstance(entry, dict) else None
 
 
+def _window_end_from_cache(bar_cache: dict[str, list[dict[str, Any]]]) -> str:
+    spy = bar_cache.get("SPY") or []
+    dates = bar_datetimes(spy)
+    if dates:
+        return dates[-1].date().isoformat()
+    return ""
+
+
+def current_session_window_end() -> str:
+    """Last cached/fetched SPY session date (YYYY-MM-DD) for skip-resample."""
+    bars = load_daily_bars("SPY") or fetch_daily_bars("SPY", days=10, use_cache=True)
+    dates = bar_datetimes(bars)
+    if dates:
+        return dates[-1].date().isoformat()
+    return datetime.now(timezone.utc).date().isoformat()
+
+
 def historical_weight_multiplier(agent_id: str, *, horizon: str = "24h") -> float | None:
+    """Replay/snapshot only — proxy bar-walk does not move specialist fusion."""
     entry = get_agent_historical_accuracy(agent_id)
     if not entry:
         return None
-    total = int(entry.get("total_trials") or 0)
-    if total < MIN_SIM_SAMPLES:
+    by_source = entry.get("by_source") if isinstance(entry.get("by_source"), dict) else {}
+    replay_total = 0
+    replay_hits = 0
+    for key in ("snapshot_replay", "expert_replay"):
+        row = by_source.get(key) if isinstance(by_source.get(key), dict) else None
+        if not row:
+            continue
+        replay_total += int(row.get("total") or 0)
+        replay_hits += int(row.get("hits") or 0)
+    if replay_total < MIN_SIM_SAMPLES:
         return None
+    acc = replay_hits / replay_total * 100.0
     by_horizon = entry.get("by_horizon") or {}
     hb = by_horizon.get(horizon) if isinstance(by_horizon, dict) else None
     if isinstance(hb, dict) and int(hb.get("total", 0)) >= 4:
-        acc = float(hb.get("accuracy_pct") or 50.0)
-        return max(0.5, min(1.5, 0.5 + acc / 100.0))
-    acc = entry.get("accuracy_pct")
-    if acc is None:
-        return None
-    return float(entry.get("weight_multiplier") or max(0.5, min(1.5, 0.5 + float(acc) / 100.0)))
+        acc = float(hb.get("accuracy_pct") or acc)
+    return max(0.5, min(1.5, 0.5 + acc / 100.0))
 
 
 def run_historical_simulation_cli(output: Path | None = None) -> dict[str, Any]:
