@@ -438,15 +438,21 @@ def _build_learning(
 
 
 def rebuild_agent_learning() -> dict[str, Any]:
-    """Rebuild per-agent learning from live accuracy, walk-forward journal, and blame."""
+    """Rebuild per-agent learning from live accuracy, walk-forward journal, and blame.
+
+    Live ``accuracy_pct`` is sticky: never zeroed and never replaced by proxy
+    bar-walk percentages. Proxy/replay land in separate fields.
+    """
     from agents.platform_catalog import active_agent_sources
+    from backtest_labels import source_bucket
 
     accuracy = _load_json(ACCURACY_FILE) or {}
     benchmark = _load_json(BENCHMARK_FILE) or _load_json(SIM_FILE) or {}
     penalties = _load_json(PENALTIES_FILE) or {}
+    prior_store = _learning_store()
+    prior_agents = prior_store.get("agents") if isinstance(prior_store.get("agents"), dict) else {}
 
     scored_rows = list(accuracy.get("scored") or []) if isinstance(accuracy, dict) else []
-    # Merge durable backtest trials (night continuous full-day loop).
     try:
         from backtest_trial_store import load_recent_trials
 
@@ -454,7 +460,10 @@ def rebuild_agent_learning() -> dict[str, Any]:
     except Exception:
         trial_rows = []
 
-    accuracy_agents = accuracy.get("agents") if isinstance(accuracy.get("agents"), dict) else {}
+    live_agents = accuracy.get("live_agents") if isinstance(accuracy.get("live_agents"), dict) else {}
+    accuracy_agents = live_agents or (
+        accuracy.get("agents") if isinstance(accuracy.get("agents"), dict) else {}
+    )
     benchmark_agents = benchmark.get("agents") if isinstance(benchmark.get("agents"), dict) else {}
     blame_map = {
         str(aid): float((row or {}).get("blame_score") or 0.0)
@@ -462,19 +471,28 @@ def rebuild_agent_learning() -> dict[str, Any]:
         if isinstance(row, dict)
     }
 
-    by_agent_scored: dict[str, list[dict[str, Any]]] = {}
+    live_by: dict[str, list[dict[str, Any]]] = {}
+    proxy_by: dict[str, list[dict[str, Any]]] = {}
+    replay_by: dict[str, list[dict[str, Any]]] = {}
     for row in scored_rows:
         if not isinstance(row, dict):
             continue
         aid = str(row.get("agent_id") or "")
         if aid:
-            by_agent_scored.setdefault(aid, []).append(row)
+            live_by.setdefault(aid, []).append(row)
     for row in trial_rows:
         if not isinstance(row, dict):
             continue
         aid = str(row.get("agent_id") or "")
-        if aid:
-            by_agent_scored.setdefault(aid, []).append(row)
+        if not aid:
+            continue
+        bucket = source_bucket(str(row.get("source") or ""))
+        if bucket == "replay":
+            replay_by.setdefault(aid, []).append(row)
+        elif bucket == "proxy":
+            proxy_by.setdefault(aid, []).append(row)
+        else:
+            live_by.setdefault(aid, []).append(row)
 
     agents_out: dict[str, Any] = {}
     for src in active_agent_sources(check_remote=False):
@@ -483,41 +501,72 @@ def rebuild_agent_learning() -> dict[str, Any]:
             continue
         from agent_fusion import agent_uses_directional_accuracy
 
-        source = "live"
-        entry = accuracy_agents.get(aid) if agent_uses_directional_accuracy(aid) else None
-        if not isinstance(entry, dict) and aid in benchmark_agents:
-            bench_row = benchmark_agents[aid]
-            if isinstance(bench_row, dict):
-                source = "walk_forward"
-                entry = {
-                    "combined_accuracy_pct": bench_row.get("accuracy_pct"),
-                    "accuracy_pct": bench_row.get("accuracy_pct"),
-                    "by_horizon": bench_row.get("by_horizon"),
-                    "total_scored": bench_row.get("total_trials"),
-                    "total_trials": bench_row.get("total_trials"),
-                }
-        elif isinstance(entry, dict) and aid in benchmark_agents:
-            # Blend: prefer live entry but fill horizon gaps from benchmark.
-            source = "live+walk_forward"
-            bench_row = benchmark_agents[aid]
-            if isinstance(bench_row, dict):
-                if not entry.get("by_horizon") and bench_row.get("by_horizon"):
-                    entry = dict(entry)
-                    entry["by_horizon"] = bench_row.get("by_horizon")
-                if not entry.get("total_scored") and bench_row.get("total_trials"):
-                    entry = dict(entry)
-                    entry["total_scored"] = bench_row.get("total_trials")
+        live_entry = live_agents.get(aid) if agent_uses_directional_accuracy(aid) else None
+        if not isinstance(live_entry, dict):
+            live_entry = accuracy_agents.get(aid) if agent_uses_directional_accuracy(aid) else None
+        prior_row = prior_agents.get(aid) if isinstance(prior_agents.get(aid), dict) else {}
+        prior_pct = prior_row.get("accuracy_pct") if isinstance(prior_row, dict) else None
+        prior_n = int((prior_row or {}).get("sample_trials") or 0)
 
-        agent_rows = by_agent_scored.get(aid, [])
+        live_pct = None
+        live_n = 0
+        entry: dict[str, Any] | None = None
+        source = "default"
+        if isinstance(live_entry, dict):
+            live_pct = (
+                live_entry.get("combined_accuracy_pct")
+                or live_entry.get("weighted_accuracy_pct")
+                or live_entry.get("accuracy_pct")
+            )
+            if live_pct is not None:
+                live_pct = float(live_pct)
+            live_n = int(live_entry.get("total_scored") or live_entry.get("total") or 0)
+            if live_n <= 0:
+                live_n = len(live_by.get(aid) or [])
+            entry = dict(live_entry)
+            source = "live"
+        elif live_by.get(aid):
+            live_n = len(live_by[aid])
+            hits = sum(1 for r in live_by[aid] if r.get("hit"))
+            live_pct = round(hits / live_n * 100, 1) if live_n else None
+            source = "live"
+            entry = {"accuracy_pct": live_pct, "total_scored": live_n}
+
+        # Sticky: keep the stored live % if this rebuild has no live labels.
+        # Never copy proxy/benchmark % into accuracy_pct.
+        if live_pct is not None and live_n > 0:
+            sticky_pct = live_pct
+            sticky_n = live_n
+        elif prior_pct is not None:
+            sticky_pct = float(prior_pct)
+            sticky_n = max(prior_n, live_n)
+            source = "live_sticky" if source == "default" else source
+        else:
+            sticky_pct = None
+            sticky_n = live_n
+
+        if isinstance(entry, dict) and aid in benchmark_agents:
+            bench_row = benchmark_agents[aid]
+            if isinstance(bench_row, dict) and not entry.get("by_horizon") and bench_row.get("by_horizon"):
+                entry = dict(entry)
+                entry["by_horizon"] = bench_row.get("by_horizon")
+
+        agent_live = live_by.get(aid, [])
+        agent_proxy = proxy_by.get(aid, [])
+        agent_replay = replay_by.get(aid, [])
         learning = _build_learning(
             aid,
             accuracy_entry=entry if isinstance(entry, dict) else None,
-            scored_rows=agent_rows,
+            scored_rows=agent_live,
             blame=blame_map.get(aid, 0.0),
-            source=source if agent_rows or entry else "default",
+            source=source if (agent_live or entry or sticky_pct is not None) else "default",
+            live_rows=agent_live,
+            proxy_rows=agent_proxy,
+            replay_rows=agent_replay,
+            sticky_accuracy_pct=sticky_pct,
+            sticky_samples=sticky_n,
         )
-        total = int((entry or {}).get("total_scored") or (entry or {}).get("total") or 0)
-        if total >= MIN_AGENT_SAMPLES or agent_rows or aid in benchmark_agents:
+        if sticky_n >= MIN_AGENT_SAMPLES or agent_live or agent_proxy or agent_replay or aid in prior_agents:
             agents_out[aid] = learning.as_dict()
 
     try:
