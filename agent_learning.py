@@ -602,36 +602,56 @@ def rebuild_agent_learning() -> dict[str, Any]:
 
 
 def _write_learning_policy(agents_out: dict[str, Any], *, trial_meta: dict[str, Any]) -> None:
-    """Compact machine-readable policy for fusion / sleeves."""
+    """Compact machine-readable policy for fusion / sleeves.
+
+    boost/cut use live edge only. Proxy family weights are informational and
+    must not replace stored live accuracy_pct.
+    """
     ranked = sorted(
         (
             (aid, float(row.get("edge_score") or 0.0), float(row.get("accuracy_pct") or 0.0))
             for aid, row in agents_out.items()
-            if isinstance(row, dict)
+            if isinstance(row, dict) and int(row.get("live_sample_trials") or row.get("sample_trials") or 0) >= MIN_AGENT_SAMPLES
         ),
         key=lambda item: (item[1], item[2]),
         reverse=True,
     )
     boost = [aid for aid, edge, _ in ranked[:8] if edge > 0]
     cut = [aid for aid, edge, _ in ranked if edge <= -0.2][:12]
+    family_acc: dict[str, list[float]] = {}
+    for row in agents_out.values():
+        if not isinstance(row, dict):
+            continue
+        fam = str(row.get("family") or "")
+        proxy = row.get("proxy_accuracy_pct")
+        if fam and proxy is not None:
+            family_acc.setdefault(fam, []).append(float(proxy))
+    family_weights = {
+        fam: round(sum(vals) / len(vals) / 100.0, 4)
+        for fam, vals in family_acc.items()
+        if vals
+    }
     policy = {
         "updated_at": _now_iso(),
         "source_cycle": trial_meta.get("cycle_id"),
         "global": {
             "min_accuracy_pct": 28.0,
             "min_trials": MIN_AGENT_SAMPLES,
-            "description": "Derived from latest agent_learning rebuild.",
+            "description": "Live edge for boost/cut; proxy families are separate.",
         },
         "boost_agents": boost,
         "cut_agents": cut,
+        "family_weights": family_weights,
         "agents": {
             aid: {
                 "preferred_horizon": row.get("preferred_horizon"),
                 "fusion_multiplier": row.get("fusion_multiplier"),
                 "edge_score": row.get("edge_score"),
+                "proxy_edge_score": row.get("proxy_edge_score"),
                 "min_confidence_to_emit": row.get("min_confidence_to_emit"),
                 "avoid_symbols": row.get("avoid_symbols") or [],
                 "trust_symbols": row.get("trust_symbols") or [],
+                "family": row.get("family"),
             }
             for aid, row in agents_out.items()
             if isinstance(row, dict)
@@ -760,6 +780,19 @@ def get_agent_learning(agent_id: str) -> AgentLearning | None:
         horizon_weights=hz_t,
         min_confidence_to_emit=float(row.get("min_confidence_to_emit") or 0.35),
         source=str(row.get("source") or "mixed"),
+        live_accuracy_pct=float(row["live_accuracy_pct"]) if row.get("live_accuracy_pct") is not None else None,
+        proxy_accuracy_pct=float(row["proxy_accuracy_pct"]) if row.get("proxy_accuracy_pct") is not None else None,
+        replay_accuracy_pct=float(row["replay_accuracy_pct"]) if row.get("replay_accuracy_pct") is not None else None,
+        proxy_edge_score=float(row.get("proxy_edge_score") or 0.0),
+        family=str(row.get("family") or ""),
+        avg_net_return_pct=float(row["avg_net_return_pct"]) if row.get("avg_net_return_pct") is not None else None,
+        live_sample_trials=int(row.get("live_sample_trials") or 0),
+        proxy_sample_trials=int(row.get("proxy_sample_trials") or 0),
+        replay_sample_trials=int(row.get("replay_sample_trials") or 0),
+        by_regime=tuple((str(k), float(v)) for k, v in (row.get("by_regime") or {}).items())
+        if isinstance(row.get("by_regime"), dict)
+        else (),
+        brier_score=float(row["brier_score"]) if row.get("brier_score") is not None else None,
     )
 
 
