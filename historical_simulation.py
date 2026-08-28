@@ -81,6 +81,10 @@ class SimTrial:
     confidence: float
     source: str
     simulated_at: str
+    net_return_pct: float | None = None
+    regime: str = ""
+    family: str = ""
+    brier: float | None = None
 
 
 @dataclass
@@ -225,6 +229,32 @@ def _sim_zscore(closes: list[float], idx: int) -> tuple[str, float]:
     return "flat", 0.35
 
 
+def _sim_momentum_reversion(closes: list[float], idx: int) -> tuple[str, float]:
+    """Deterministic extract of momentum-reversion entry (EMA100 + 120d mom + RSI3)."""
+    try:
+        from agents.momentum_reversion.expert import (
+            EMA_TREND_FILTER,
+            LOOKBACK_MOMENTUM,
+            LOOKBACK_REVERSION,
+            RSI_OVERSOLD_LIMIT,
+            calculate_ema,
+            calculate_rsi,
+        )
+    except Exception:
+        return _sim_momentum(closes, idx)
+    if idx < LOOKBACK_MOMENTUM or len(closes) <= idx:
+        return _sim_momentum(closes, idx)
+    window = closes[: idx + 1]
+    ema = calculate_ema(window, EMA_TREND_FILTER)
+    rsi = calculate_rsi(window, LOOKBACK_REVERSION)
+    if ema[idx] is None or rsi[idx] is None:
+        return _sim_momentum(closes, idx)
+    mom = window[idx] - window[idx - LOOKBACK_MOMENTUM]
+    if window[idx] > float(ema[idx]) and mom > 0 and float(rsi[idx]) < RSI_OVERSOLD_LIMIT:
+        return "up", 0.64
+    return _sim_momentum(closes, idx)
+
+
 def _agent_signal(
     agent_id: str,
     closes: list[float],
@@ -232,6 +262,8 @@ def _agent_signal(
     *,
     proxy_closes: list[float] | None,
 ) -> tuple[str, float]:
+    if agent_id == "momentum-reversion":
+        return _sim_momentum_reversion(closes, idx)
     if agent_id in MOMENTUM_AGENTS:
         return _sim_momentum(closes, idx)
     if agent_id in MEAN_REVERSION_AGENTS:
@@ -244,6 +276,10 @@ def _agent_signal(
     if proxy and len(proxy) > idx:
         return _sim_momentum(proxy, idx)
     return _sim_momentum(closes, idx)
+
+
+def _signal_source(agent_id: str) -> str:
+    return "expert_replay" if agent_id == "momentum-reversion" else "bar_walk_forward"
 
 
 def _collect_universe(*, max_symbols: int) -> list[str]:
