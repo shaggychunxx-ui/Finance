@@ -289,7 +289,21 @@ def _build_learning(
     scored_rows: list[dict[str, Any]],
     blame: float = 0.0,
     source: str = "mixed",
+    live_rows: list[dict[str, Any]] | None = None,
+    proxy_rows: list[dict[str, Any]] | None = None,
+    replay_rows: list[dict[str, Any]] | None = None,
+    sticky_accuracy_pct: float | None = None,
+    sticky_samples: int | None = None,
 ) -> AgentLearning:
+    from backtest_labels import (
+        by_regime_accuracy,
+        family_for_agent,
+        mean_brier,
+        mean_net_return,
+        proxy_edge_score,
+        row_accuracy_pct,
+    )
+
     accuracy_pct = None
     by_horizon: dict[str, Any] | None = None
     sample_trials = 0
@@ -309,9 +323,18 @@ def _build_learning(
             or 0
         )
 
-    recent = scored_rows[-200:] if scored_rows else []
+    # Live rows only for bias / avoid / horizon — never the last 200 proxy trials.
+    live_rows = list(live_rows or [])
+    proxy_rows = list(proxy_rows or [])
+    replay_rows = list(replay_rows or [])
+    recent_source = live_rows if live_rows else scored_rows
+    recent = recent_source[-200:] if recent_source else []
+    if sticky_accuracy_pct is not None:
+        accuracy_pct = float(sticky_accuracy_pct)
+    if sticky_samples is not None and sticky_samples > 0:
+        sample_trials = int(sticky_samples)
     if not sample_trials:
-        sample_trials = len(scored_rows)
+        sample_trials = len(live_rows) if live_rows else 0
     recent_miss = None
     if recent:
         misses = sum(1 for row in recent if not row.get("hit"))
@@ -371,6 +394,15 @@ def _build_learning(
     elif accuracy_pct is not None and accuracy_pct >= 40:
         min_conf = 0.30
 
+    live_pct, live_n = row_accuracy_pct(live_rows)
+    proxy_pct, proxy_n = row_accuracy_pct(proxy_rows)
+    replay_pct, replay_n = row_accuracy_pct(replay_rows)
+    regime_map = by_regime_accuracy(proxy_rows + replay_rows)
+    regime_t = tuple(
+        (k, float(v.get("accuracy_pct") or 0.0))
+        for k, v in sorted(regime_map.items(), key=lambda kv: kv[1].get("total") or 0, reverse=True)[:6]
+    )
+
     return AgentLearning(
         agent_id=agent_id,
         accuracy_pct=accuracy_pct,
@@ -391,6 +423,17 @@ def _build_learning(
         horizon_weights=hz_weights,
         min_confidence_to_emit=min_conf,
         source=source,
+        live_accuracy_pct=live_pct if live_pct is not None else accuracy_pct,
+        proxy_accuracy_pct=proxy_pct,
+        replay_accuracy_pct=replay_pct,
+        proxy_edge_score=proxy_edge_score(proxy_pct, proxy_n),
+        family=family_for_agent(agent_id),
+        avg_net_return_pct=mean_net_return(proxy_rows + replay_rows),
+        live_sample_trials=live_n,
+        proxy_sample_trials=proxy_n,
+        replay_sample_trials=replay_n,
+        by_regime=regime_t,
+        brier_score=mean_brier(live_rows) or mean_brier(replay_rows),
     )
 
 
