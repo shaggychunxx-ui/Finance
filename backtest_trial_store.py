@@ -206,3 +206,25 @@ def load_latest_cycle_meta() -> dict[str, Any]:
         "trial_count": latest.get("trial_count"),
         "meta": latest.get("meta") or {},
     }
+
+
+def night_window_already_journaled(window_end: str) -> bool:
+    """True if a night/bar-walk cycle already recorded this session close."""
+    want = str(window_end or "").strip()
+    if not want:
+        return False
+    index = _load_json(INDEX_FILE)
+    cycles = list((index or {}).get("cycles") or []) if isinstance(index, dict) else []
+    for row in reversed(cycles):
+        if not isinstance(row, dict):
+            continue
+        meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+        if str(meta.get("source") or "") == "full_day_walk_forward":
+            continue
+        if str(meta.get("window_end") or "") == want:
+            return True
+    latest = load_latest_cycle_meta()
+    meta = latest.get("meta") if isinstance(latest.get("meta"), dict) else {}
+    if str(meta.get("source") or "") == "full_day_walk_forward":
+        return False
+    return str(meta.get("window_end") or "") == want

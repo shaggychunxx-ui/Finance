@@ -165,6 +165,116 @@ def test_policy_fusion_multiplier(trial_paths):
     assert learning.policy_fusion_multiplier("unknown") == 1.0
 
 
+def test_sticky_live_pct_not_reset_by_proxy(trial_paths):
+    """Proxy bar-walk must not overwrite a stored live accuracy_pct."""
+    store, learning, tmp = trial_paths
+    (tmp / "accuracy_benchmark.json").write_text(json.dumps({"agents": {}}), encoding="utf-8")
+    (tmp / "prediction_accuracy.json").write_text(
+        json.dumps({"agents": {}, "live_agents": {}, "scored": []}),
+        encoding="utf-8",
+    )
+    learning.LEARNING_FILE.write_text(
+        json.dumps(
+            {
+                "agents": {
+                    "grid": {
+                        "agent_id": "grid",
+                        "accuracy_pct": 44.9,
+                        "sample_trials": 136,
+                        "edge_score": 0.5,
+                        "lessons": [],
+                        "avoid_symbols": [],
+                        "trust_symbols": [],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    rows = []
+    for i in range(12):
+        rows.append(
+            {
+                "agent_id": "grid",
+                "symbol": "SPY",
+                "horizon": "24h",
+                "predicted_direction": "up",
+                "actual_direction": "down",
+                "hit": False,
+                "source": "bar_walk_forward",
+                "simulated_at": f"2025-06-{i+1:02d}T13:30:00+00:00",
+            }
+        )
+    store.append_trials(rows, cycle_id="bt_sticky")
+
+    import agents.platform_catalog as catalog
+
+    original = catalog.active_agent_sources
+    catalog.active_agent_sources = lambda check_remote=False: [{"id": "grid"}]  # type: ignore
+    try:
+        payload = learning.rebuild_agent_learning()
+    finally:
+        catalog.active_agent_sources = original  # type: ignore
+
+    grid = payload["agents"]["grid"]
+    assert grid["accuracy_pct"] == 44.9
+    assert grid["sample_trials"] == 136
+    assert grid.get("proxy_accuracy_pct") is not None
+    assert grid["proxy_accuracy_pct"] < 40
+
+
+def test_labels_net_and_purge():
+    from backtest_labels import net_return_pct, purged_keep, round_trip_cost_pct, source_bucket
+
+    assert round_trip_cost_pct("SPY") < round_trip_cost_pct("FAKE")
+    net = net_return_pct("up", 1.0, symbol="SPY")
+    assert net < 1.0
+    assert net_return_pct("flat", 5.0, symbol="SPY") == 0.0
+    assert purged_keep(25, 25, "24h", 5) is True
+    assert purged_keep(26, 25, "1yr", 5) is False
+    assert purged_keep(25, 25, "1yr", 5) is True
+    assert source_bucket("bar_walk_forward") == "proxy"
+    assert source_bucket("snapshot_replay") == "replay"
+    assert source_bucket("live") == "live"
+
+
+def test_night_window_skip_ignores_full_day(trial_paths):
+    store, _learning, _tmp = trial_paths
+    store.append_trials(
+        [
+            {
+                "agent_id": "grid",
+                "symbol": "SPY",
+                "horizon": "24h",
+                "predicted_direction": "up",
+                "actual_direction": "up",
+                "hit": True,
+                "source": "full_day_walk_forward",
+            }
+        ],
+        cycle_id="bt_full",
+        meta={"source": "full_day_walk_forward", "window_end": "2026-08-27"},
+    )
+    assert store.night_window_already_journaled("2026-08-27") is False
+    store.append_trials(
+        [
+            {
+                "agent_id": "grid",
+                "symbol": "SPY",
+                "horizon": "24h",
+                "predicted_direction": "up",
+                "actual_direction": "up",
+                "hit": True,
+                "source": "bar_walk_forward",
+            }
+        ],
+        cycle_id="bt_night",
+        meta={"source": "bar_walk_forward", "window_end": "2026-08-27"},
+    )
+    assert store.night_window_already_journaled("2026-08-27") is True
+    assert store.night_window_already_journaled("2026-08-28") is False
+
+
 def test_base_expert_apply_learning(trial_paths, monkeypatch):
     _store, learning, tmp = trial_paths
     # minimal learning file

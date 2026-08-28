@@ -106,11 +106,50 @@ def full_day_defaults() -> dict[str, Any]:
     return defaults
 
 
+def _window_already_journaled() -> tuple[bool, str, str]:
+    """True when a night bar-walk cycle already covers today's last SPY close."""
+    try:
+        from backtest_trial_store import night_window_already_journaled
+        from historical_simulation import current_session_window_end
+
+        current = current_session_window_end()
+        hit = night_window_already_journaled(current)
+        return hit, current, current if hit else ""
+    except Exception:
+        return False, "", ""
+
+
 def run_backtest_cycle(*, target_trials: int, max_symbols: int, full: bool) -> dict:
     """Run one walk-forward backtest and rebuild agent learning. Returns a status dict."""
     from historical_simulation import run_accuracy_benchmark
 
     started = time.perf_counter()
+    skipped, current_end, journaled_end = _window_already_journaled()
+    if skipped:
+        _log(
+            f"  Skip resample — session close {current_end} already journaled "
+            f"({journaled_end}). Rebuilding learning from live + journal only."
+        )
+        try:
+            from agent_learning import rebuild_agent_learning, write_next_session_brief
+
+            rebuild_agent_learning()
+            write_next_session_brief()
+        except Exception as exc:
+            _log(f"  Learning rebuild after skip failed: {type(exc).__name__}: {exc}")
+        elapsed = time.perf_counter() - started
+        return {
+            "finished_at": _now_iso(),
+            "elapsed_sec": round(elapsed, 1),
+            "trials": 0,
+            "top_agent": None,
+            "backtest_ok": True,
+            "status": "skipped",
+            "skip_reason": "window_unchanged",
+            "window_end": current_end,
+            "session": "night" if not is_us_regular_session() else "market",
+        }
+
     _log(
         f"  Running walk-forward backtest — target {target_trials:,} trials, "
         f"{max_symbols} symbols, full={full} …"

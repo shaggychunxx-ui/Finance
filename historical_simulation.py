@@ -812,6 +812,7 @@ def run_historical_simulation(
                 "snapshot_trials": snap_count,
                 "total_trials": total_trials,
                 "window_end": _window_end_from_cache(bar_cache),
+                "source": "bar_walk_forward",
             },
         )
     except Exception:

@@ -440,12 +440,20 @@ def _process_day(
     state: dict[str, Any],
 ) -> dict[str, Any]:
     """One trading day: predict with data ≤ sim_day; score vs known forward returns."""
-    from historical_simulation import _agent_signal, _estimate_return
+    from backtest_labels import (
+        binary_brier,
+        family_for_agent,
+        net_return_pct,
+        purged_keep,
+        regime_from_closes,
+    )
+    from historical_simulation import _agent_signal, _estimate_return, _signal_source
     from price_history import forward_return_pct
 
     day_trials = 0
     day_hits = 0
     samples: list[dict[str, Any]] = []
+    journal_rows: list[dict[str, Any]] = []
 
     by_agent: dict[str, Any] = state.setdefault("by_agent", {})
     by_horizon: dict[str, Any] = state.setdefault("by_horizon", {})
@@ -462,6 +470,9 @@ def _process_day(
         if proxy_pack is not None and proxy_pack["date_to_idx"].get(sim_day) == idx:
             proxy_closes = proxy_pack["closes"]
 
+        spy_closes = proxy_closes if proxy_closes else closes
+        regime = regime_from_closes(spy_closes, min(idx, len(spy_closes) - 1))
+
         for agent_id in agent_ids:
             # Signal uses only history through idx (no future closes).
             direction, confidence = _agent_signal(
@@ -471,8 +482,14 @@ def _process_day(
                 proxy_closes=proxy_closes,
             )
             predicted_return = _estimate_return(direction, confidence)
+            family = family_for_agent(agent_id)
+            source = _signal_source(agent_id)
+            if source == "bar_walk_forward":
+                source = "full_day_walk_forward"
 
             for horizon in horizons:
+                if not purged_keep(idx, MIN_HISTORY_BARS, horizon, 1):
+                    continue
                 fwd = HORIZON_BARS.get(horizon, 1)
                 actual_ret = forward_return_pct(closes, idx, fwd)
                 if actual_ret is None:
@@ -482,6 +499,25 @@ def _process_day(
                 day_trials += 1
                 if hit:
                     day_hits += 1
+                journal_rows.append(
+                    {
+                        "agent_id": agent_id,
+                        "symbol": symbol,
+                        "horizon": horizon,
+                        "predicted_direction": direction,
+                        "actual_direction": actual_dir,
+                        "predicted_return_pct": round(predicted_return, 3),
+                        "actual_return_pct": round(actual_ret, 3),
+                        "hit": hit,
+                        "confidence": round(confidence, 3),
+                        "source": source,
+                        "simulated_at": sim_day.isoformat(),
+                        "net_return_pct": net_return_pct(direction, actual_ret, symbol=symbol),
+                        "regime": regime,
+                        "family": family,
+                        "brier": binary_brier(direction, hit, confidence),
+                    }
+                )
 
                 bucket = by_agent.setdefault(
                     agent_id,
@@ -517,6 +553,23 @@ def _process_day(
     state["total_hits"] = int(state.get("total_hits", 0)) + day_hits
     state["days_completed"] = int(state.get("days_completed", 0)) + 1
     state["sim_date"] = sim_day.isoformat()
+
+    if journal_rows:
+        try:
+            from backtest_trial_store import append_trials, new_cycle_id
+
+            append_trials(
+                journal_rows,
+                cycle_id=new_cycle_id(),
+                meta={
+                    "source": "full_day_walk_forward",
+                    "sim_date": sim_day.isoformat(),
+                    "window_end": sim_day.isoformat(),
+                    "total_trials": len(journal_rows),
+                },
+            )
+        except Exception:
+            pass
 
     digest = {
         "date": sim_day.isoformat(),
