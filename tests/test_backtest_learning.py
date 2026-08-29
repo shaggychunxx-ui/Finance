@@ -349,6 +349,49 @@ def test_night_window_skip_ignores_full_day(trial_paths):
     assert store.night_window_already_journaled("2026-08-28") is False
 
 
+def test_sticky_ignores_benchmark_as_live(trial_paths):
+    """Merged walk-forward rows must not replace a stored live %."""
+    _store, learning, tmp = trial_paths
+    (tmp / "accuracy_benchmark.json").write_text(json.dumps({"agents": {}}), encoding="utf-8")
+    (tmp / "prediction_accuracy.json").write_text(
+        json.dumps(
+            {
+                "live_agents": {},
+                "scored": [],
+                "agents": {
+                    "grid": {
+                        "accuracy_pct": 33.1,
+                        "combined_accuracy_pct": 33.1,
+                        "total_scored": 136,
+                        "accuracy_source": "walk_forward_benchmark",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    learning.LEARNING_FILE.write_text(
+        json.dumps(
+            {
+                "agents": {
+                    "grid": {"agent_id": "grid", "accuracy_pct": 44.9, "sample_trials": 136}
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    import agents.platform_catalog as catalog
+
+    original = catalog.active_agent_sources
+    catalog.active_agent_sources = lambda check_remote=False: [{"id": "grid"}]  # type: ignore
+    try:
+        payload = learning.rebuild_agent_learning()
+    finally:
+        catalog.active_agent_sources = original  # type: ignore
+    assert payload["agents"]["grid"]["accuracy_pct"] == 44.9
+    assert payload["agents"]["grid"]["sample_trials"] == 136
+
+
 def test_base_expert_apply_learning(trial_paths, monkeypatch):
     _store, learning, tmp = trial_paths
     # minimal learning file

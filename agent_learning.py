@@ -463,6 +463,7 @@ def _sticky_accuracy(
     else:
         sticky_pct = float(live_pct) if live_pct is not None else None
         sticky_n = max(int(prior_n), int(live_n))
+    # Advance only on additional *live* matured labels, never on proxy/benchmark n.
     if live_pct is not None and live_n > sticky_n and live_n >= MIN_AGENT_SAMPLES:
         return float(live_pct), int(live_n)
     return sticky_pct, sticky_n
@@ -532,8 +533,11 @@ def rebuild_agent_learning() -> dict[str, Any]:
         from agent_fusion import agent_uses_directional_accuracy
 
         live_entry = live_agents.get(aid) if agent_uses_directional_accuracy(aid) else None
-        if not isinstance(live_entry, dict):
-            live_entry = accuracy_agents.get(aid) if agent_uses_directional_accuracy(aid) else None
+        # Never treat merged/benchmark as live — that overwrites published %.
+        if isinstance(live_entry, dict):
+            src_name = str(live_entry.get("accuracy_source") or "")
+            if src_name in {"walk_forward_benchmark", "benchmark"}:
+                live_entry = None
         prior_row = prior_agents.get(aid) if isinstance(prior_agents.get(aid), dict) else {}
         prior_pct = prior_row.get("accuracy_pct") if isinstance(prior_row, dict) else None
         prior_n = int((prior_row or {}).get("sample_trials") or 0)

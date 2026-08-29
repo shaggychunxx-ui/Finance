@@ -845,6 +845,20 @@ def rebuild_accuracy_index(*, rebuild_learning: bool = True) -> dict[str, Any]:
     backfill_scored_magnitude()
     accuracy = _accuracy_store()
     scored: list[dict[str, Any]] = list(accuracy.get("scored") or [])
+    prior_live = accuracy.get("live_agents") if isinstance(accuracy.get("live_agents"), dict) else {}
+    # Empty scored must not wipe published live_agents / replace them with proxy.
+    if not scored and prior_live:
+        accuracy["pending_count"] = len((_load_json(PENDING_FILE) or {}).get("predictions", []))
+        accuracy["updated_at"] = _now_iso()
+        _write_json(ACCURACY_FILE, accuracy)
+        if rebuild_learning:
+            try:
+                from agent_learning import rebuild_agent_learning
+
+                rebuild_agent_learning()
+            except Exception:
+                pass
+        return accuracy
     live_agents: dict[str, dict[str, Any]] = {}
 
     for row in scored:
@@ -1182,7 +1196,9 @@ def run_live_scoring_cycle(*, rebuild_learning: bool = True) -> dict[str, int]:
         pruned = 0
     scored = score_matured_predictions(rebuild_learning=rebuild_learning)
     if scored == 0:
-        rebuild_accuracy_index(rebuild_learning=rebuild_learning)
+        accuracy = _accuracy_store()
+        if accuracy.get("scored"):
+            rebuild_accuracy_index(rebuild_learning=rebuild_learning)
     try:
         from prediction_meta import rebuild_prediction_meta
 

@@ -128,15 +128,8 @@ def run_backtest_cycle(*, target_trials: int, max_symbols: int, full: bool) -> d
     if skipped:
         _log(
             f"  Skip resample — session close {current_end} already journaled "
-            f"({journaled_end}). Rebuilding learning from live + journal only."
+            f"({journaled_end}). Not rebuilding learning (keeps published agent %)."
         )
-        try:
-            from agent_learning import rebuild_agent_learning, write_next_session_brief
-
-            rebuild_agent_learning()
-            write_next_session_brief()
-        except Exception as exc:
-            _log(f"  Learning rebuild after skip failed: {type(exc).__name__}: {exc}")
         elapsed = time.perf_counter() - started
         return {
             "finished_at": _now_iso(),
@@ -338,6 +331,15 @@ def run_loop(
         # If market opened mid-cycle, go idle until night again.
         if night_only and is_us_regular_session():
             _log("  Market opened during/after cycle — pausing until night.")
+            continue
+
+        if entry.get("status") == "skipped":
+            skip_wait = 1800.0
+            _log(
+                f"  Window unchanged — sleeping {skip_wait / 60:.0f} min until next close check "
+                "(does not rewrite agent %)."
+            )
+            _sleep_interruptible(skip_wait)
             continue
 
         if continuous:
