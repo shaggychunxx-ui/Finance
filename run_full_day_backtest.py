@@ -174,6 +174,35 @@ def _clear_pid() -> None:
         pass
 
 
+def _another_instance_running() -> int | None:
+    """Return the live PID if a full-day backtest is already running."""
+    if not PID_FILE.exists():
+        return None
+    try:
+        raw = PID_FILE.read_text(encoding="utf-8").strip()
+        pid = int(raw) if raw.isdigit() else 0
+    except (OSError, ValueError):
+        return None
+    if pid <= 0 or pid == os.getpid():
+        return None
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)
+                return pid
+            return None
+        except Exception:
+            return None
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return None
+    return pid
+
+
 def _agent_ids(*, max_agents: int = 0) -> list[str]:
     from historical_simulation import SKIP_AGENTS
     from agents.platform_catalog import active_agent_sources
@@ -1051,6 +1080,11 @@ def main() -> int:
         help="Export/sync learning every N session days (default: 100; 0=checkpoints only)",
     )
     args = parser.parse_args()
+    existing = _another_instance_running()
+    if existing:
+        print(f"Full day backtest already running (pid {existing}) — exit.", flush=True)
+        _log(f"Already running pid={existing} — not starting a second copy.")
+        return 0
     if args.seconds_per_day < 0.05:
         print("--seconds-per-day must be >= 0.05", file=sys.stderr)
         return 2
