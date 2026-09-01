@@ -44,12 +44,24 @@ from etrade_runtime import (  # noqa: E402
 LOG = ROOT / "output" / "oauth_auto.log"
 LOCK = ROOT / "output" / "oauth_auto.lock"
 LAST = ROOT / "output" / "oauth_auto_last.json"
+CHROME_OPENED = ROOT / "output" / "oauth_chrome_opened.txt"
 COOLDOWN_FAIL_SEC = 10 * 60
+# After a harvest/2FA miss, do not click Log on / launch Chrome every 10 min.
+# Overnight 2026-09-01: 30 starts, 15 chrome.exe launches, 29 harvest fails.
+COOLDOWN_HARVEST_SEC = 60 * 60
 LOCK_STALE_SEC = 180
 UI_BUDGET_SEC = 120
 # Request tokens die quickly. Reuse the pending authorize URL only this long.
 PENDING_MAX_AGE_SEC = 12 * 60
 DEBUG_DIR = ROOT / "output" / "chrome-oauth-debug"
+_HARVEST_FAIL_MARKERS = (
+    "harvest",
+    "2fa",
+    "another tab",
+    "already opened",
+    "already launched",
+    "not launching",
+)
 
 
 def _log(msg: str) -> None:
@@ -132,6 +144,59 @@ def _pending_path() -> Path:
     return ROOT / "output" / "oauth_pending.json"
 
 
+def _chrome_opened_this_cycle() -> bool:
+    return CHROME_OPENED.exists()
+
+
+def _mark_chrome_opened() -> None:
+    try:
+        CHROME_OPENED.parent.mkdir(parents=True, exist_ok=True)
+        CHROME_OPENED.write_text(f"{time.time():.3f}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _clear_chrome_opened() -> None:
+    try:
+        CHROME_OPENED.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def decide_oauth_chrome_action(
+    *,
+    kind: str,
+    pending_fresh: bool,
+    chrome_running: bool,
+    already_opened_chrome: bool,
+    error_page: bool = False,
+) -> str:
+    """Pick one Chrome action. Never open a second E*TRADE tab.
+
+    drive     — OAuth tab is on screen; click through, no mint, no chrome.exe
+    navigate  — put a URL in the SAME tab (error page / stale pending)
+    open_once — no tab yet this cycle; mint if needed, launch Chrome once
+    wait      — we already launched; window detection missed; do not add a tab
+    """
+    kind = kind or ""
+    if kind in ("code", "accept", "2fa"):
+        return "drive"
+    if error_page and kind:
+        return "navigate"
+    if kind in ("login", "etrade"):
+        return "drive" if pending_fresh else "navigate"
+    if already_opened_chrome and chrome_running:
+        return "wait"
+    if already_opened_chrome and not chrome_running:
+        return "open_once"
+    return "open_once"
+
+
+def _harvest_like_fail(detail: str) -> bool:
+    text = (detail or "").lower()
+    return any(marker in text for marker in _HARVEST_FAIL_MARKERS)
+
+
 def _pending_url(*, max_age_sec: float | None = PENDING_MAX_AGE_SEC) -> str | None:
     pending = _pending_path()
     if not pending.exists():
@@ -180,14 +245,25 @@ def _begin_oauth() -> str | None:
 
 
 def _open_taskbar_chrome(url: str, *, force: bool = False) -> bool:
-    if not force and _etrade_oauth_tab_open():
+    if _etrade_oauth_tab_open():
         _log("E*TRADE tab already open — not opening another")
         return True
+    if not force:
+        try:
+            from open_chrome_url import chrome_running
+        except Exception:
+            chrome_running = lambda: False  # noqa: E731
+        if chrome_running() and _chrome_opened_this_cycle():
+            _log("Chrome already launched this OAuth cycle — not opening another tab")
+            return False
     from open_chrome_url import open_url_chrome
 
     proof = open_url_chrome(url)
     _log(f"chrome open proof={proof}")
-    return bool(proof.get("ok") or proof.get("launched"))
+    ok = bool(proof.get("ok") or proof.get("launched"))
+    if ok:
+        _mark_chrome_opened()
+    return ok
 
 
 def _finish(code: str) -> int:
