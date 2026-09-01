@@ -500,6 +500,7 @@ def complete_oauth_if_needed(*, force: bool = False) -> tuple[bool, str]:
             _log(msg)
             return False, msg
         _write_last(True, detail2)
+        _clear_chrome_opened()
         _log(f"AUTO OAUTH OK {detail2}")
         return True, detail2
     except Exception as exc:
