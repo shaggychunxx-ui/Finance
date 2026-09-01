@@ -101,13 +101,10 @@ def test_user_closed_chrome_may_open_once() -> None:
 
 
 def test_2fa_title_outranks_login() -> None:
-    assert classify_title("Verify your identity - Google Chrome") == "2fa"
-    # Rank numbers live in etrade_chrome_window; 2fa must be preferred over login.
-    from chrome_oauth_ui import etrade_chrome_window as _  # noqa: F401
+    from chrome_oauth_ui import WINDOW_KIND_RANK
 
-    login_rank = 3
-    twofa_rank = 2
-    assert twofa_rank < login_rank
+    assert classify_title("Verify your identity - Google Chrome") == "2fa"
+    assert WINDOW_KIND_RANK["2fa"] < WINDOW_KIND_RANK["login"]
 
 
 if __name__ == "__main__":
