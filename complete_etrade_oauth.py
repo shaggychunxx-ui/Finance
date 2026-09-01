@@ -390,7 +390,12 @@ def complete_oauth_if_needed(*, force: bool = False) -> tuple[bool, str]:
     last = _read_last()
     if not force and last.get("ok") is False:
         age = time.time() - float(last.get("ts") or 0)
-        if age < COOLDOWN_FAIL_SEC:
+        cool = (
+            COOLDOWN_HARVEST_SEC
+            if _harvest_like_fail(str(last.get("detail") or ""))
+            else COOLDOWN_FAIL_SEC
+        )
+        if age < cool:
             return False, f"cooldown {age:.0f}s after failed auto-oauth ({last.get('detail')})"
 
     if not _acquire_lock():
@@ -403,10 +408,31 @@ def complete_oauth_if_needed(*, force: bool = False) -> tuple[bool, str]:
         win = ui.etrade_chrome_window()
         kind = ui.classify_title(win.title) if win is not None else ""
         url = _pending_url()
-        # accept/code/2fa: keep this tab. login/error/none: put the pending URL in the tab.
-        reuse_ui = kind in ("accept", "code", "2fa") and bool(url)
-        if reuse_ui:
-            _log(f"existing {kind} tab + fresh pending — drive UI, no new token")
+        try:
+            from open_chrome_url import chrome_running as _chrome_is_running
+        except Exception:
+            def _chrome_is_running() -> bool:
+                return False
+
+        action = decide_oauth_chrome_action(
+            kind=kind,
+            pending_fresh=bool(url),
+            chrome_running=_chrome_is_running(),
+            already_opened_chrome=_chrome_opened_this_cycle(),
+        )
+        _log(
+            f"chrome action={action} kind={kind or 'none'} "
+            f"pending_fresh={bool(url)} already_opened={_chrome_opened_this_cycle()}"
+        )
+
+        if action == "wait":
+            msg = "E*TRADE Chrome already opened this cycle — not launching another tab"
+            _write_last(False, msg)
+            _log(msg)
+            return False, msg
+
+        if action == "drive":
+            _log(f"existing {kind} tab — drive UI, no new token, no new tab")
         else:
             if not url:
                 url = _begin_oauth()
@@ -415,13 +441,18 @@ def complete_oauth_if_needed(*, force: bool = False) -> tuple[bool, str]:
                     _write_last(False, msg)
                     _log(msg)
                     return False, msg
-            navigated = False
-            if win is not None:
+            if action == "navigate":
+                if win is None:
+                    msg = "no E*TRADE tab to navigate — not opening another"
+                    _write_last(False, msg)
+                    _log(msg)
+                    return False, msg
                 ui.foreground(win)
-                navigated = ui.navigate_same_tab(win, url)
-            if navigated:
-                _log("navigated existing E*TRADE tab to authorize URL")
-            elif not _open_taskbar_chrome(url, force=True):
+                if ui.navigate_same_tab(win, url):
+                    _log("navigated existing E*TRADE tab to authorize URL")
+                else:
+                    _log("same-tab navigate failed — driving existing tab, not opening another")
+            elif not _open_taskbar_chrome(url, force=False):
                 msg = "failed to open/navigate taskbar Chrome"
                 _write_last(False, msg)
                 _log(msg)
@@ -433,14 +464,14 @@ def complete_oauth_if_needed(*, force: bool = False) -> tuple[bool, str]:
             url = _begin_oauth()
             if url:
                 try:
-                    import chrome_oauth_ui as ui
-
                     win = ui.etrade_chrome_window()
                     if win is not None:
                         ui.navigate_same_tab(win, url)
-                        _log("fresh token after logon-delay; retrying UI")
+                        _log("fresh token after logon-delay; retrying UI (same tab)")
                         time.sleep(2.0)
                         code, status = _drive_ui()
+                    else:
+                        _log("logon-delay but no E*TRADE tab — not launching another")
                 except Exception as exc:
                     _log(f"error-retry navigate failed: {exc}")
         if not code:
