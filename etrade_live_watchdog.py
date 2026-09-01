@@ -373,6 +373,10 @@ def _open_browser_once(url: str) -> None:
             return
     except Exception:
         pass
+    opened_mark = ROOT / "output" / "oauth_chrome_opened.txt"
+    if opened_mark.exists() and _chrome_running():
+        _log("OAUTH browser suppressed — chrome already launched this OAuth cycle")
+        return
     age = _browser_opened_age_sec()
     if age is not None and age < BROWSER_OPEN_COOLDOWN_SEC:
         if _chrome_running():
@@ -519,6 +523,10 @@ def _open_oauth() -> str | None:
 
             if ui.etrade_chrome_window() is not None:
                 _log("OAUTH open skipped — E*TRADE tab already open (no new token)")
+                return _read_pending_url()
+            opened_mark = ROOT / "output" / "oauth_chrome_opened.txt"
+            if opened_mark.exists() and _chrome_running():
+                _log("OAUTH open skipped — chrome already launched this cycle (no new token)")
                 return _read_pending_url()
         except Exception:
             pass
