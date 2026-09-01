@@ -378,12 +378,17 @@ def list_chrome_windows() -> list[ChromeWindow]:
     return found
 
 
+# Prefer 2FA over leftover login windows so we wait instead of clicking
+# Log on again (that spawned extra identity tabs overnight).
+WINDOW_KIND_RANK = {"code": 0, "accept": 1, "2fa": 2, "login": 3, "etrade": 4, "other": 9}
+
+
 def etrade_chrome_window() -> ChromeWindow | None:
     windows = list_chrome_windows()
     ranked = []
     for win in windows:
         kind = classify_title(win.title)
-        rank = {"code": 0, "accept": 1, "login": 2, "2fa": 3, "etrade": 4, "other": 9}[kind]
+        rank = WINDOW_KIND_RANK[kind]
         ranked.append((rank, win))
     ranked.sort(key=lambda t: t[0])
     return ranked[0][1] if ranked and ranked[0][0] < 9 else None
