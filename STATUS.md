@@ -1,6 +1,6 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-08-26
+**Last updated:** 2026-09-03
 **Updated by:** GROMIT
 **Active owner:** none
 **Act on:** none
@@ -38,6 +38,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 
 ## Done
+
+- [x] **GROMIT (PHONE: etrader phone app. no orders are displayed):** Empty Orders tab was a display bug, not a dead book. Live #8804 has **35 OPEN** (SOFI/MBAI/LYNX… stop-limits) + recent fills. Bridge **v1.6.4** flattens nested E*TRADE OrderDetail so cards have symbol/action/status (was all `-`). Phone **v1.6.55** loads Orders from GROMIT like Positions (was gated on phone-native login). Phone: **Get app update**, then Refresh. Task `tasks/done/054-etrader-orders-displayed.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: Re enteing Oath sould be autmatic):** Midnight re-login is automatic. `complete_etrade_oauth.py` drives taskbar Chrome Default (PrintWindow, not overlay BitBlt): Log on → left Accept → verifier → tokens on live root. Tonight **LIVE STATUS: OK** production; worker `Connected to E*TRADE (production)`. Watchdog + keepalive retry on expiry. 2FA still human if prompted. Task `tasks/done/052-oauth-reentry-automatic.md`. **Act on: none**.
 
@@ -119,7 +121,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - **Pipeline 0/0 hint (updated 2026-08-02):** historical 0/0 rows were a recording bug in split post-fusion; fixed. New cycles show real ok/total.
 - **Group scoring:** each agent group graded by function. Source: `agent_groups.py` `scoring`.
 - **Massive.com (2026-08-02):** Agent `massive-market` live with key on AI-CODING runtime (task **046**). Auth: `MASSIVE_API_KEY` or runtime `data_apis.massive_api_key`. Docs: https://massive.com/docs/rest/quickstart. Do not paste keys into STATUS/git.
-- Phone LAN: GROMIT `/health` `phone_hint` is `http://192.168.1.177:8787` (2026-08-26). Token in live config only.
+- Phone LAN: GROMIT `/health` `phone_hint` is `http://192.168.1.177:8787` (2026-09-03). Token in live config only. Bridge **v1.6.4**.
 - PHONE: why are there no orders? → answered 2026-08-26 (task **051**). 0 submitted: bullish-gate stale plan + PDT 6/3 + closed/OAuth.
 - PHONE: Re enteing Oath sould be autmatic → done 2026-08-26 (task **052**). Auto OAuth LIVE STATUS OK.
 

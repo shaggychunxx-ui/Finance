@@ -1,7 +1,7 @@
 # E*TRADE phone bridge — pairing (no secrets)
 
 **Updated:** 2026-08-26  
-**Service:** Finance `phone_bridge.py` (finance-phone-bridge **v1.6.3**)
+**Service:** Finance `phone_bridge.py` (finance-phone-bridge **v1.6.4**)
 
 ## Active host
 
