@@ -51,7 +51,7 @@ LOG_FILE = ROOT / "output" / "phone_bridge.log"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
-BRIDGE_VERSION = "1.6.3"
+BRIDGE_VERSION = "1.6.4"
 # Phone "data current" if last GROMIT pack/marks are newer than this (refresh is 15 min).
 DATA_CURRENT_MAX_SEC = 20 * 60
 
@@ -1154,6 +1154,224 @@ def _f(val: Any, default: float = 0.0) -> float:
         return float(val)
     except (TypeError, ValueError):
         return default
+
+
+def _opt_num(val: Any) -> float | None:
+    if val is None or val == "":
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def _epoch_ms(val: Any) -> int | None:
+    if val is None or val == "":
+        return None
+    try:
+        n = int(float(val))
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    # E*TRADE sometimes returns seconds.
+    if n < 1_000_000_000_000:
+        n *= 1000
+    return n
+
+
+def _format_placed(ms: int | None) -> str:
+    if not ms:
+        return "-"
+    try:
+        return time.strftime("%b %d %I:%M %p", time.localtime(ms / 1000.0))
+    except (OverflowError, OSError, ValueError):
+        return "-"
+
+
+def _price_display(
+    price_type: str | None,
+    limit_p: float | None,
+    stop_p: float | None,
+    avg_p: float | None,
+) -> str:
+    pt = str(price_type or "").upper()
+    if avg_p:
+        return _money(avg_p)
+    if "STOP" in pt and "LIMIT" in pt and stop_p is not None and limit_p is not None:
+        return f"Stop {_money(stop_p)} / Lmt {_money(limit_p)}"
+    if "STOP" in pt and stop_p is not None:
+        return f"Stop {_money(stop_p)}"
+    if "LIMIT" in pt and limit_p is not None:
+        return _money(limit_p)
+    if "MARKET" in pt:
+        return "MKT"
+    if limit_p is not None:
+        return _money(limit_p)
+    if stop_p is not None:
+        return _money(stop_p)
+    return "-"
+
+
+def flatten_etrade_orders(raw: list[Any] | None) -> list[dict[str, Any]]:
+    """Turn nested E*TRADE Order / OrderDetail / Instrument rows into phone cards.
+
+    Live List Orders payloads keep symbol/action/status under OrderDetail, not
+    the top-level Order. Without this, the phone Orders window is empty dashes.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for order in raw or []:
+        if not isinstance(order, dict):
+            continue
+        details = _as_list(order.get("OrderDetail") or order.get("details"))
+        if not details:
+            details = [order]
+        for detail in details:
+            if not isinstance(detail, dict):
+                continue
+            instruments = _as_list(
+                detail.get("Instrument") or order.get("Instrument")
+            )
+            if not instruments:
+                instruments = [{}]
+            for inst in instruments:
+                if not isinstance(inst, dict):
+                    inst = {}
+                product = inst.get("Product") if isinstance(inst.get("Product"), dict) else {}
+                symbol = str(
+                    product.get("symbol")
+                    or inst.get("symbol")
+                    or order.get("symbol")
+                    or "-"
+                ).upper()
+                if not symbol:
+                    symbol = "-"
+                action = str(
+                    inst.get("orderAction")
+                    or inst.get("action")
+                    or detail.get("orderAction")
+                    or order.get("action")
+                    or "-"
+                ).upper()
+                status = str(
+                    detail.get("status")
+                    or order.get("status")
+                    or order.get("orderStatus")
+                    or "-"
+                ).upper()
+                oid = str(
+                    order.get("orderId")
+                    or order.get("order_id")
+                    or order.get("orderNumber")
+                    or detail.get("orderId")
+                    or ""
+                )
+                qty = _opt_num(
+                    inst.get("orderedQuantity")
+                    if inst.get("orderedQuantity") is not None
+                    else inst.get("quantity")
+                    if inst.get("quantity") is not None
+                    else order.get("quantity")
+                )
+                filled = _opt_num(
+                    inst.get("filledQuantity")
+                    if inst.get("filledQuantity") is not None
+                    else order.get("filled_quantity")
+                )
+                limit_p = _opt_num(
+                    detail.get("limitPrice")
+                    if detail.get("limitPrice") is not None
+                    else order.get("limitPrice") or order.get("limit_price")
+                )
+                stop_p = _opt_num(
+                    detail.get("stopPrice")
+                    if detail.get("stopPrice") is not None
+                    else order.get("stopPrice") or order.get("stop_price")
+                )
+                avg_p = _opt_num(
+                    inst.get("averageExecutionPrice")
+                    if inst.get("averageExecutionPrice") is not None
+                    else order.get("average_fill_price")
+                )
+                price_type = (
+                    detail.get("priceType")
+                    or order.get("priceType")
+                    or order.get("price_type")
+                )
+                value = _opt_num(detail.get("orderValue") or order.get("orderValue"))
+                if value is None:
+                    px = avg_p if avg_p is not None else limit_p if limit_p is not None else stop_p
+                    if qty is not None and px is not None:
+                        value = abs(qty) * float(px)
+                placed_ms = _epoch_ms(
+                    detail.get("placedTime")
+                    or detail.get("placedTimeStamp")
+                    or order.get("placedTime")
+                    or order.get("placed_time_ms")
+                )
+                executed_ms = _epoch_ms(
+                    detail.get("executedTime")
+                    or detail.get("executedTimeStamp")
+                    or order.get("executed_time_ms")
+                )
+                dedupe = oid or f"{symbol}-{action}-{status}-{placed_ms or 0}"
+                if dedupe in seen:
+                    continue
+                seen.add(dedupe)
+                desc = str(inst.get("symbolDescription") or "").strip() or None
+                out.append(
+                    {
+                        "order_id": oid or f"{symbol}-{status}",
+                        "symbol": symbol,
+                        "action": action,
+                        "status": status,
+                        "quantity": qty,
+                        "filled_quantity": filled,
+                        "price_type": price_type,
+                        "limit_price": limit_p,
+                        "stop_price": stop_p,
+                        "average_fill_price": avg_p,
+                        "order_term": detail.get("orderTerm") or order.get("orderTerm"),
+                        "market_session": detail.get("marketSession")
+                        or order.get("marketSession"),
+                        "order_type": order.get("orderType") or order.get("order_type"),
+                        "order_value": value,
+                        "placed_time_ms": placed_ms,
+                        "executed_time_ms": executed_ms,
+                        "description": desc,
+                        "display": {
+                            "quantity": f"{qty:g}" if qty is not None else "-",
+                            "filled": f"{filled:g}" if filled is not None else "-",
+                            "price": _price_display(price_type, limit_p, stop_p, avg_p),
+                            "value": _money(value) if value is not None else "-",
+                            "status": status,
+                            "action": action,
+                            "placed": _format_placed(placed_ms),
+                        },
+                    }
+                )
+    return out
+
+
+def _call_list_orders(client: Any, key: str, status: str | None) -> list[Any]:
+    if hasattr(client, "list_orders"):
+        try:
+            return client.list_orders(key, status=status, count=100) or []
+        except TypeError:
+            return client.list_orders(key) or []
+    for meth in ("get_orders", "get_order_list"):
+        if hasattr(client, meth):
+            return getattr(client, meth)(key) or []
+    return []
 
 
 def _money(n: float | None) -> str:
@@ -3086,7 +3304,12 @@ def build_agents_for_phone() -> dict[str, Any]:
 
 
 def build_orders_for_phone() -> dict[str, Any]:
-    """Best-effort broker orders for the phone Orders window (PC tokens required)."""
+    """Best-effort broker orders for the phone Orders window (PC tokens required).
+
+    Fetches OPEN plus recent history (same as the old phone-native list) and
+    flattens nested E*TRADE OrderDetail/Instrument payloads so cards have
+    symbol/action/status.
+    """
     try:
         from etrade_api.client import ETradeClient
         from etrade_api.config import ETradeConfig
@@ -3130,74 +3353,34 @@ def build_orders_for_phone() -> dict[str, Any]:
                 "source": "none",
                 "message": "No account id on PC",
             }
-        raw: list[Any] = []
-        for meth in ("list_orders", "get_orders", "get_order_list"):
-            if hasattr(client, meth):
-                try:
-                    raw = getattr(client, meth)(key) or []
-                    break
-                except Exception as exc:
-                    return {
-                        "ok": True,
-                        "orders": [],
-                        "source": "error",
-                        "message": str(exc),
-                    }
-        if not isinstance(raw, list):
-            raw = []
-        orders: list[dict[str, Any]] = []
-        for row in raw:
-            if not isinstance(row, dict):
-                continue
-            oid = str(
-                row.get("order_id")
-                or row.get("orderId")
-                or row.get("orderNumber")
-                or ""
-            )
-            sym = str(row.get("symbol") or row.get("Symbol") or "-")
-            action = str(row.get("action") or row.get("orderAction") or "-")
-            status = str(row.get("status") or row.get("orderStatus") or "-")
-            qty = _f(row.get("quantity") or row.get("orderedQuantity"))
-            filled = _f(row.get("filled_quantity") or row.get("filledQuantity"))
-            limit_p = _f(row.get("limit_price") or row.get("limitPrice"))
-            stop_p = _f(row.get("stop_price") or row.get("stopPrice"))
-            avg_p = _f(row.get("average_fill_price") or row.get("averageExecutionPrice"))
-            price_type = row.get("price_type") or row.get("priceType")
-            value = None
-            if qty is not None and (avg_p is not None or limit_p is not None):
-                px = avg_p if avg_p is not None else limit_p
-                value = abs(qty) * float(px) if px is not None else None
-            orders.append(
-                {
-                    "order_id": oid or f"{sym}-{status}",
-                    "symbol": sym,
-                    "action": action,
-                    "status": status,
-                    "quantity": qty,
-                    "filled_quantity": filled,
-                    "price_type": price_type,
-                    "limit_price": limit_p,
-                    "stop_price": stop_p,
-                    "average_fill_price": avg_p,
-                    "order_value": value,
-                    "display": {
-                        "quantity": f"{qty:g}" if qty is not None else "-",
-                        "filled": f"{filled:g}" if filled is not None else "-",
-                        "price": _money(avg_p or limit_p or stop_p)
-                        if (avg_p or limit_p or stop_p) is not None
-                        else "-",
-                        "value": _money(value) if value is not None else "-",
-                        "status": status,
-                        "action": action,
-                        "placed": str(row.get("placed_time") or row.get("placedTime") or "-"),
-                    },
-                }
-            )
+        collected: list[Any] = []
+        errors: list[str] = []
+        for status in ("OPEN", None):
+            try:
+                chunk = _call_list_orders(client, key, status)
+                if isinstance(chunk, list):
+                    collected.extend(chunk)
+            except Exception as exc:
+                errors.append(str(exc))
+        if not collected and errors:
+            return {
+                "ok": True,
+                "orders": [],
+                "source": "error",
+                "message": errors[0],
+            }
+        orders = flatten_etrade_orders(collected)
+        open_n = sum(
+            1
+            for row in orders
+            if "OPEN" in str(row.get("status") or "").upper()
+            or str(row.get("status") or "").upper() in {"PARTIAL", "CANCEL_REQUESTED"}
+        )
         return {
             "ok": True,
             "orders": orders,
             "count": len(orders),
+            "open_count": open_n,
             "source": "pc_live" if orders else "pc_empty",
             "message": f"{len(orders)} orders from PC",
         }
