@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** GROMIT
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -44,6 +44,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
+- [ ] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
 
 ## Done
 
@@ -126,6 +127,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
+- [ ] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
 
 ## Blockers
 
@@ -163,4 +165,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: what is fusion %? → answered 2026-09-05 (task **059**). Fusion = vote-weight ×, not hit-rate %.
 - PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → done 2026-09-05 (task **060**). Charts + term key emailed.
 - PHONE: does the pdp rule still apply? or can we start day trading? → answered 2026-09-05 (task **061**). PDT still applies; 3/3 until Tue 9/8.
+- PHONE: is that rule set by us? e trade says it's no more pdp limits → Act on GROMIT (GROMIT delegates host-local work)
 
