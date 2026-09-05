@@ -1458,6 +1458,13 @@ def _run_plan_build(client: ETradeClient, *, force: bool = False, config_path: P
     try:
         balance = client.get_balance(acct["account_id_key"])
         notional = balance.get("total_account_value") or None
+        # Record even when generate_portfolio raises (bullish-gate skip).
+        if isinstance(balance, dict):
+            _record_balance_history(
+                balance,
+                account_id_key=str(acct.get("account_id_key") or ""),
+                source="plan_balance",
+            )
         portfolio = generate_portfolio(OUTPUT, notional_usd=notional)
     except ValueError as exc:
         # CRITICAL: stamp last_plan_at on soft failure. Previously a "not enough
@@ -1806,6 +1813,86 @@ def _sync_shared(config_path: Path = CONFIG_PATH, *, phase: str = "") -> None:
         _log(f"Shared sync note: {exc}")
 
 
+def _record_balance_history(
+    balance: dict[str, Any],
+    *,
+    account_id_key: str = "",
+    source: str = "broker_snapshot",
+) -> None:
+    """Write one equity point even when the strategy plan rebuild fails."""
+    try:
+        total_v = float(
+            balance.get("total_account_value")
+            or balance.get("NetAccountValue")
+            or 0
+        )
+    except (TypeError, ValueError):
+        total_v = 0.0
+    if total_v <= 0:
+        return
+    cash_v = (
+        balance.get("cash_buying_power")
+        or balance.get("buying_power")
+        or balance.get("cash")
+        or balance.get("cash_available_for_investment")
+    )
+    try:
+        cash_f = float(cash_v) if cash_v is not None else None
+    except (TypeError, ValueError):
+        cash_f = None
+    try:
+        from analysis_history import record_account_value
+
+        record_account_value(
+            total_v,
+            account_id_key=str(account_id_key or ""),
+            cash_buying_power=cash_f,
+            source=source,
+        )
+    except Exception as rec_exc:
+        _log(f"Account history note: {rec_exc}")
+
+
+def _snapshot_live_account(
+    client: ETradeClient,
+    *,
+    config_path: Path = CONFIG_PATH,
+) -> None:
+    """Local account_snapshot.json + equity history. Independent of publish_quotes."""
+    try:
+        acct = _resolve_account(client, config_path)
+        if not acct:
+            return
+        key = acct["account_id_key"]
+        balance = client.get_balance(key) or {}
+        positions = client.get_portfolio(key) or []
+        snap = {
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "account_id_key": key,
+            "display_label": acct.get("display_label") or acct.get("account_name"),
+            "balance": {
+                "total_account_value": balance.get("total_account_value"),
+                "cash_buying_power": balance.get("cash_buying_power")
+                or balance.get("buying_power"),
+                "cash": balance.get("cash"),
+            },
+            "positions": positions if isinstance(positions, list) else [],
+            "sandbox": bool(client.config.sandbox),
+            "source": "broker_snapshot",
+        }
+        OUTPUT.mkdir(parents=True, exist_ok=True)
+        (OUTPUT / "account_snapshot.json").write_text(
+            json.dumps(snap, indent=2, default=str), encoding="utf-8"
+        )
+        _record_balance_history(
+            balance if isinstance(balance, dict) else {},
+            account_id_key=str(key or ""),
+            source="broker_snapshot",
+        )
+    except Exception as exc:
+        _log(f"Account snapshot note: {exc}")
+
+
 def _publish_broker_market_data(
     client: ETradeClient,
     *,
@@ -1887,62 +1974,7 @@ def _publish_broker_market_data(
             _log(f"Published {len(quotes)} live quote(s) for pipeline share.")
 
     # Account snapshot so pipeline / UI peers can size without broker secrets
-    try:
-        acct = _resolve_account(client, config_path)
-        if acct:
-            key = acct["account_id_key"]
-            balance = client.get_balance(key) or {}
-            positions = client.get_portfolio(key) or []
-            snap = {
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "account_id_key": key,
-                "display_label": acct.get("display_label") or acct.get("account_name"),
-                "balance": {
-                    "total_account_value": balance.get("total_account_value"),
-                    "cash_buying_power": balance.get("cash_buying_power")
-                    or balance.get("buying_power"),
-                    "cash": balance.get("cash"),
-                },
-                "positions": positions if isinstance(positions, list) else [],
-                "sandbox": bool(client.config.sandbox),
-            }
-            (out / "account_snapshot.json").write_text(
-                json.dumps(snap, indent=2, default=str), encoding="utf-8"
-            )
-            # Always snapshot equity+cash into history so future deposits are
-            # detected and excluded from profit/goals (never counted as gains).
-            try:
-                total_v = float(
-                    balance.get("total_account_value")
-                    or balance.get("NetAccountValue")
-                    or 0
-                )
-            except (TypeError, ValueError):
-                total_v = 0.0
-            cash_v = (
-                balance.get("cash_buying_power")
-                or balance.get("buying_power")
-                or balance.get("cash")
-                or balance.get("cash_available_for_investment")
-            )
-            try:
-                cash_f = float(cash_v) if cash_v is not None else None
-            except (TypeError, ValueError):
-                cash_f = None
-            if total_v > 0:
-                try:
-                    from analysis_history import record_account_value
-
-                    record_account_value(
-                        total_v,
-                        account_id_key=str(key or ""),
-                        cash_buying_power=cash_f,
-                        source="broker_snapshot",
-                    )
-                except Exception as rec_exc:
-                    _log(f"Account history note: {rec_exc}")
-    except Exception as exc:
-        _log(f"Account snapshot note: {exc}")
+    _snapshot_live_account(client, config_path=config_path)
 
     try:
         from sync_shared_data import push_broker_feed
@@ -2410,7 +2442,21 @@ def run_service_loop(config_path: Path = CONFIG_PATH) -> int:
                     if client:
                         if (time.time() - last_quote_publish) >= max(15.0, quote_every):
                             try:
-                                _publish_broker_market_data(client, config_path=config_path)
+                                publish_on = True
+                                try:
+                                    from deployment import load_deployment
+
+                                    publish_on = bool(
+                                        load_deployment(config_path).get("publish_quotes", True)
+                                    )
+                                except Exception:
+                                    publish_on = True
+                                if publish_on:
+                                    _publish_broker_market_data(client, config_path=config_path)
+                                else:
+                                    # Quote SMB publish is off on this host; still
+                                    # stamp daily equity so weekly mail has every session.
+                                    _snapshot_live_account(client, config_path=config_path)
                                 last_quote_publish = time.time()
                             except Exception as exc:
                                 _log(f"Quote publish error (continuing): {exc}")

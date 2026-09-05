@@ -1,8 +1,8 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-04
-**Updated by:** PHONE
-**Active owner:** none
+**Updated by:** GROMIT
+**Active owner:** GROMIT
 **Act on:** GROMIT
 
 ## NOTIFY
@@ -43,6 +43,10 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **GROMIT** send email of details agent info
 
 ## Done
+
+- [x] **GROMIT (PHONE: why is the data missing for Thursday?):** Thu 2026-09-03 was a real `account_values` gap, not a label bug. Live worker (8/26) only stamped equity on a **successful plan rebuild**; Thursday plan failed 3382× (not enough bullish) while still Connected production; `publish_quotes=false` and no snapshot fallback. No Thu trades. Filled Thu **$3,918.68** from same 16 lots × that day's marks; resent weekly PDF (Thu +1.07%, Fri +0.94%). Ink 0.24, PDF 53,660 attached. Deployed worker/phone_bridge history stamp to live (worker pid 104132, bridge :8787). Tests `test_etrade_trader_summary.py` 8 passed. Task `tasks/done/057-why-thursday-data-missing.md`.
+
+- [x] **GROMIT (PHONE: send detailed weekly summary email. include daily info):** Sent to self via taskbar Chrome Default Gmail. Weekly PDF + body: ET week 2026-08-31–09-04 daily equity table, holdings day/week %, 16 positions, 35 open orders. Equity $3,955.34 week -4.06% day -0.58%. Ink 0.24, PDF 53,644 bytes attached. Helper `tools/send_etrade_trader_summary_email.py`. Tests `test_etrade_trader_summary.py` 7 passed. Task `tasks/done/056-weekly-summary-email.md`.
 
 - [x] **GROMIT (PHONE: send etrade trader summary to self in email):** Sent to self via taskbar Chrome Default Gmail. Full body (16 positions, 35 open orders, next-session brief). Equity $3,955.34 day -0.58%. Earlier Chrome pass was subject-only ("Message sent" + empty Gemini placeholder); now compose URL includes `body=` and Send is refused unless body ink-ratio ≥ 0.12. Helper `tools/send_etrade_trader_summary_email.py`. Tests `test_etrade_trader_summary.py` 4 passed. Task `tasks/done/055-etrade-trader-summary-email.md`. **Act on: none**.
 
@@ -137,9 +141,9 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: why are there no orders? → answered 2026-08-26 (task **051**). 0 submitted: bullish-gate stale plan + PDT 6/3 + closed/OAuth.
 - PHONE: Re enteing Oath sould be autmatic → done 2026-08-26 (task **052**). Auto OAuth LIVE STATUS OK.
 - PHONE: send etrade trader summary to self in email → done 2026-09-04 (task **055**). First Chrome pass was empty body; full-text follow-up sent. Phone asked for a detailed PDF next.
-- PHONE: no content in email l. send detailed pdf → Act on GROMIT (GROMIT delegates host-local work)
-- PHONE: send detailed weekly summary email. include daily info → Act on GROMIT (GROMIT delegates host-local work)
-- PHONE: there was no attachment in email → Act on GROMIT (GROMIT delegates host-local work)
-- PHONE: why is the data missing for Thursday? → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: no content in email l. send detailed pdf → done 2026-09-04 (task **055** PDF follow-up).
+- PHONE: send detailed weekly summary email. include daily info → done 2026-09-04 (task **056**). Weekly PDF + daily ET table emailed.
+- PHONE: there was no attachment in email → done 2026-09-04 (task **056** follow-up). PDF attached via clipboard_hdrop.
+- PHONE: why is the data missing for Thursday? → done 2026-09-04 (task **057**). Thu history gap: plan-fail + publish_quotes off on 8/26 live worker. Filled $3,918.68 from marks; weekly email resent.
 - PHONE: send email of details agent info → Act on GROMIT (GROMIT delegates host-local work)
 

@@ -2,7 +2,7 @@
 """Build the live E*TRADE trader summary and email it to self.
 
 Reads the GROMIT live runtime (%USERPROFILE%\\Finance), never the git clone.
-Always writes a detailed PDF, then sends:
+Always writes a detailed weekly PDF (daily rows included), then sends:
   1) Gmail API if ~/.gmail-link token has gmail.send (with PDF attached)
   2) Chrome Default Gmail compose (CDP if Chrome was started with 9222,
      else compose URL with body= + clipboard paste + attach PDF + Ctrl+Enter)
@@ -31,7 +31,8 @@ import time
 import urllib.parse
 import urllib.request
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -109,14 +110,239 @@ def live_root() -> Path:
     return resolve_live_root().root
 
 
+ET = ZoneInfo("America/New_York")
+
+
 def _weekday_window(today: datetime, sessions: int = 5) -> set[str]:
     days: set[str] = set()
-    d = today.date()
+    d = today.astimezone(ET).date() if today.tzinfo else today.date()
     while len(days) < sessions:
         if d.weekday() < 5:
             days.add(d.isoformat())
         d -= timedelta(days=1)
     return days
+
+
+def _to_et(raw: Any) -> datetime | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, datetime):
+        ts = raw
+    else:
+        try:
+            ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(ET)
+
+
+def daily_closes_from_points(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Last equity per America/New_York calendar date. No account_id_key."""
+    by: dict[str, dict[str, Any]] = {}
+    for row in points:
+        if not isinstance(row, dict):
+            continue
+        ts = _to_et(row.get("at") or row.get("ts") or row.get("timestamp"))
+        val = _f(row.get("total_account_value") or row.get("value") or row.get("equity"))
+        if ts is None or val is None:
+            continue
+        day = ts.date().isoformat()
+        prev = by.get(day)
+        if prev is None or ts >= prev["_ts"]:
+            by[day] = {
+                "date": day,
+                "close": val,
+                "source": str(row.get("source") or "history"),
+                "_ts": ts,
+            }
+    return [by[d] for d in sorted(by)]
+
+
+def week_bounds(now: datetime) -> tuple[date, date]:
+    today = now.astimezone(ET).date() if now.tzinfo else now.date()
+    monday = today - timedelta(days=today.weekday())
+    return monday, today
+
+
+def last_marks_by_et_day(points_by_symbol: dict[str, list[Any]]) -> dict[str, dict[str, float]]:
+    """Last traded price per America/New_York date from history/prices points."""
+    out: dict[str, dict[str, float]] = {}
+    for sym, rows in points_by_symbol.items():
+        name = str(sym or "").upper()
+        if not name or not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ts = _to_et(row.get("at") or row.get("ts") or row.get("timestamp"))
+            px = _f(row.get("price") or row.get("close"))
+            if ts is None or px is None:
+                continue
+            out.setdefault(ts.date().isoformat(), {})[name] = px
+    return out
+
+
+def trade_dates_et(trades: list[Any]) -> set[str]:
+    days: set[str] = set()
+    for row in trades:
+        if not isinstance(row, dict):
+            continue
+        ts = _to_et(row.get("executed_at") or row.get("at") or row.get("ts"))
+        if ts is not None:
+            days.add(ts.date().isoformat())
+    return days
+
+
+def implied_non_equity(equity: float | None, lots: list[dict[str, Any]]) -> float | None:
+    """Equity minus long market value (margin/cash/other). Stable when lots do not trade."""
+    if equity is None:
+        return None
+    mv = 0.0
+    for row in lots:
+        mv_one = _f(row.get("market_value"))
+        if mv_one is None:
+            qty = _f(row.get("quantity")) or 0.0
+            px = _f(row.get("price"))
+            mv_one = (px * qty) if px is not None else None
+        if mv_one is None:
+            return None
+        mv += mv_one
+    return float(equity) - mv
+
+
+def reconstruct_equity(
+    lots: list[dict[str, Any]],
+    px_map: dict[str, float],
+    non_equity: float | None,
+) -> float | None:
+    """Same lots × that day's marks + unchanged non-equity. None if any lot lacks a mark."""
+    if non_equity is None or not lots:
+        return None
+    total = float(non_equity)
+    for row in lots:
+        sym = str(row.get("symbol") or "").upper()
+        qty = _f(row.get("quantity"))
+        px = px_map.get(sym)
+        if not sym or qty is None or px is None:
+            return None
+        total += qty * px
+    return round(total, 2)
+
+
+def _persist_close(
+    root: Path,
+    *,
+    day: str,
+    close: float,
+    source: str,
+    at: str,
+) -> None:
+    """Append one daily close onto this root's account_values.json (live tree)."""
+    path = root / "output" / "history" / "account_values.json"
+    data = _load_json(path)
+    if not isinstance(data, dict):
+        data = {"points": []}
+    points = [p for p in (data.get("points") or []) if isinstance(p, dict)]
+    for row in points:
+        ts = _to_et(row.get("at") or row.get("ts") or row.get("timestamp"))
+        if ts is None or ts.date().isoformat() != day:
+            continue
+        existing = str(row.get("source") or "")
+        if source == "marks" and existing not in {"", "marks", "missing"}:
+            return
+        if existing == source:
+            return
+    points.append(
+        {
+            "at": at,
+            "total_account_value": round(float(close), 2),
+            "source": source,
+        }
+    )
+    data["points"] = points[-500:]
+    data["latest_value"] = round(float(close), 2)
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def fill_missing_closes(
+    closes: list[dict[str, Any]],
+    *,
+    monday: date,
+    today: date,
+    lots: list[dict[str, Any]],
+    marks_by_day: dict[str, dict[str, float]],
+    non_equity: float | None,
+    trade_dates: set[str],
+) -> list[dict[str, Any]]:
+    """Fill weekday gaps from marks when that session had no trades (qty unchanged)."""
+    have = {str(c.get("date")) for c in closes if c.get("date")}
+    extra: list[dict[str, Any]] = []
+    d = monday
+    while d <= today:
+        if d.weekday() < 5:
+            iso = d.isoformat()
+            if iso not in have and iso not in trade_dates:
+                eq = reconstruct_equity(lots, marks_by_day.get(iso) or {}, non_equity)
+                if eq is not None:
+                    extra.append({"date": iso, "close": eq, "source": "marks"})
+        d += timedelta(days=1)
+    if not extra:
+        return closes
+    merged = list(closes) + extra
+    merged.sort(key=lambda c: str(c.get("date") or ""))
+    return merged
+
+
+def week_daily_rows(
+    closes: list[dict[str, Any]],
+    *,
+    now: datetime,
+    pdt_by_date: dict[str, Any] | None = None,
+    pdt_symbols_by_date: dict[str, list[str]] | None = None,
+) -> list[dict[str, Any]]:
+    """Weekday rows Monday through today (ET). Day P/L vs prior close."""
+    monday, today = week_bounds(now)
+    close_map = {str(c.get("date")): c for c in closes if c.get("date")}
+    last_close: float | None = None
+    for c in closes:
+        try:
+            d = date.fromisoformat(str(c.get("date")))
+        except ValueError:
+            continue
+        if d < monday:
+            last_close = _f(c.get("close"))
+    rows: list[dict[str, Any]] = []
+    d = monday
+    while d <= today:
+        if d.weekday() < 5:
+            iso = d.isoformat()
+            hit = close_map.get(iso)
+            close = _f((hit or {}).get("close")) if hit else None
+            pl = None
+            pct = None
+            if close is not None and last_close:
+                pl = close - last_close
+                pct = (pl / last_close) * 100.0
+            rows.append(
+                {
+                    "date": iso,
+                    "weekday": d.strftime("%a"),
+                    "close": close,
+                    "pl": pl,
+                    "pl_pct": pct,
+                    "source": (hit or {}).get("source") or "missing",
+                    "pdt": int((pdt_by_date or {}).get(iso) or 0),
+                    "pdt_symbols": list((pdt_symbols_by_date or {}).get(iso) or []),
+                }
+            )
+            if close is not None:
+                last_close = close
+        d += timedelta(days=1)
+    return rows
 
 
 def gather_summary(root: Path, *, include_orders: bool = True) -> dict[str, Any]:
@@ -128,6 +354,8 @@ def gather_summary(root: Path, *, include_orders: bool = True) -> dict[str, Any]
     pdt = _load_json(out / "pdt_tracker.json")
     plan = _load_json(out / "strategy_plan.json")
     brief = _load_json(out / "history" / "next_session_brief.json")
+    values = _load_json(out / "history" / "account_values.json")
+    tracker = _load_json(out / "equity_tracker.json")
     cfg = _load_json(root / "etrade_config.json")
     bg = cfg.get("background_worker") if isinstance(cfg.get("background_worker"), dict) else {}
     bal = snap.get("balance") if isinstance(snap.get("balance"), dict) else {}
@@ -168,6 +396,87 @@ def gather_summary(root: Path, *, include_orders: bool = True) -> dict[str, Any]
     day_trades = [d for d in (pdt.get("day_trades") or []) if isinstance(d, dict)]
     pdt_in_window = [d for d in day_trades if str(d.get("date") or "") in window]
     pdt_by_date = Counter(str(d.get("date")) for d in pdt_in_window)
+    pdt_symbols_by_date: dict[str, list[str]] = {}
+    for d in pdt_in_window:
+        day = str(d.get("date") or "")
+        sym = str(d.get("symbol") or "").upper()
+        if day and sym and sym not in pdt_symbols_by_date.setdefault(day, []):
+            pdt_symbols_by_date[day].append(sym)
+
+    value_points = [p for p in (values.get("points") or []) if isinstance(p, dict)]
+    extra = {
+        "at": snap.get("fetched_at") or now.isoformat(),
+        "total_account_value": _f(bal.get("total_account_value")) or _f(goals.get("latest_value")),
+        "source": "snapshot",
+    }
+    if extra.get("total_account_value") is not None:
+        value_points = value_points + [extra]
+    monday, today = week_bounds(now)
+    trades = _load_json(out / "history" / "trade_history.json")
+    trade_days = trade_dates_et([t for t in (trades.get("trades") or []) if isinstance(t, dict)])
+    px_by_sym: dict[str, list[Any]] = {}
+    prices_dir = out / "history" / "prices"
+    for lot in lots:
+        sym = str(lot.get("symbol") or "").upper()
+        if not sym or sym in px_by_sym:
+            continue
+        px_by_sym[sym] = list((_load_json(prices_dir / f"{sym}.json").get("points") or []))
+    marks_by_day = last_marks_by_et_day(px_by_sym)
+    equity_now = _f(bal.get("total_account_value")) or _f(goals.get("latest_value"))
+    non_eq = implied_non_equity(equity_now, lots)
+    closes = fill_missing_closes(
+        daily_closes_from_points(value_points),
+        monday=monday,
+        today=today,
+        lots=lots,
+        marks_by_day=marks_by_day,
+        non_equity=non_eq,
+        trade_dates=trade_days,
+    )
+    daily_rows = week_daily_rows(
+        closes,
+        now=now,
+        pdt_by_date=dict(pdt_by_date),
+        pdt_symbols_by_date=pdt_symbols_by_date,
+    )
+    for row in daily_rows:
+        if row.get("source") != "marks" or row.get("close") is None:
+            continue
+        day = date.fromisoformat(str(row["date"]))
+        stamp = datetime(day.year, day.month, day.day, 16, 5, tzinfo=ET).isoformat()
+        _persist_close(
+            root,
+            day=str(row["date"]),
+            close=float(row["close"]),
+            source="marks",
+            at=stamp,
+        )
+    if extra.get("total_account_value") is not None:
+        snap_day = None
+        ts = _to_et(extra.get("at"))
+        if ts is not None:
+            snap_day = ts.date().isoformat()
+        if snap_day:
+            _persist_close(
+                root,
+                day=snap_day,
+                close=float(extra["total_account_value"]),
+                source="snapshot",
+                at=str(extra.get("at") or now.isoformat()),
+            )
+    holding_daily: list[dict[str, Any]] = []
+    for eq in tracker.get("equities") or []:
+        if not isinstance(eq, dict) or not eq.get("held"):
+            continue
+        holding_daily.append(
+            {
+                "symbol": str(eq.get("symbol") or "").upper(),
+                "last": _f(eq.get("last") or eq.get("price")),
+                "day_chg_pct": _f(eq.get("day_chg_pct")),
+                "week_chg_pct": _f(eq.get("week_chg_pct")),
+            }
+        )
+    holding_daily.sort(key=lambda r: abs(float(r.get("day_chg_pct") or 0)), reverse=True)
 
     orders_pack: dict[str, Any] = {}
     if include_orders:
@@ -236,6 +545,10 @@ def gather_summary(root: Path, *, include_orders: bool = True) -> dict[str, Any]
         "daily": daily,
         "weekly": weekly,
         "monthly": monthly,
+        "week_start": monday.isoformat(),
+        "week_end": today.isoformat(),
+        "daily_rows": daily_rows,
+        "holding_daily": holding_daily[:16],
         "flags": {
             "dry_run": bool(bg.get("dry_run", True)),
             "auto_execute": bool(bg.get("auto_execute", False)),
@@ -285,9 +598,11 @@ def format_text(data: dict[str, Any]) -> str:
         mode += " (paused)"
     if flags.get("sandbox"):
         mode += " SANDBOX"
+    week_label = f"{data.get('week_start') or '-'} to {data.get('week_end') or '-'}"
     lines = [
-        f"E*TRADE trader summary — {data.get('generated_at')}",
+        f"E*TRADE weekly summary — {data.get('generated_at')}",
         f"Host {data.get('host')}  Account {data.get('account_name')}",
+        f"Week (ET) {week_label}",
         f"Snapshot { _dt(data.get('fetched_at')) }  source={data.get('source') or '-'}",
         "",
         "== Account ==",
@@ -307,6 +622,48 @@ def format_text(data: dict[str, Any]) -> str:
             "Monthly "
             f"{_pct((data.get('monthly') or {}).get('actual_pct'))}"
         ),
+        "",
+        "== Daily this week (ET) ==",
+    ]
+    daily_rows = data.get("daily_rows") or []
+    if not daily_rows:
+        lines.append("(no daily closes)")
+    for row in daily_rows:
+        close = _usd(row.get("close")) if row.get("close") is not None else "-"
+        pl = _usd(row.get("pl")) if row.get("pl") is not None else "-"
+        pct = _pct(row.get("pl_pct")) if row.get("pl_pct") is not None else "-"
+        pdt_n = int(row.get("pdt") or 0)
+        pdt_bit = f"  PDT {pdt_n}"
+        if row.get("pdt_symbols"):
+            pdt_bit += f" ({', '.join(str(s) for s in row.get('pdt_symbols')[:6])})"
+        elif pdt_n == 0:
+            pdt_bit = ""
+        src = row.get("source") or ""
+        src_bit = f"  [{src}]" if src and src not in {"history", "plan"} else ""
+        lines.append(
+            f"{row.get('weekday') or '-'} {row.get('date')}  close {close:>10}  "
+            f"day {pl:>10} ({pct}){pdt_bit}{src_bit}"
+        )
+    marked = [r for r in daily_rows if r.get("source") == "marks"]
+    missing_days = [r for r in daily_rows if r.get("close") is None]
+    if marked:
+        days = ", ".join(f"{r.get('weekday')} {r.get('date')}" for r in marked)
+        lines.append(
+            f"Note: {days} filled from same lots x that day's marks. "
+            "Broker equity history skipped while plan rebuild failed and quote publish was off."
+        )
+    if missing_days:
+        days = ", ".join(f"{r.get('weekday')} {r.get('date')}" for r in missing_days)
+        lines.append(f"Note: {days} still has no close (no marks / lots changed that session).")
+    holdings = data.get("holding_daily") or []
+    if holdings:
+        lines += ["", "== Holdings daily =="]
+        for row in holdings:
+            lines.append(
+                f"{row.get('symbol'):<6}  last {_usd(row.get('last')):>10}  "
+                f"day {_pct(row.get('day_chg_pct'))}  week {_pct(row.get('week_chg_pct'))}"
+            )
+    lines += [
         "",
         "== Worker ==",
         f"Mode {data.get('long_mode') or mode}   market_open={data.get('market_open')}",
@@ -356,14 +713,18 @@ def format_text(data: dict[str, Any]) -> str:
 
 def format_subject(data: dict[str, Any]) -> str:
     eq = _usd(data.get("equity"))
+    wpl = _pct((data.get("weekly") or {}).get("actual_pct"))
     dpl = _pct((data.get("daily") or {}).get("actual_pct"))
-    return f"E*TRADE trader summary PDF {data.get('generated_at', '')}  equity {eq}  day {dpl}"
+    return (
+        f"E*TRADE weekly summary PDF {data.get('generated_at', '')}  "
+        f"equity {eq}  week {wpl}  day {dpl}"
+    )
 
 
 def format_email_body(data: dict[str, Any], pdf_name: str) -> str:
     header = (
-        f"Detailed PDF attached: {pdf_name}\n"
-        "Same numbers below if the attachment is stripped.\n\n"
+        f"Detailed weekly PDF attached: {pdf_name}\n"
+        "Daily rows + holdings below if the attachment is stripped.\n\n"
     )
     return header + format_text(data)
 
@@ -444,12 +805,14 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
 
     flags = data.get("flags") or {}
     daily = data.get("daily") or {}
+    week_label = f"{data.get('week_start') or '-'} to {data.get('week_end') or '-'}"
     story: list[Any] = [
-        Paragraph("E*TRADE trader summary", title),
+        Paragraph("E*TRADE weekly summary", title),
         Paragraph(
             f"{_xml(data.get('generated_at'))} · {_xml(data.get('host'))} · {_xml(data.get('account_name'))}",
             note,
         ),
+        Paragraph(f"Week (ET) {_xml(week_label)}", note),
         Paragraph(
             f"Snapshot {_xml(_dt(data.get('fetched_at')))} · source={_xml(data.get('source') or '-')}",
             note,
@@ -473,6 +836,45 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
             ],
             [2.2 * inch, 5.0 * inch],
         ),
+        Paragraph("Daily this week (ET)", h),
+    ]
+    day_rows = [["Day", "Date", "Close", "Day P/L", "Day %", "PDT", "Source"]]
+    for row in data.get("daily_rows") or []:
+        pdt_n = int(row.get("pdt") or 0)
+        pdt_txt = str(pdt_n)
+        if row.get("pdt_symbols"):
+            pdt_txt += " " + ",".join(str(s) for s in row.get("pdt_symbols")[:4])
+        day_rows.append(
+            [
+                row.get("weekday"),
+                row.get("date"),
+                _usd(row.get("close")) if row.get("close") is not None else "-",
+                _usd(row.get("pl")) if row.get("pl") is not None else "-",
+                _pct(row.get("pl_pct")) if row.get("pl_pct") is not None else "-",
+                pdt_txt,
+                row.get("source") or "-",
+            ]
+        )
+    if len(day_rows) == 1:
+        day_rows.append(["(none)", "-", "-", "-", "-", "-", "-"])
+    story.append(
+        grid(day_rows, [0.7 * inch, 1.1 * inch, 1.1 * inch, 1.1 * inch, 0.9 * inch, 1.3 * inch, 1.0 * inch])
+    )
+    holdings = data.get("holding_daily") or []
+    if holdings:
+        story.append(Paragraph("Holdings daily", h))
+        h_rows = [["Symbol", "Last", "Day %", "Week %"]]
+        for row in holdings:
+            h_rows.append(
+                [
+                    row.get("symbol"),
+                    _usd(row.get("last")),
+                    _pct(row.get("day_chg_pct")),
+                    _pct(row.get("week_chg_pct")),
+                ]
+            )
+        story.append(grid(h_rows, [1.4 * inch, 1.6 * inch, 1.6 * inch, 1.6 * inch]))
+    story += [
         Paragraph("Worker", h),
         Paragraph(
             f"Mode {_xml(data.get('long_mode') or '-')} · market_open={_xml(data.get('market_open'))} · "
@@ -578,7 +980,7 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
         rightMargin=0.6 * inch,
         topMargin=0.55 * inch,
         bottomMargin=0.55 * inch,
-        title="E*TRADE trader summary",
+        title="E*TRADE weekly summary",
         author="GROMIT Finance",
         pageCompression=0,
     )
@@ -1354,7 +1756,7 @@ def send_summary(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Email the live E*TRADE trader summary to self")
+    parser = argparse.ArgumentParser(description="Email the live E*TRADE weekly summary to self")
     parser.add_argument("--to", default=DEFAULT_TO)
     parser.add_argument("--print-only", action="store_true")
     parser.add_argument("--pdf-only", action="store_true")
@@ -1364,7 +1766,7 @@ def main(argv: list[str] | None = None) -> int:
     root = live_root()
     data = gather_summary(root, include_orders=not args.skip_orders)
     subject = format_subject(data)
-    pdf_path = root / "output" / "etrade_trader_summary.pdf"
+    pdf_path = root / "output" / "etrade_weekly_summary.pdf"
     build_summary_pdf(data, pdf_path)
     body = format_email_body(data, pdf_path.name)
     out_path = root / "output" / "etrade_trader_summary_last.txt"

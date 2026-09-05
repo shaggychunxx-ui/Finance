@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app_paths import OUTPUT, ROOT
 
@@ -476,6 +477,7 @@ def record_account_value(
     account_id_key: str = "",
     cash_buying_power: float | None = None,
     source: str = "plan",
+    at: str | None = None,
 ) -> None:
     """Track account value over time to measure growth."""
     if total_value <= 0:
@@ -485,7 +487,7 @@ def record_account_value(
     if not isinstance(data, dict):
         data = {"points": [], "baseline_value": None, "objective": "grow_account_value"}
     points: list[dict[str, Any]] = data.setdefault("points", [])
-    stamp = _now_iso()
+    stamp = at or _now_iso()
     rounded_total = round(total_value, 2)
     rounded_cash = round(cash_buying_power, 2) if cash_buying_power is not None else None
 
@@ -497,6 +499,7 @@ def record_account_value(
             last_total = 0.0
         last_cash = last.get("cash_buying_power")
         last_at = str(last.get("at") or "")
+        last_ts: datetime | None = None
         try:
             last_ts = datetime.fromisoformat(last_at.replace("Z", "+00:00"))
             age_sec = (datetime.now(timezone.utc) - last_ts).total_seconds()
@@ -516,6 +519,16 @@ def record_account_value(
             or last_cash is None
             or abs(float(last_cash) - float(rounded_cash)) < 0.01
         )
+        same_et_day = True
+        try:
+            if last_ts is not None:
+                stamp_ts = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+                if stamp_ts.tzinfo is None:
+                    stamp_ts = stamp_ts.replace(tzinfo=timezone.utc)
+                et = ZoneInfo("America/New_York")
+                same_et_day = last_ts.astimezone(et).date() == stamp_ts.astimezone(et).date()
+        except (TypeError, ValueError):
+            same_et_day = True
         # Never collapse a deposit-sized jump into the prior point — future deposits
         # must create their own transition so account_profit can exclude them.
         likely_external = False
@@ -538,6 +551,7 @@ def record_account_value(
             and value_unchanged
             and cash_unchanged
             and age_sec < 900
+            and same_et_day
             and not likely_external
         ):
             if rounded_cash is not None:

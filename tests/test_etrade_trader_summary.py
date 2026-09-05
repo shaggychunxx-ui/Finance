@@ -19,9 +19,14 @@ from send_etrade_trader_summary_email import (  # noqa: E402
     body_looks_filled,
     build_summary_pdf,
     compose_url,
+    daily_closes_from_points,
+    fill_missing_closes,
     format_email_body,
     format_subject,
     format_text,
+    implied_non_equity,
+    reconstruct_equity,
+    week_daily_rows,
 )
 
 
@@ -61,6 +66,54 @@ SAMPLE = {
     "daily": {"actual_pct": -0.58, "target_pct": 2.0, "status": "negative"},
     "weekly": {"actual_pct": -4.06},
     "monthly": {"actual_pct": -2.63},
+    "week_start": "2026-09-01",
+    "week_end": "2026-09-04",
+    "daily_rows": [
+        {
+            "date": "2026-09-01",
+            "weekday": "Mon",
+            "close": 3898.84,
+            "pl": 2.64,
+            "pl_pct": 0.07,
+            "source": "history",
+            "pdt": 0,
+            "pdt_symbols": [],
+        },
+        {
+            "date": "2026-09-02",
+            "weekday": "Tue",
+            "close": 3877.14,
+            "pl": -21.70,
+            "pl_pct": -0.56,
+            "source": "history",
+            "pdt": 0,
+            "pdt_symbols": [],
+        },
+        {
+            "date": "2026-09-03",
+            "weekday": "Wed",
+            "close": None,
+            "pl": None,
+            "pl_pct": None,
+            "source": "missing",
+            "pdt": 2,
+            "pdt_symbols": ["SOFI"],
+        },
+        {
+            "date": "2026-09-04",
+            "weekday": "Thu",
+            "close": 3955.34,
+            "pl": 78.20,
+            "pl_pct": 2.02,
+            "source": "snapshot",
+            "pdt": 1,
+            "pdt_symbols": ["UMC"],
+        },
+    ],
+    "holding_daily": [
+        {"symbol": "UMC", "last": 20.77, "day_chg_pct": 1.2, "week_chg_pct": -0.5},
+        {"symbol": "SOFI", "last": 18.22, "day_chg_pct": -0.8, "week_chg_pct": 2.1},
+    ],
     "flags": {
         "dry_run": False,
         "auto_execute": True,
@@ -153,6 +206,8 @@ def test_format_includes_equity_and_open_orders() -> None:
 def test_subject_has_equity_and_day_pl() -> None:
     sub = format_subject(SAMPLE)
     assert "$3,955.34" in sub
+    assert "weekly" in sub.lower()
+    assert "week" in sub.lower()
     assert "day" in sub.lower()
     assert "SHOULD_NOT_APPEAR" not in sub
 
@@ -181,9 +236,12 @@ def test_body_looks_filled_rejects_blank_compose() -> None:
 
 
 def test_email_body_mentions_pdf_and_keeps_tables() -> None:
-    text = format_email_body(SAMPLE, "etrade_trader_summary.pdf")
-    assert "etrade_trader_summary.pdf" in text
+    text = format_email_body(SAMPLE, "etrade_weekly_summary.pdf")
+    assert "etrade_weekly_summary.pdf" in text
     assert "$3,955.34" in text
+    assert "Daily this week" in text
+    assert "2026-09-04" in text
+    assert "Holdings daily" in text
     assert "SHOULD_NOT_APPEAR" not in text
 
 
@@ -201,3 +259,92 @@ def test_summary_pdf_has_positions_orders_and_strips_secrets(tmp_path: Path) -> 
     assert "dca-strategy" in text
     assert "SHOULD_NOT_APPEAR" not in text
     assert "3,955.34" in text
+    assert "Daily this week" in text
+    assert "2026-09-04" in text
+    assert "Holdings daily" in text
+
+
+def test_week_daily_rows_use_et_and_prior_close() -> None:
+    from datetime import datetime, timezone
+
+    points = [
+        {"at": "2026-08-31T20:00:00+00:00", "total_account_value": 3896.20, "account_id_key": "SHOULD_NOT_APPEAR"},
+        {"at": "2026-09-01T20:00:00+00:00", "total_account_value": 3898.84},
+        {"at": "2026-09-02T23:55:00+00:00", "total_account_value": 3877.14},
+        {"at": "2026-09-05T01:12:00+00:00", "total_account_value": 3955.34, "source": "snapshot"},
+    ]
+    now = datetime(2026, 9, 5, 1, 20, tzinfo=timezone.utc)
+    rows = week_daily_rows(
+        daily_closes_from_points(points),
+        now=now,
+        pdt_by_date={"2026-09-03": 2, "2026-09-04": 1},
+        pdt_symbols_by_date={"2026-09-03": ["SOFI"], "2026-09-04": ["UMC"]},
+    )
+    days = [r["date"] for r in rows]
+    assert days == ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]
+    fri = rows[4]
+    assert fri["close"] == 3955.34
+    assert fri["source"] == "snapshot"
+    assert fri["pdt"] == 1
+    assert "UMC" in fri["pdt_symbols"]
+    thu = rows[3]
+    assert thu["date"] == "2026-09-03"
+    assert thu["source"] == "missing"
+    assert thu["close"] is None
+    text = format_text({**SAMPLE, "daily_rows": rows})
+    assert "SHOULD_NOT_APPEAR" not in text
+    assert "Mon 2026-08-31" in text
+    assert "Fri 2026-09-04" in text
+
+
+def test_fill_missing_thursday_from_same_lots_and_marks() -> None:
+    from datetime import date, datetime, timezone
+
+    points = [
+        {"at": "2026-09-02T23:55:00+00:00", "total_account_value": 3877.14},
+        {"at": "2026-09-05T01:12:00+00:00", "total_account_value": 3955.34, "source": "snapshot"},
+    ]
+    lots = [
+        {"symbol": "UMC", "quantity": 44.0, "price": 20.77, "market_value": 913.88},
+        {"symbol": "SOFI", "quantity": 16.0, "price": 18.22, "market_value": 291.52},
+    ]
+    mv = 913.88 + 291.52
+    non_eq = implied_non_equity(3955.34, lots)
+    assert non_eq is not None
+    assert abs(non_eq - (3955.34 - mv)) < 0.01
+    thu_umc, thu_sofi = 19.86, 18.51
+    recon = reconstruct_equity(
+        lots, {"UMC": thu_umc, "SOFI": thu_sofi}, non_eq
+    )
+    assert recon == round(thu_umc * 44 + thu_sofi * 16 + non_eq, 2)
+    closes = fill_missing_closes(
+        daily_closes_from_points(points),
+        monday=date(2026, 8, 31),
+        today=date(2026, 9, 4),
+        lots=lots,
+        marks_by_day={"2026-09-03": {"UMC": thu_umc, "SOFI": thu_sofi}},
+        non_equity=non_eq,
+        trade_dates=set(),
+    )
+    now = datetime(2026, 9, 5, 1, 20, tzinfo=timezone.utc)
+    rows = week_daily_rows(closes, now=now)
+    thu = next(r for r in rows if r["date"] == "2026-09-03")
+    assert thu["source"] == "marks"
+    assert thu["close"] == recon
+    assert thu["close"] is not None
+    fri = next(r for r in rows if r["date"] == "2026-09-04")
+    assert fri["close"] == 3955.34
+    text = format_text({**SAMPLE, "daily_rows": rows})
+    assert "filled from same lots" in text
+    # A trade on Thursday means lots may have changed — leave the gap.
+    skipped = fill_missing_closes(
+        daily_closes_from_points(points),
+        monday=date(2026, 8, 31),
+        today=date(2026, 9, 4),
+        lots=lots,
+        marks_by_day={"2026-09-03": {"UMC": thu_umc, "SOFI": thu_sofi}},
+        non_equity=non_eq,
+        trade_dates={"2026-09-03"},
+    )
+    skipped_rows = week_daily_rows(skipped, now=now)
+    assert next(r for r in skipped_rows if r["date"] == "2026-09-03")["source"] == "missing"

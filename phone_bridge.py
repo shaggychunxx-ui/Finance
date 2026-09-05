@@ -952,6 +952,25 @@ def try_refresh_account_snapshot(
         }
         _write_json(snap_path, snap)
         _log(f"account_snapshot refreshed live: {len(snap['positions'])} positions")
+        try:
+            from analysis_history import record_account_value
+
+            total_v = float(balance.get("total_account_value") or 0)
+            if total_v > 0:
+                cash_v = (
+                    balance.get("cash_buying_power")
+                    or balance.get("buying_power")
+                    or balance.get("cash")
+                )
+                cash_f = float(cash_v) if cash_v is not None else None
+                record_account_value(
+                    total_v,
+                    account_id_key=str(key or ""),
+                    cash_buying_power=cash_f,
+                    source="phone_bridge_live_pull",
+                )
+        except Exception as rec_exc:
+            _log(f"Account history note: {rec_exc}")
         _set_pull_meta(
             live=True,
             source="phone_bridge_live_pull",
