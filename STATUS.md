@@ -36,7 +36,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [ ] **GROMIT** send etrade trader summary to self in email
+- [x] **GROMIT** send etrade trader summary to self in email
+- [ ] **GROMIT** no content in email l. send detailed pdf
 
 ## Done
 
@@ -97,7 +98,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [ ] **GROMIT** send etrade trader summary to self in email
+- [x] **GROMIT** send etrade trader summary to self in email
+- [ ] **GROMIT** no content in email l. send detailed pdf
 
 ## Blockers
 
@@ -127,4 +129,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: why are there no orders? → answered 2026-08-26 (task **051**). 0 submitted: bullish-gate stale plan + PDT 6/3 + closed/OAuth.
 - PHONE: Re enteing Oath sould be autmatic → done 2026-08-26 (task **052**). Auto OAuth LIVE STATUS OK.
 - PHONE: send etrade trader summary to self in email → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: no content in email l. send detailed pdf → Act on GROMIT (GROMIT delegates host-local work)
 
