@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-09-03
-**Updated by:** GROMIT
+**Last updated:** 2026-09-04
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -36,6 +36,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
+- [ ] **GROMIT** send etrade trader summary to self in email
 
 ## Done
 
@@ -96,6 +97,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
+- [ ] **GROMIT** send etrade trader summary to self in email
 
 ## Blockers
 
@@ -124,4 +126,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - Phone LAN: GROMIT `/health` `phone_hint` is `http://192.168.1.177:8787` (2026-09-03). Token in live config only. Bridge **v1.6.4**.
 - PHONE: why are there no orders? → answered 2026-08-26 (task **051**). 0 submitted: bullish-gate stale plan + PDT 6/3 + closed/OAuth.
 - PHONE: Re enteing Oath sould be autmatic → done 2026-08-26 (task **052**). Auto OAuth LIVE STATUS OK.
+- PHONE: send etrade trader summary to self in email → Act on GROMIT (GROMIT delegates host-local work)
 
