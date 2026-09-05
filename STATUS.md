@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** GROMIT
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -45,6 +45,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
 - [x] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
+- [ ] **GROMIT** remove 3/5 rule
 
 ## Done
 
@@ -130,6 +131,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
 - [x] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
+- [ ] **GROMIT** remove 3/5 rule
 
 ## Blockers
 
@@ -168,4 +170,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → done 2026-09-05 (task **060**). Charts + term key emailed.
 - PHONE: does the pdp rule still apply? or can we start day trading? → answered 2026-09-05 (task **061**). House 3/5 still on; 3/3 until Tue 9/8.
 - PHONE: is that rule set by us? e trade says it's no more pdp limits → answered 2026-09-05 (task **062**). Yes, house software. FINRA/E*TRADE PDT gone Jun 2026. Cash T+1/GFV remains. Cap not lifted.
+- PHONE: remove 3/5 rule → Act on GROMIT (GROMIT delegates host-local work)
 
