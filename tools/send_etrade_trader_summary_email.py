@@ -347,6 +347,197 @@ def format_subject(data: dict[str, Any]) -> str:
     return f"E*TRADE trader summary {data.get('generated_at', '')}  equity {eq}  day {dpl}"
 
 
+def _xml(s: Any) -> str:
+    return (
+        str(s if s is not None else "-")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
+    """Detailed trader summary PDF (reportlab). No tokens / account_id_key."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        HRFlowable,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    base = getSampleStyleSheet()
+    title = ParagraphStyle("T", parent=base["Title"], fontSize=16, leading=20, spaceAfter=6)
+    h = ParagraphStyle(
+        "H",
+        parent=base["Heading2"],
+        fontSize=11,
+        leading=14,
+        spaceBefore=10,
+        spaceAfter=4,
+        textColor=colors.HexColor("#1e3a5f"),
+    )
+    body = ParagraphStyle("B", parent=base["Normal"], fontSize=8.5, leading=11, spaceAfter=3)
+    td = ParagraphStyle("TD", parent=base["Normal"], fontSize=7.5, leading=9.5)
+    th = ParagraphStyle(
+        "TH",
+        parent=base["Normal"],
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.white,
+        fontName="Helvetica-Bold",
+    )
+    note = ParagraphStyle(
+        "N", parent=base["Normal"], fontSize=8, leading=10, textColor=colors.HexColor("#64748b")
+    )
+
+    def cell(text: Any, header: bool = False) -> Paragraph:
+        return Paragraph(_xml(text), th if header else td)
+
+    def grid(rows: list[list[Any]], widths: list[float]) -> Table:
+        data_rows: list[list[Paragraph]] = []
+        for i, row in enumerate(rows):
+            data_rows.append([cell(c, header=(i == 0)) for c in row])
+        t = Table(data_rows, colWidths=widths, repeatRows=1)
+        t.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.HexColor("#eef2ff")]),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        return t
+
+    flags = data.get("flags") or {}
+    daily = data.get("daily") or {}
+    story: list[Any] = [
+        Paragraph("E*TRADE trader summary", title),
+        Paragraph(
+            f"{_xml(data.get('generated_at'))} · {_xml(data.get('host'))} · {_xml(data.get('account_name'))}",
+            note,
+        ),
+        Paragraph(
+            f"Snapshot {_xml(_dt(data.get('fetched_at')))} · source={_xml(data.get('source') or '-')}",
+            note,
+        ),
+        HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#cbd5e1"), spaceBefore=4, spaceAfter=8),
+        Paragraph("Account", h),
+        grid(
+            [
+                ["Metric", "Value"],
+                ["Equity", _usd(data.get("equity"))],
+                ["Cash / BP", _usd(data.get("cash_bp"))],
+                ["Positions", data.get("position_count")],
+                ["Market value", _usd(data.get("market_value"))],
+                ["Unrealized P/L", _usd(data.get("unrealized_pl"))],
+                ["Total P/L", f"{_usd(data.get('total_pl'))} ({_pct(data.get('total_pl_pct'))})"],
+                ["Total avg P/L", _pct(data.get("total_avg_pl_pct"))],
+                ["Baseline", _usd(data.get("baseline_value"))],
+                ["Daily", f"{_pct(daily.get('actual_pct'))}  target {_pct(daily.get('target_pct'))}  {daily.get('status') or '-'}"],
+                ["Weekly", _pct((data.get("weekly") or {}).get("actual_pct"))],
+                ["Monthly", _pct((data.get("monthly") or {}).get("actual_pct"))],
+            ],
+            [2.2 * inch, 5.0 * inch],
+        ),
+        Paragraph("Worker", h),
+        Paragraph(
+            f"Mode {_xml(data.get('long_mode') or '-')} · market_open={_xml(data.get('market_open'))} · "
+            f"dry_run={flags.get('dry_run')} live_trading={flags.get('live_trading')} "
+            f"auto_execute={flags.get('auto_execute')} day_trading={flags.get('day_trading')}",
+            body,
+        ),
+        Paragraph(
+            f"Agents {_xml(data.get('agent_count') or '-')} · worker {_xml(_dt(data.get('worker_updated_at')))} · "
+            f"plan {_xml(_dt(data.get('plan_generated_at')))} · regime={_xml(data.get('regime_label') or '-')}",
+            body,
+        ),
+        Paragraph(f"Plan note: {_xml(data.get('plan_error') or '-')}", body),
+        Paragraph(
+            f"PDT {data.get('pdt_count')} day trades in last 5 sessions "
+            f"{_xml(', '.join(data.get('pdt_window_days') or []))}",
+            body,
+        ),
+        Paragraph("Positions", h),
+    ]
+    pos_rows = [["Symbol", "Qty", "Price", "Mkt value", "Cost", "Unrealized"]]
+    for row in data.get("positions") or []:
+        pos_rows.append(
+            [
+                row.get("symbol"),
+                row.get("quantity"),
+                _usd(row.get("price")),
+                _usd(row.get("market_value")),
+                _usd(row.get("cost_basis")),
+                _usd(row.get("unrealized_pl")),
+            ]
+        )
+    if len(pos_rows) == 1:
+        pos_rows.append(["(none)", "-", "-", "-", "-", "-"])
+    story.append(grid(pos_rows, [1.0 * inch, 0.9 * inch, 1.1 * inch, 1.3 * inch, 1.1 * inch, 1.3 * inch]))
+    story.append(
+        Paragraph(
+            f"Open orders ({data.get('open_order_count') or 0} of {data.get('order_count') or 0} listed) · "
+            f"source={_xml(data.get('orders_source') or '-')} {_xml(data.get('orders_message') or '')}",
+            h,
+        )
+    )
+    ord_rows = [["Symbol", "Action", "Type", "Qty", "Stop", "Limit", "x"]]
+    for g in data.get("open_groups") or []:
+        ord_rows.append(
+            [
+                g.get("symbol"),
+                g.get("action"),
+                g.get("price_type"),
+                g.get("quantity"),
+                g.get("stop_price"),
+                g.get("limit_price"),
+                g.get("count") or 1,
+            ]
+        )
+    if len(ord_rows) == 1:
+        ord_rows.append(["(none)", "-", "-", "-", "-", "-", "-"])
+    story.append(
+        grid(ord_rows, [0.9 * inch, 0.8 * inch, 1.2 * inch, 0.7 * inch, 1.0 * inch, 1.0 * inch, 0.5 * inch])
+    )
+    actions = data.get("brief_actions") or []
+    if actions:
+        story.append(Paragraph("Next session", h))
+        for a in actions:
+            story.append(Paragraph(f"• {_xml(a)}", body))
+    if data.get("regime_summary"):
+        story.append(Paragraph("Regime", h))
+        story.append(Paragraph(_xml(data.get("regime_summary")), body))
+    story += [
+        Spacer(1, 10),
+        Paragraph("No tokens / account_id_key in this PDF. Generated on GROMIT live runtime.", note),
+    ]
+    doc = SimpleDocTemplate(
+        str(path),
+        pagesize=letter,
+        leftMargin=0.6 * inch,
+        rightMargin=0.6 * inch,
+        topMargin=0.55 * inch,
+        bottomMargin=0.55 * inch,
+        title="E*TRADE trader summary",
+        author="GROMIT Finance",
+    )
+    doc.build(story)
+    return path
+
+
 MAX_COMPOSE_URL = 6500
 BODY_INK_MIN = 0.12
 
@@ -738,6 +929,70 @@ def _find_gmail_send_button(image) -> Any:
         step=1,
     )
     return _merge_band(runs, min_rows=12, max_gap=3)
+
+
+def _fill_open_dialog(path: str, timeout: float = 8.0) -> bool:
+    """Put an absolute path into the Chrome/Windows Open file dialog and confirm."""
+    user32 = ctypes.windll.user32
+    user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+    user32.FindWindowW.restype = ctypes.c_void_p
+    user32.FindWindowExW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p]
+    user32.FindWindowExW.restype = ctypes.c_void_p
+    user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_void_p]
+    user32.SendMessageW.restype = ctypes.c_ssize_t
+    WM_SETTEXT = 0x000C
+    BM_CLICK = 0x00F5
+    deadline = time.time() + timeout
+    hwnd = None
+    while time.time() < deadline:
+        for title in ("Open", "Open File", "Open files"):
+            hwnd = user32.FindWindowW("#32770", title)
+            if hwnd:
+                break
+        if hwnd:
+            break
+        time.sleep(0.2)
+    if not hwnd:
+        return False
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.15)
+    comboex = user32.FindWindowExW(hwnd, None, "ComboBoxEx32", None)
+    combo = user32.FindWindowExW(comboex, None, "ComboBox", None) if comboex else None
+    edit = user32.FindWindowExW(combo, None, "Edit", None) if combo else None
+    if not edit:
+        combo = user32.FindWindowExW(hwnd, None, "ComboBox", None)
+        edit = user32.FindWindowExW(combo, None, "Edit", None) if combo else None
+    if not edit:
+        edit = user32.FindWindowExW(hwnd, None, "Edit", None)
+    if not edit:
+        return False
+    buf = ctypes.create_unicode_buffer(path)
+    user32.SendMessageW(edit, WM_SETTEXT, 0, ctypes.cast(buf, ctypes.c_void_p))
+    time.sleep(0.12)
+    btn = user32.FindWindowExW(hwnd, None, "Button", "&Open")
+    if not btn:
+        btn = user32.FindWindowExW(hwnd, None, "Button", "Open")
+    if btn:
+        user32.SendMessageW(btn, BM_CLICK, 0, 0)
+    else:
+        from chrome_oauth_ui import tap_enter
+
+        tap_enter()
+    time.sleep(0.8)
+    still = user32.FindWindowW("#32770", "Open")
+    return not bool(still)
+
+
+def _click_gmail_attach(win: Any, image: Any) -> bool:
+    from chrome_oauth_ui import click_window
+
+    box = _find_gmail_send_button(image)
+    if box is None:
+        click_window(win, 118, max(win.height - 52, 40))
+        return True
+    # Paperclip sits on the compose toolbar to the right of Send / Aa.
+    click_window(win, box.x1 + 108, box.cy)
+    return True
 
 
 def send_via_chrome_keys(to: str, subject: str, body: str, debug_dir: Path) -> dict[str, Any]:
