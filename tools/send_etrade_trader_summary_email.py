@@ -2,10 +2,10 @@
 """Build the live E*TRADE trader summary and email it to self.
 
 Reads the GROMIT live runtime (%USERPROFILE%\\Finance), never the git clone.
-Send order:
-  1) Gmail API if ~/.gmail-link token has gmail.send
+Always writes a detailed PDF, then sends:
+  1) Gmail API if ~/.gmail-link token has gmail.send (with PDF attached)
   2) Chrome Default Gmail compose (CDP if Chrome was started with 9222,
-     else compose URL with body= + clipboard paste + Ctrl+Enter)
+     else compose URL with body= + clipboard paste + attach PDF + Ctrl+Enter)
 
 Never click Send on an empty compose. A prior run showed Gmail
 "Message sent" with only the subject filled (Gemini "Help me write"
@@ -14,6 +14,7 @@ placeholder). Body ink-ratio must pass before Send.
 Usage (live venv):
   python tools/send_etrade_trader_summary_email.py
   python tools/send_etrade_trader_summary_email.py --print-only
+  python tools/send_etrade_trader_summary_email.py --pdf-only
 """
 from __future__ import annotations
 
@@ -260,7 +261,19 @@ def gather_summary(root: Path, *, include_orders: bool = True) -> dict[str, Any]
         "order_count": orders_pack.get("count") if orders_pack else len(raw_orders),
         "open_groups": open_groups,
         "brief_for": brief.get("for_session"),
-        "brief_actions": list(brief.get("actions") or [])[:5],
+        "brief_actions": list(brief.get("actions") or [])[:8],
+        "brief_benchmark": str(brief.get("benchmark_summary") or "")[:400],
+        "top_agents": [
+            {
+                "agent_id": str(a.get("agent_id") or ""),
+                "accuracy_pct": a.get("accuracy_pct"),
+                "edge_score": a.get("edge_score"),
+                "posture": a.get("posture"),
+                "preferred_horizon": a.get("preferred_horizon"),
+            }
+            for a in (brief.get("top_agents") or [])[:8]
+            if isinstance(a, dict)
+        ],
         "worker_updated_at": wstate.get("updated_at"),
     }
 
@@ -344,7 +357,15 @@ def format_text(data: dict[str, Any]) -> str:
 def format_subject(data: dict[str, Any]) -> str:
     eq = _usd(data.get("equity"))
     dpl = _pct((data.get("daily") or {}).get("actual_pct"))
-    return f"E*TRADE trader summary {data.get('generated_at', '')}  equity {eq}  day {dpl}"
+    return f"E*TRADE trader summary PDF {data.get('generated_at', '')}  equity {eq}  day {dpl}"
+
+
+def format_email_body(data: dict[str, Any], pdf_name: str) -> str:
+    header = (
+        f"Detailed PDF attached: {pdf_name}\n"
+        "Same numbers below if the attachment is stripped.\n\n"
+    )
+    return header + format_text(data)
 
 
 def _xml(s: Any) -> str:
@@ -470,8 +491,14 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
             f"{_xml(', '.join(data.get('pdt_window_days') or []))}",
             body,
         ),
-        Paragraph("Positions", h),
     ]
+    pdt_map = data.get("pdt_by_date") or {}
+    if pdt_map:
+        pdt_rows = [["Date", "Day trades"]]
+        for day in sorted(str(k) for k in pdt_map):
+            pdt_rows.append([day, pdt_map.get(day)])
+        story.append(grid(pdt_rows, [3.6 * inch, 3.6 * inch]))
+    story.append(Paragraph("Positions", h))
     pos_rows = [["Symbol", "Qty", "Price", "Mkt value", "Cost", "Unrealized"]]
     for row in data.get("positions") or []:
         pos_rows.append(
@@ -513,10 +540,30 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
         grid(ord_rows, [0.9 * inch, 0.8 * inch, 1.2 * inch, 0.7 * inch, 1.0 * inch, 1.0 * inch, 0.5 * inch])
     )
     actions = data.get("brief_actions") or []
-    if actions:
+    if actions or data.get("brief_benchmark") or data.get("top_agents"):
         story.append(Paragraph("Next session", h))
+        if data.get("brief_for"):
+            story.append(Paragraph(f"For {_xml(data.get('brief_for'))}", body))
+        if data.get("brief_benchmark"):
+            story.append(Paragraph(_xml(data.get("brief_benchmark")), body))
         for a in actions:
             story.append(Paragraph(f"• {_xml(a)}", body))
+        agents = data.get("top_agents") or []
+        if agents:
+            ag_rows = [["Agent", "Acc %", "Edge", "Posture", "Horizon"]]
+            for a in agents:
+                ag_rows.append(
+                    [
+                        a.get("agent_id"),
+                        a.get("accuracy_pct"),
+                        a.get("edge_score"),
+                        a.get("posture"),
+                        a.get("preferred_horizon"),
+                    ]
+                )
+            story.append(
+                grid(ag_rows, [1.8 * inch, 0.9 * inch, 0.9 * inch, 1.2 * inch, 1.2 * inch])
+            )
     if data.get("regime_summary"):
         story.append(Paragraph("Regime", h))
         story.append(Paragraph(_xml(data.get("regime_summary")), body))
@@ -533,6 +580,7 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
         bottomMargin=0.55 * inch,
         title="E*TRADE trader summary",
         author="GROMIT Finance",
+        pageCompression=0,
     )
     doc.build(story)
     return path
@@ -604,7 +652,9 @@ def _token_has_send(path: Path) -> bool:
     return "gmail.send" in blob or "mail.google.com" in blob
 
 
-def send_via_gmail_api(to: str, subject: str, body: str) -> dict[str, Any]:
+def send_via_gmail_api(
+    to: str, subject: str, body: str, pdf_path: Path | None = None
+) -> dict[str, Any]:
     token_path = LINK_DIR / "token.json"
     if not token_path.is_file() or not _token_has_send(token_path):
         return {"ok": False, "error": "gmail.send scope missing (readonly token only)"}
@@ -625,10 +675,22 @@ def send_via_gmail_api(to: str, subject: str, body: str) -> dict[str, Any]:
         msg["From"] = to
         msg["Subject"] = subject
         msg.set_content(body)
+        if pdf_path and Path(pdf_path).is_file():
+            msg.add_attachment(
+                Path(pdf_path).read_bytes(),
+                maintype="application",
+                subtype="pdf",
+                filename=Path(pdf_path).name,
+            )
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode().rstrip("=")
         service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         sent = service.users().messages().send(userId="me", body={"raw": raw}).execute()
-        return {"ok": True, "method": "gmail_api", "id": sent.get("id")}
+        return {
+            "ok": True,
+            "method": "gmail_api",
+            "id": sent.get("id"),
+            "attached": bool(pdf_path and Path(pdf_path).is_file()),
+        }
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:400]}
 
@@ -812,7 +874,9 @@ def _cdp_pages() -> list[dict[str, Any]]:
     return data if isinstance(data, list) else []
 
 
-def send_via_chrome_cdp(to: str, subject: str, body: str) -> dict[str, Any]:
+def send_via_chrome_cdp(
+    to: str, subject: str, body: str, pdf_path: Path | None = None
+) -> dict[str, Any]:
     compose = compose_url(to, subject, body)
     started = False
     from open_chrome_url import chrome_running
@@ -855,7 +919,7 @@ def send_via_chrome_cdp(to: str, subject: str, body: str) -> dict[str, Any]:
     try:
         cdp.call("Runtime.enable")
         js_body = json.dumps(body)
-        script = f"""
+        fill = f"""
 (async () => {{
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = {js_body};
@@ -871,28 +935,77 @@ def send_via_chrome_cdp(to: str, subject: str, body: str) -> dict[str, Any]:
     if (box) {{
       box.focus();
       box.innerText = text;
-      await sleep(200);
-      const buttons = [...document.querySelectorAll('div[role="button"]')];
-      const send = buttons.find((el) => {{
-        const a = ((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-tooltip') || '')).toLowerCase();
-        return a.startsWith('send') && !a.includes('schedule');
-      }});
-      if (!send) return 'no-send';
-      send.click();
-      await sleep(800);
-      const after = (document.body && document.body.innerText) || '';
-      if (/message sent|sending/i.test(after)) return 'sent';
-      return 'clicked-send';
+      return 'filled';
     }}
     await sleep(400);
   }}
   return 'no-body';
 }})()
 """
-        result = cdp.eval(script)
-        if result in {"sent", "clicked-send"}:
-            return {"ok": True, "method": "chrome_cdp", "result": result, "started": started}
-        return {"ok": False, "error": str(result), "started": started}
+        result = cdp.eval(fill)
+        if result != "filled":
+            return {"ok": False, "error": str(result), "started": started}
+        attached = False
+        if pdf_path and Path(pdf_path).is_file():
+            click_attach = """
+(() => {
+  const btn = document.querySelector('[aria-label="Attach files"]')
+    || document.querySelector('[data-tooltip="Attach files"]')
+    || document.querySelector('div[command="Files"]');
+  if (!btn) return 'no-attach';
+  btn.click();
+  return 'clicked-attach';
+})()
+"""
+            att = cdp.eval(click_attach)
+            if att == "clicked-attach":
+                attached = _fill_open_dialog(str(Path(pdf_path).resolve()), timeout=10.0)
+            if not attached:
+                try:
+                    cdp.call("DOM.enable")
+                    doc = cdp.call("DOM.getDocument", {"depth": 0})
+                    root_id = ((doc.get("root") or {}).get("nodeId"))
+                    if root_id:
+                        found = cdp.call(
+                            "DOM.querySelector",
+                            {"nodeId": root_id, "selector": "input[type=file]"},
+                        )
+                        node_id = found.get("nodeId") if isinstance(found, dict) else 0
+                        if node_id:
+                            cdp.call(
+                                "DOM.setFileInputFiles",
+                                {"nodeId": node_id, "files": [str(Path(pdf_path).resolve())]},
+                            )
+                            attached = True
+                except Exception:
+                    attached = False
+            time.sleep(1.2)
+        send_js = """
+(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const buttons = [...document.querySelectorAll('div[role="button"]')];
+  const send = buttons.find((el) => {
+    const a = ((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-tooltip') || '')).toLowerCase();
+    return a.startsWith('send') && !a.includes('schedule');
+  });
+  if (!send) return 'no-send';
+  send.click();
+  await sleep(800);
+  const after = (document.body && document.body.innerText) || '';
+  if (/message sent|sending/i.test(after)) return 'sent';
+  return 'clicked-send';
+})()
+"""
+        sent = cdp.eval(send_js)
+        if sent in {"sent", "clicked-send"}:
+            return {
+                "ok": True,
+                "method": "chrome_cdp",
+                "result": sent,
+                "started": started,
+                "attached": attached,
+            }
+        return {"ok": False, "error": str(sent), "started": started, "attached": attached}
     finally:
         cdp.close()
 
@@ -995,7 +1108,128 @@ def _click_gmail_attach(win: Any, image: Any) -> bool:
     return True
 
 
-def send_via_chrome_keys(to: str, subject: str, body: str, debug_dir: Path) -> dict[str, Any]:
+def _open_dialog_hwnd() -> int:
+    user32 = ctypes.windll.user32
+    user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+    user32.FindWindowW.restype = ctypes.c_void_p
+    for title in ("Open", "Open File", "Open files"):
+        hwnd = user32.FindWindowW("#32770", title)
+        if hwnd:
+            return int(hwnd)
+    return 0
+
+
+def write_clipboard_files(paths: list[Path]) -> bool:
+    """Put files on the Windows clipboard as a file drop list (STA PowerShell)."""
+    abs_paths = [str(Path(p).resolve()) for p in paths if Path(p).is_file()]
+    if not abs_paths:
+        return False
+    quoted = ",".join("'" + p.replace("'", "''") + "'" for p in abs_paths)
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$col = New-Object System.Collections.Specialized.StringCollection; "
+        f"foreach ($p in @({quoted})) {{ [void]$col.Add($p) }}; "
+        "[System.Windows.Forms.Clipboard]::SetFileDropList($col); "
+        "if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) { 'OK' } else { 'FAIL' }"
+    )
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-STA", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except Exception:
+        return False
+    return "OK" in (proc.stdout or "")
+
+
+def _uia_click_attach() -> bool:
+    """Invoke Gmail 'Attach files' via UI Automation if Chrome exposes it."""
+    script = (
+        "Add-Type -AssemblyName UIAutomationClient; "
+        "$root = [System.Windows.Automation.AutomationElement]::RootElement; "
+        "$trueCond = [System.Windows.Automation.Condition]::TrueCondition; "
+        "$windows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $trueCond); "
+        "$names = @('Attach files','Attach Files','Attach'); "
+        "foreach ($w in $windows) { "
+        "  $title = $w.Current.Name; "
+        "  if ($title -notmatch 'Gmail|Compose Mail|Chrome') { continue } "
+        "  foreach ($n in $names) { "
+        "    $cond = New-Object System.Windows.Automation.PropertyCondition("
+        "      [System.Windows.Automation.AutomationElement]::NameProperty, $n); "
+        "    $el = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond); "
+        "    if ($el) { "
+        "      try { "
+        "        $pat = $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern); "
+        "        $pat.Invoke(); 'CLICKED'; exit 0 "
+        "      } catch { } "
+        "    } "
+        "  } "
+        "}; "
+        "'NOTFOUND'"
+    )
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-STA", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=25,
+        )
+    except Exception:
+        return False
+    return "CLICKED" in (proc.stdout or "")
+
+
+def attach_pdf_via_chrome(win: Any, image: Any, pdf_path: Path) -> dict[str, Any]:
+    """Attach a PDF to the open Gmail compose. Tries UIA, file-drop paste, then paperclip."""
+    from chrome_oauth_ui import VK_V, click_window, tap_ctrl_key
+
+    pdf = Path(pdf_path).resolve()
+    if not pdf.is_file():
+        return {"ok": False, "method": "missing-pdf"}
+
+    if _uia_click_attach():
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if _open_dialog_hwnd():
+                if _fill_open_dialog(str(pdf), timeout=10.0):
+                    return {"ok": True, "method": "uia"}
+                break
+            time.sleep(0.15)
+
+    if write_clipboard_files([pdf]):
+        click_window(win, max(win.width // 2, 80), int(win.height * 0.55))
+        time.sleep(0.25)
+        tap_ctrl_key(VK_V)
+        time.sleep(1.6)
+        if not _open_dialog_hwnd():
+            return {"ok": True, "method": "clipboard_hdrop"}
+        _fill_open_dialog(str(pdf), timeout=8.0)
+
+    box = _find_gmail_send_button(image)
+    offsets = (56, 72, 88, 104, 120, 40, 136, 160)
+    ys = [box.cy] if box is not None else [max(win.height - 48, 40), max(win.height - 36, 40)]
+    x0 = box.x1 if box is not None else 96
+    for y in ys:
+        for dx in offsets:
+            click_window(win, x0 + dx, y)
+            deadline = time.time() + 1.2
+            while time.time() < deadline:
+                if _open_dialog_hwnd():
+                    ok = _fill_open_dialog(str(pdf), timeout=10.0)
+                    return {"ok": ok, "method": "attach_click", "dx": dx}
+                time.sleep(0.15)
+    return {"ok": False, "method": "none"}
+
+
+def send_via_chrome_keys(
+    to: str,
+    subject: str,
+    body: str,
+    debug_dir: Path,
+    pdf_path: Path | None = None,
+) -> dict[str, Any]:
     from chrome_oauth_ui import (
         VK_RETURN,
         VK_V,
@@ -1049,6 +1283,26 @@ def send_via_chrome_keys(to: str, subject: str, body: str, debug_dir: Path) -> d
             "ink": ink,
             "opened": opened,
         }
+    attached = {"ok": False, "method": "skipped"}
+    if pdf_path and Path(pdf_path).is_file():
+        attached = attach_pdf_via_chrome(win, img, Path(pdf_path))
+        time.sleep(1.4)
+        try:
+            img = screenshot_window(win)
+            ink = body_ink_ratio(img)
+            img.save(debug_dir / "gmail_trader_summary_after_attach.png")
+        except Exception:
+            pass
+        if not attached.get("ok"):
+            return {
+                "ok": False,
+                "error": f"pdf attach failed ({attached.get('method')})",
+                "window": win.title,
+                "screenshot": str(before),
+                "ink": ink,
+                "opened": opened,
+                "attached": attached,
+            }
     tap_ctrl_key(VK_RETURN)
     time.sleep(1.4)
     after_path = debug_dir / "gmail_trader_summary_send.png"
@@ -1074,19 +1328,26 @@ def send_via_chrome_keys(to: str, subject: str, body: str, debug_dir: Path) -> d
         "before": str(before),
         "ink": ink,
         "opened": opened,
+        "attached": attached,
         "error": None if sent else "compose still open after Send",
     }
 
 
-def send_summary(to: str, subject: str, body: str, debug_dir: Path) -> dict[str, Any]:
-    api = send_via_gmail_api(to, subject, body)
+def send_summary(
+    to: str,
+    subject: str,
+    body: str,
+    debug_dir: Path,
+    pdf_path: Path | None = None,
+) -> dict[str, Any]:
+    api = send_via_gmail_api(to, subject, body, pdf_path)
     if api.get("ok"):
         return api
-    cdp = send_via_chrome_cdp(to, subject, body)
+    cdp = send_via_chrome_cdp(to, subject, body, pdf_path)
     if cdp.get("ok"):
         cdp["gmail_api"] = api.get("error")
         return cdp
-    keys = send_via_chrome_keys(to, subject, body, debug_dir)
+    keys = send_via_chrome_keys(to, subject, body, debug_dir, pdf_path)
     keys["gmail_api"] = api.get("error")
     keys["cdp"] = cdp.get("error")
     return keys
@@ -1096,23 +1357,35 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Email the live E*TRADE trader summary to self")
     parser.add_argument("--to", default=DEFAULT_TO)
     parser.add_argument("--print-only", action="store_true")
+    parser.add_argument("--pdf-only", action="store_true")
     parser.add_argument("--skip-orders", action="store_true")
     args = parser.parse_args(argv)
 
     root = live_root()
     data = gather_summary(root, include_orders=not args.skip_orders)
     subject = format_subject(data)
-    body = format_text(data)
+    pdf_path = root / "output" / "etrade_trader_summary.pdf"
+    build_summary_pdf(data, pdf_path)
+    body = format_email_body(data, pdf_path.name)
     out_path = root / "output" / "etrade_trader_summary_last.txt"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(body, encoding="utf-8")
     print(f"LIVE root: {root}")
     print(f"Subject: {subject}")
     print(f"Wrote {out_path}")
-    if args.print_only:
+    print(f"Wrote {pdf_path} ({pdf_path.stat().st_size} bytes)")
+    if args.print_only or args.pdf_only:
         print(body)
         return 0
-    result = send_summary(args.to, subject, body, root / "output" / "chrome-oauth-debug")
+    result = send_summary(
+        args.to,
+        subject,
+        body,
+        root / "output" / "chrome-oauth-debug",
+        pdf_path,
+    )
+    result["pdf"] = str(pdf_path)
+    result["pdf_bytes"] = pdf_path.stat().st_size
     safe = {k: v for k, v in result.items() if k != "opened"}
     print(json.dumps(safe, default=str))
     result_path = root / "output" / "etrade_trader_summary_send.json"
@@ -1120,7 +1393,7 @@ def main(argv: list[str] | None = None) -> int:
     if not result.get("ok"):
         print("SEND FAIL", result.get("error"), file=sys.stderr)
         return 1
-    print(f"SENT via {result.get('method')} to {args.to}")
+    print(f"SENT via {result.get('method')} to {args.to} pdf={pdf_path.name}")
     return 0
 
 

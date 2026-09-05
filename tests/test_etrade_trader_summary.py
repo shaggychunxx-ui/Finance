@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import re
 import sys
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +17,9 @@ if str(TOOLS) not in sys.path:
 
 from send_etrade_trader_summary_email import (  # noqa: E402
     body_looks_filled,
+    build_summary_pdf,
     compose_url,
+    format_email_body,
     format_subject,
     format_text,
 )
@@ -88,8 +93,50 @@ SAMPLE = {
         }
     ],
     "brief_actions": ["Lead walk-forward edge: dca-strategy"],
+    "brief_benchmark": "Accuracy benchmark: 10000/10000 walk-forward trials.",
+    "top_agents": [
+        {
+            "agent_id": "dca-strategy",
+            "accuracy_pct": 43.4,
+            "edge_score": 0.4609,
+            "posture": "calibrated",
+            "preferred_horizon": "24h",
+        }
+    ],
+    "pdt_by_date": {"2026-09-03": 2, "2026-09-04": 1},
     "account_id_key": "SHOULD_NOT_APPEAR",
 }
+
+
+def _a85(data: bytes) -> bytes:
+    payload = data.strip().replace(b"\r", b"").replace(b"\n", b"")
+    if payload.startswith(b"<~"):
+        payload = payload[2:]
+    if payload.endswith(b"~>"):
+        payload = payload[:-2]
+    return base64.a85decode(payload, adobe=False, foldspaces=False)
+
+
+def _pdf_text(path: Path) -> str:
+    data = path.read_bytes()
+    chunks: list[str] = []
+    for match in re.finditer(rb"stream\r?\n(.+?)\r?\nendstream", data, re.S):
+        chunk = match.group(1)
+        decoded = None
+        for decoder in (
+            lambda x: x,
+            _a85,
+            lambda x: zlib.decompress(x),
+            lambda x: zlib.decompress(_a85(x)),
+        ):
+            try:
+                decoded = decoder(chunk)
+                break
+            except Exception:
+                continue
+        if decoded:
+            chunks.append(decoded.decode("latin-1", errors="ignore"))
+    return "\n".join(chunks)
 
 
 def test_format_includes_equity_and_open_orders() -> None:
@@ -131,3 +178,26 @@ def test_body_looks_filled_rejects_blank_compose() -> None:
             if (x + y) % 3 == 0:
                 px[x, y] = (32, 32, 32)
     assert body_looks_filled(filled) is True
+
+
+def test_email_body_mentions_pdf_and_keeps_tables() -> None:
+    text = format_email_body(SAMPLE, "etrade_trader_summary.pdf")
+    assert "etrade_trader_summary.pdf" in text
+    assert "$3,955.34" in text
+    assert "SHOULD_NOT_APPEAR" not in text
+
+
+def test_summary_pdf_has_positions_orders_and_strips_secrets(tmp_path: Path) -> None:
+    path = tmp_path / "etrade_trader_summary.pdf"
+    built = build_summary_pdf(SAMPLE, path)
+    assert built.is_file()
+    raw = built.read_bytes()
+    assert raw.startswith(b"%PDF")
+    assert built.stat().st_size > 1500
+    text = _pdf_text(built)
+    assert "UMC" in text
+    assert "SOFI" in text
+    assert "STOP_LIMIT" in text
+    assert "dca-strategy" in text
+    assert "SHOULD_NOT_APPEAR" not in text
+    assert "3,955.34" in text
