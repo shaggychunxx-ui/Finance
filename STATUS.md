@@ -39,7 +39,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** no content in email l. send detailed pdf
 - [x] **GROMIT** send detailed weekly summary email. include daily info
 - [x] **GROMIT** there was no attachment in email
-- [ ] **GROMIT** why is the data missing for Thursday?
+- [x] **GROMIT** why is the data missing for Thursday?
+- [ ] **GROMIT** send email of details agent info
 
 ## Done
 
@@ -105,7 +106,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** no content in email l. send detailed pdf
 - [x] **GROMIT** send detailed weekly summary email. include daily info
 - [x] **GROMIT** there was no attachment in email
-- [ ] **GROMIT** why is the data missing for Thursday?
+- [x] **GROMIT** why is the data missing for Thursday?
+- [ ] **GROMIT** send email of details agent info
 
 ## Blockers
 
@@ -139,4 +141,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send detailed weekly summary email. include daily info → Act on GROMIT (GROMIT delegates host-local work)
 - PHONE: there was no attachment in email → Act on GROMIT (GROMIT delegates host-local work)
 - PHONE: why is the data missing for Thursday? → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: send email of details agent info → Act on GROMIT (GROMIT delegates host-local work)
 
