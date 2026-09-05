@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** PHONE
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -43,9 +43,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
-- [ ] **GROMIT** does the pdp rule still apply? or can we start day trading?
+- [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
 
 ## Done
+
+- [x] **GROMIT (PHONE: does the pdp rule still apply? or can we start day trading?):** PDT still applies. Equity $3,955 << $25k so the worker caps **3 day trades / 5 sessions**. Used **3/3** Mon 8/31 (MRNA, SOFI, BRVE); Tue–Fri 0. No more day-trade slots until those roll off — next RTH **Tue 2026-09-08** after Labor Day (**0/3** then, still not unlimited). Overnight holds are not day trades. Account is CASH (FINRA PDT is margin-oriented) but we keep the 3/5 software cap + settled-cash; cash BP ~$126. Did not lift the guard. Task `tasks/done/061-pdt-rule-day-trading.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms):** Sent to self via taskbar Chrome Default Gmail. Weekly PDF + body: ET week 2026-08-31–09-04, highlights, character `#` charts, vector graphs (equity line / day P/L bars / holdings week %), 16 positions with weight %, 35 open orders, 20-term key. Equity $3,955.34 week -4.06% day -1.06%. Ink 0.24, PDF 74,711 bytes attached. Helper `tools/send_etrade_trader_summary_email.py`. Tests `test_etrade_trader_summary.py` 10 passed. Task `tasks/done/060-weekly-summary-charts-key.md`. **Act on: none**.
 
@@ -123,11 +125,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
-- [ ] **GROMIT** does the pdp rule still apply? or can we start day trading?
+- [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
 
 ## Blockers
 
-- **PDT 6/3 day trades in 5d** — day-trade sleeve blocked until the rolling window drops under 3. Not a code bug.
+- **PDT 3/3 day trades in 5d** — still applies (equity $3,955 < $25k). Used Mon 2026-08-31 (MRNA, SOFI, BRVE). Next RTH after Labor Day **Tue 2026-09-08** those three roll off (0/3). Not unlimited. Cash account keeps the software 3/5 cap. Did not lift the guard.
 - **Swing plan bullish gate** — portfolio rebuild fails (risk-off / not enough bullish affordable names). Stale plan 2026-08-20. Do not lower the gate from a why-Send.
 - **US market closed (off-RTH)** — LIVE flags on; no submit until next RTH **and** OAuth.
 - **Gmail OAuth token missing** on retired AI-CODING (`token.json`) — not GROMIT trading.
@@ -160,5 +162,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
 - PHONE: what is fusion %? → answered 2026-09-05 (task **059**). Fusion = vote-weight ×, not hit-rate %.
 - PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → done 2026-09-05 (task **060**). Charts + term key emailed.
-- PHONE: does the pdp rule still apply? or can we start day trading? → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: does the pdp rule still apply? or can we start day trading? → answered 2026-09-05 (task **061**). PDT still applies; 3/3 until Tue 9/8.
 
