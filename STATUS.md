@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** GROMIT
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -42,6 +42,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
+- [ ] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 
 ## Done
 
@@ -118,6 +119,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
+- [ ] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 
 ## Blockers
 
@@ -153,4 +155,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: why is the data missing for Thursday? → done 2026-09-04 (task **057**). Thu history gap: plan-fail + publish_quotes off on 8/26 live worker. Filled $3,918.68 from marks; weekly email resent.
 - PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
 - PHONE: what is fusion %? → answered 2026-09-05 (task **059**). Fusion = vote-weight ×, not hit-rate %.
+- PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → Act on GROMIT (GROMIT delegates host-local work)
 
