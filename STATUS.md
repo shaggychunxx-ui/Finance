@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-09-05
-**Updated by:** GROMIT
+**Last updated:** 2026-09-04
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -41,6 +41,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** there was no attachment in email
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
+- [ ] **GROMIT** what is fusion %?
 
 ## Done
 
@@ -114,6 +115,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** there was no attachment in email
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
+- [ ] **GROMIT** what is fusion %?
 
 ## Blockers
 
@@ -148,4 +150,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: there was no attachment in email → done 2026-09-04 (task **056** follow-up). PDF attached via clipboard_hdrop.
 - PHONE: why is the data missing for Thursday? → done 2026-09-04 (task **057**). Thu history gap: plan-fail + publish_quotes off on 8/26 live worker. Filled $3,918.68 from marks; weekly email resent.
 - PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
+- PHONE: what is fusion %? → Act on GROMIT (GROMIT delegates host-local work)
 
