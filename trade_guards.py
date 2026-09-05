@@ -1,4 +1,11 @@
-"""Pre-preview guards: buying power and PDT / day-trade limits."""
+"""Pre-preview guards: buying power and house day-trade cap.
+
+The 3-in-5 day-trade limit is **ours**, not current FINRA/E*TRADE PDT.
+FINRA Notice 26-10 (effective 2026-06-04; E*TRADE 2026-06-09) eliminated
+the pattern-day-trader designation, the $25k count, and day-trade tracking.
+Cash accounts were never under PDT. This cap stays as a house risk control
+unless config disables it. Cash still has T+1 settlement / GFV / freeriding.
+"""
 
 from __future__ import annotations
 

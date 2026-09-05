@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** PHONE
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -44,9 +44,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
-- [ ] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
+- [x] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
 
 ## Done
+
+- [x] **GROMIT (PHONE: is that rule set by us? e trade says it's no more pdp limits):** **Yes — the 3/5 cap is ours.** E*TRADE is right: FINRA PDT is **gone** (Notice 26-10, effective 2026-06-04; E*TRADE 2026-06-09). No PDT designation, no day-trade count, no $25k PDT min. Our worker still enforces a **house** 3/5 in `trade_guards.py` (live config has no override). Account is **CASH** — PDT was always margin-only, so the broker never applied it here. Cash still T+1 / GFV / freeriding; cash BP ~$126. Did not lift the house cap from this Send. Task `tasks/done/062-pdt-rule-is-ours.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: does the pdp rule still apply? or can we start day trading?):** PDT still applies. Equity $3,955 << $25k so the worker caps **3 day trades / 5 sessions**. Used **3/3** Mon 8/31 (MRNA, SOFI, BRVE); Tue–Fri 0. No more day-trade slots until those roll off — next RTH **Tue 2026-09-08** after Labor Day (**0/3** then, still not unlimited). Overnight holds are not day trades. Account is CASH (FINRA PDT is margin-oriented) but we keep the 3/5 software cap + settled-cash; cash BP ~$126. Did not lift the guard. Task `tasks/done/061-pdt-rule-day-trading.md`. **Act on: none**.
 
@@ -127,11 +129,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
-- [ ] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
+- [x] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
 
 ## Blockers
 
-- **PDT 3/3 day trades in 5d** — still applies (equity $3,955 < $25k). Used Mon 2026-08-31 (MRNA, SOFI, BRVE). Next RTH after Labor Day **Tue 2026-09-08** those three roll off (0/3). Not unlimited. Cash account keeps the software 3/5 cap. Did not lift the guard.
+- **House 3/5 day-trade cap** — **ours**, not current FINRA/E*TRADE PDT (repealed Jun 2026; E*TRADE 2026-06-09). Equity $3,955; used 3/3 Mon 2026-08-31 (MRNA, SOFI, BRVE). Next RTH **Tue 2026-09-08** those roll off (0/3). Cash still T+1 / GFV; cash BP ~$126. Did not lift the house cap.
 - **Swing plan bullish gate** — portfolio rebuild fails (risk-off / not enough bullish affordable names). Stale plan 2026-08-20. Do not lower the gate from a why-Send.
 - **US market closed (off-RTH)** — LIVE flags on; no submit until next RTH **and** OAuth.
 - **Gmail OAuth token missing** on retired AI-CODING (`token.json`) — not GROMIT trading.
@@ -164,6 +166,6 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
 - PHONE: what is fusion %? → answered 2026-09-05 (task **059**). Fusion = vote-weight ×, not hit-rate %.
 - PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → done 2026-09-05 (task **060**). Charts + term key emailed.
-- PHONE: does the pdp rule still apply? or can we start day trading? → answered 2026-09-05 (task **061**). PDT still applies; 3/3 until Tue 9/8.
-- PHONE: is that rule set by us? e trade says it's no more pdp limits → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: does the pdp rule still apply? or can we start day trading? → answered 2026-09-05 (task **061**). House 3/5 still on; 3/3 until Tue 9/8.
+- PHONE: is that rule set by us? e trade says it's no more pdp limits → answered 2026-09-05 (task **062**). Yes, house software. FINRA/E*TRADE PDT gone Jun 2026. Cash T+1/GFV remains. Cap not lifted.
 

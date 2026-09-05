@@ -765,7 +765,7 @@ TERM_KEY: list[tuple[str, str]] = [
     ("Source: snapshot", "Latest broker snapshot used as that day's close."),
     ("Source: marks", "Gap fill: same lots times that day's last marks. Qty assumed unchanged."),
     ("Source: missing", "No close (no marks, or lots changed that session so fill was skipped)."),
-    ("PDT", "Pattern Day Trader count: day trades in the last 5 sessions. 3/3 blocks the day sleeve."),
+    ("PDT", "House Pattern Day Trader-style cap (our software, not current FINRA/E*TRADE): day trades in the last 5 sessions. 3/3 blocks the day sleeve. Cash still T+1 / GFV."),
     ("Stop / Limit", "Protective sell prices on open orders (stop triggers; limit is the cap)."),
     ("dry_run", "Worker may propose tickets but will not submit them."),
     ("live_trading + auto_execute", "Live tickets allowed when dry_run is off and the worker is not paused."),
