@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-05
 **Updated by:** GROMIT
-**Active owner:** GROMIT
-**Act on:** GROMIT
+**Active owner:** none
+**Act on:** none
 
 ## NOTIFY
 
@@ -40,9 +40,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send detailed weekly summary email. include daily info
 - [x] **GROMIT** there was no attachment in email
 - [x] **GROMIT** why is the data missing for Thursday?
-- [ ] **GROMIT** send email of details agent info
+- [x] **GROMIT** send email of details agent info
 
 ## Done
+
+- [x] **GROMIT (PHONE: send email of details agent info):** Sent to self via taskbar Chrome Default Gmail. Agent-info PDF + body: catalog 76 / learning 73 / phone 83, walk-forward acc (live scored 0), groups, boost 8 / cut none, top dca-strategy 43.4%, full agent table, current risk-guardrail BEARISH calls. Ink 0.21, PDF 119,809 bytes attached. Helper `tools/send_agent_info_email.py`. Tests `test_agent_info_email.py` 6 passed. Task `tasks/done/058-agent-info-email.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: why is the data missing for Thursday?):** Thu 2026-09-03 was a real `account_values` gap, not a label bug. Live worker (8/26) only stamped equity on a **successful plan rebuild**; Thursday plan failed 3382× (not enough bullish) while still Connected production; `publish_quotes=false` and no snapshot fallback. No Thu trades. Filled Thu **$3,918.68** from same 16 lots × that day's marks; resent weekly PDF (Thu +1.07%, Fri +0.94%). Ink 0.24, PDF 53,660 attached. Deployed worker/phone_bridge history stamp to live (worker pid 104132, bridge :8787). Tests `test_etrade_trader_summary.py` 8 passed. Task `tasks/done/057-why-thursday-data-missing.md`.
 
@@ -111,7 +113,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send detailed weekly summary email. include daily info
 - [x] **GROMIT** there was no attachment in email
 - [x] **GROMIT** why is the data missing for Thursday?
-- [ ] **GROMIT** send email of details agent info
+- [x] **GROMIT** send email of details agent info
 
 ## Blockers
 
@@ -145,5 +147,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send detailed weekly summary email. include daily info → done 2026-09-04 (task **056**). Weekly PDF + daily ET table emailed.
 - PHONE: there was no attachment in email → done 2026-09-04 (task **056** follow-up). PDF attached via clipboard_hdrop.
 - PHONE: why is the data missing for Thursday? → done 2026-09-04 (task **057**). Thu history gap: plan-fail + publish_quotes off on 8/26 live worker. Filled $3,918.68 from marks; weekly email resent.
-- PHONE: send email of details agent info → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
 
