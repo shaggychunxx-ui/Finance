@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** GROMIT
+**Updated by:** PHONE
 **Active owner:** none
-**Act on:** none
+**Act on:** GROMIT
 
 ## NOTIFY
 
@@ -43,6 +43,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
+- [ ] **GROMIT** does the pdp rule still apply? or can we start day trading?
 
 ## Done
 
@@ -122,6 +123,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
+- [ ] **GROMIT** does the pdp rule still apply? or can we start day trading?
 
 ## Blockers
 
@@ -158,4 +160,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
 - PHONE: what is fusion %? → answered 2026-09-05 (task **059**). Fusion = vote-weight ×, not hit-rate %.
 - PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → done 2026-09-05 (task **060**). Charts + term key emailed.
+- PHONE: does the pdp rule still apply? or can we start day trading? → Act on GROMIT (GROMIT delegates host-local work)
 
