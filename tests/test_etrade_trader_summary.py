@@ -63,8 +63,8 @@ SAMPLE = {
     "total_pl_pct": -2.66,
     "total_avg_pl_pct": -1.62,
     "baseline_value": 4029.48,
-    "daily": {"actual_pct": -0.58, "target_pct": 2.0, "status": "negative"},
-    "weekly": {"actual_pct": -4.06},
+    "daily": {"actual_pct": -0.58, "target_pct": 2.0, "remaining_pct": 2.58, "status": "negative"},
+    "weekly": {"actual_pct": -4.06, "target_pct": 12.0, "remaining_pct": 16.06},
     "monthly": {"actual_pct": -2.63},
     "week_start": "2026-09-01",
     "week_end": "2026-09-04",
@@ -295,6 +295,39 @@ def test_week_daily_rows_use_et_and_prior_close() -> None:
     assert "SHOULD_NOT_APPEAR" not in text
     assert "Mon 2026-08-31" in text
     assert "Fri 2026-09-04" in text
+
+
+def test_format_has_character_charts_highlights_and_term_key() -> None:
+    text = format_text(SAMPLE)
+    assert "== Charts (character) ==" in text
+    assert "== Week highlights ==" in text
+    assert "== Key / definitions ==" in text
+    assert "Equity close" in text
+    assert "Day P/L %" in text
+    assert "#" in text
+    assert "Best day" in text
+    assert "Worst day" in text
+    assert "PDT used" in text
+    assert "Source: marks:" in text
+    assert "Pattern Day Trader" in text
+    assert "SHOULD_NOT_APPEAR" not in text
+    assert "wt " in text
+
+
+def test_summary_pdf_has_charts_and_glossary(tmp_path: Path) -> None:
+    path = tmp_path / "etrade_weekly_charts.pdf"
+    built = build_summary_pdf(SAMPLE, path)
+    assert built.is_file()
+    raw = built.read_bytes()
+    assert raw.startswith(b"%PDF")
+    assert built.stat().st_size > 8000
+    text = _pdf_text(built)
+    assert "Week highlights" in text
+    assert "Charts" in text
+    assert "Key / definitions" in text
+    assert "Pattern Day Trader" in text
+    assert "Source: marks" in text
+    assert "SHOULD_NOT_APPEAR" not in text
 
 
 def test_fill_missing_thursday_from_same_lots_and_marks() -> None:

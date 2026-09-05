@@ -390,6 +390,10 @@ def gather_summary(root: Path, *, include_orders: bool = True) -> dict[str, Any]
             }
         )
     lots.sort(key=lambda r: abs(float(r.get("market_value") or 0)), reverse=True)
+    if mv_total:
+        for row in lots:
+            mv = _f(row.get("market_value"))
+            row["weight_pct"] = (100.0 * mv / mv_total) if mv is not None else None
 
     now = datetime.now(timezone.utc)
     window = _weekday_window(now, 5)
@@ -545,6 +549,7 @@ def gather_summary(root: Path, *, include_orders: bool = True) -> dict[str, Any]
         "daily": daily,
         "weekly": weekly,
         "monthly": monthly,
+        "net_external_flows": _f(goals.get("net_external_flows")),
         "week_start": monday.isoformat(),
         "week_end": today.isoformat(),
         "daily_rows": daily_rows,
@@ -655,6 +660,19 @@ def format_text(data: dict[str, Any]) -> str:
     if missing_days:
         days = ", ".join(f"{r.get('weekday')} {r.get('date')}" for r in missing_days)
         lines.append(f"Note: {days} still has no close (no marks / lots changed that session).")
+    highlights = week_highlights(data)
+    if highlights:
+        lines += ["", "== Week highlights =="]
+        lines.extend(highlights)
+    daily_rows = data.get("daily_rows") or []
+    lines += ["", "== Charts (character) =="]
+    lines.extend(ascii_equity_chart(daily_rows))
+    lines.append("")
+    lines.extend(ascii_pl_chart(daily_rows))
+    hold_chart = ascii_holdings_chart(data.get("holding_daily") or [])
+    if hold_chart:
+        lines.append("")
+        lines.extend(hold_chart)
     holdings = data.get("holding_daily") or []
     if holdings:
         lines += ["", "== Holdings daily =="]
@@ -676,11 +694,14 @@ def format_text(data: dict[str, Any]) -> str:
         "",
         "== Positions ==",
     ]
+    mv_total = _f(data.get("market_value"))
     for row in data.get("positions") or []:
+        w = _weight_of(row, mv_total)
+        wtxt = f"{w:5.1f}%" if w is not None else "    -"
         lines.append(
             f"{row.get('symbol'):<6}  qty {row.get('quantity'):>7}  "
             f"px {_usd(row.get('price')):>10}  mv {_usd(row.get('market_value')):>10}  "
-            f"uPL {_usd(row.get('unrealized_pl')):>10}"
+            f"uPL {_usd(row.get('unrealized_pl')):>10}  wt {wtxt}"
         )
     lines += [
         "",
@@ -704,6 +725,7 @@ def format_text(data: dict[str, Any]) -> str:
     summary = data.get("regime_summary")
     if summary:
         lines += ["", f"Regime: {summary}"]
+    lines += ["", *term_key_lines()]
     lines += [
         "",
         "No tokens / account_id_key in this mail. Generated on GROMIT live runtime.",
@@ -724,9 +746,439 @@ def format_subject(data: dict[str, Any]) -> str:
 def format_email_body(data: dict[str, Any], pdf_name: str) -> str:
     header = (
         f"Detailed weekly PDF attached: {pdf_name}\n"
-        "Daily rows + holdings below if the attachment is stripped.\n\n"
+        "Charts + daily rows + holdings + term key below if the attachment is stripped.\n\n"
     )
     return header + format_text(data)
+
+
+TERM_KEY: list[tuple[str, str]] = [
+    ("Equity", "Broker total account value (cash + longs, minus any debit/margin)."),
+    ("Cash / BP", "Cash buying power. Not the same as equity."),
+    ("Market value", "Sum of open lot market values at last marks."),
+    ("Unrealized P/L (uPL)", "Mark minus per-share cost basis, times quantity. Not booked."),
+    ("Baseline", "Starting equity after deposit/withdrawal adjustments. Total P/L is vs this."),
+    ("Total P/L", "Equity minus baseline (external flows excluded when that flag is on)."),
+    ("Total avg P/L", "Average percent P/L used by the primary goal, not one-day change."),
+    ("Daily / Weekly / Monthly %", "Change vs the period target (+2% day / +12% week / +48% month)."),
+    ("Day P/L", "That America/New_York calendar day's equity close minus the prior close."),
+    ("Source: history / plan", "Live worker wrote a close (usually after a successful plan rebuild)."),
+    ("Source: snapshot", "Latest broker snapshot used as that day's close."),
+    ("Source: marks", "Gap fill: same lots times that day's last marks. Qty assumed unchanged."),
+    ("Source: missing", "No close (no marks, or lots changed that session so fill was skipped)."),
+    ("PDT", "Pattern Day Trader count: day trades in the last 5 sessions. 3/3 blocks the day sleeve."),
+    ("Stop / Limit", "Protective sell prices on open orders (stop triggers; limit is the cap)."),
+    ("dry_run", "Worker may propose tickets but will not submit them."),
+    ("live_trading + auto_execute", "Live tickets allowed when dry_run is off and the worker is not paused."),
+    ("Regime", "Fusion market-regime label (bull/bear/neutral) from the strategy plan."),
+    ("Acc", "Walk-forward hit rate for an agent. Not live 24h scored accuracy."),
+    ("Weight %", "That lot's market value as a share of total position market value."),
+]
+
+
+def _bar(frac: float, width: int = 16) -> str:
+    n = int(round(max(0.0, min(1.0, float(frac))) * width))
+    return "#" * n + "." * (width - n)
+
+
+def _weight_of(row: dict[str, Any], mv_total: float | None) -> float | None:
+    w = _f(row.get("weight_pct"))
+    if w is not None:
+        return w
+    mv = _f(row.get("market_value"))
+    if mv is None or not mv_total:
+        return None
+    return 100.0 * mv / mv_total
+
+
+def week_highlights(data: dict[str, Any]) -> list[str]:
+    """One-line facts derived from daily rows / holdings / lots."""
+    lines: list[str] = []
+    daily = [r for r in (data.get("daily_rows") or []) if isinstance(r, dict)]
+    scored = [r for r in daily if _f(r.get("pl_pct")) is not None]
+    if scored:
+        best = max(scored, key=lambda r: float(r.get("pl_pct") or 0))
+        worst = min(scored, key=lambda r: float(r.get("pl_pct") or 0))
+        lines.append(
+            f"Best day  {best.get('weekday')} {_pct(best.get('pl_pct'))}  close {_usd(best.get('close'))}"
+        )
+        lines.append(
+            f"Worst day {worst.get('weekday')} {_pct(worst.get('pl_pct'))}  close {_usd(worst.get('close'))}"
+        )
+        first = next((r for r in daily if r.get("close") is not None), None)
+        last = None
+        for r in daily:
+            if r.get("close") is not None:
+                last = r
+        if first and last and first.get("close") and last is not first:
+            chg = float(last["close"]) - float(first["close"])
+            pct = (chg / float(first["close"])) * 100.0
+            lines.append(
+                f"Week path {first.get('weekday')} {_usd(first.get('close'))} -> "
+                f"{last.get('weekday')} {_usd(last.get('close'))}  ({_pct(pct)})"
+            )
+    holds = [h for h in (data.get("holding_daily") or []) if _f(h.get("week_chg_pct")) is not None]
+    if holds:
+        gainer = max(holds, key=lambda r: float(r.get("week_chg_pct") or 0))
+        loser = min(holds, key=lambda r: float(r.get("week_chg_pct") or 0))
+        lines.append(f"Best holding  {gainer.get('symbol')} week {_pct(gainer.get('week_chg_pct'))}")
+        lines.append(f"Worst holding {loser.get('symbol')} week {_pct(loser.get('week_chg_pct'))}")
+    pos = [p for p in (data.get("positions") or []) if isinstance(p, dict)]
+    mv_total = _f(data.get("market_value"))
+    if pos:
+        top = max(pos, key=lambda r: abs(float(r.get("market_value") or 0)))
+        w = _weight_of(top, mv_total)
+        wtxt = f"{w:.1f}%" if w is not None else "-"
+        lines.append(f"Largest lot {top.get('symbol')} {_usd(top.get('market_value'))} ({wtxt} of market value)")
+        green = sum(1 for p in pos if (p.get("unrealized_pl") or 0) > 0)
+        red = sum(1 for p in pos if (p.get("unrealized_pl") or 0) < 0)
+        lines.append(f"Open lots {green} green / {red} red of {len(pos)}")
+    eq = _f(data.get("equity"))
+    if eq and mv_total:
+        lines.append(
+            f"Longs {_usd(mv_total)} vs equity {_usd(eq)}  "
+            f"(implied cash/debit {_usd(eq - mv_total)})"
+        )
+    pdt = int(data.get("pdt_count") or 0)
+    extra = " — day-trade sleeve blocked" if pdt >= 3 else ""
+    lines.append(f"PDT used {pdt}/3 in last 5 sessions{extra}")
+    daily_g = data.get("daily") or {}
+    weekly_g = data.get("weekly") or {}
+    if daily_g.get("target_pct") is not None:
+        lines.append(
+            f"Daily target {_pct(daily_g.get('target_pct'))}  remaining "
+            f"{_pct(daily_g.get('remaining_pct'))}  status {daily_g.get('status') or '-'}"
+        )
+    if weekly_g.get("target_pct") is not None:
+        lines.append(
+            f"Weekly target {_pct(weekly_g.get('target_pct'))}  remaining "
+            f"{_pct(weekly_g.get('remaining_pct'))}"
+        )
+    flows = _f(data.get("net_external_flows"))
+    if flows is not None:
+        lines.append(f"Net external flows {_usd(flows)} (deposits/withdrawals, not P/L)")
+    return lines
+
+
+def ascii_equity_chart(daily_rows: list[dict[str, Any]]) -> list[str]:
+    vals = [_f(r.get("close")) for r in daily_rows]
+    have = [v for v in vals if v is not None]
+    if not have:
+        return ["(no equity points)"]
+    lo, hi = min(have), max(have)
+    span = (hi - lo) or 1.0
+    lines = [f"Equity close  min {_usd(lo)}  max {_usd(hi)}  (# = vs week range)"]
+    for r, v in zip(daily_rows, vals):
+        wd = str(r.get("weekday") or "-")
+        if v is None:
+            lines.append(f"{wd}  {'-':>10}  {'.' * 16}")
+            continue
+        lines.append(f"{wd}  {_usd(v):>10}  {_bar((v - lo) / span)}")
+    return lines
+
+
+def ascii_pl_chart(daily_rows: list[dict[str, Any]]) -> list[str]:
+    pcts = [_f(r.get("pl_pct")) for r in daily_rows]
+    peak = max((abs(p) for p in pcts if p is not None), default=0.0) or 1.0
+    lines = ["Day P/L %  (# = size vs biggest |day| this week; + up / - down)"]
+    for r, p in zip(daily_rows, pcts):
+        wd = str(r.get("weekday") or "-")
+        if p is None:
+            lines.append(f"{wd}  {'-':>8}")
+            continue
+        sign = "+" if p >= 0 else "-"
+        lines.append(f"{wd}  {_pct(p):>8}  {sign}{_bar(abs(p) / peak)}")
+    return lines
+
+
+def ascii_holdings_chart(holdings: list[dict[str, Any]], *, limit: int = 8) -> list[str]:
+    rows = [h for h in holdings if _f(h.get("week_chg_pct")) is not None][:limit]
+    if not rows:
+        return []
+    peak = max((abs(_f(r.get("week_chg_pct")) or 0.0) for r in rows), default=0.0) or 1.0
+    lines = ["Holdings week %  (top movers; + up / - down)"]
+    for r in rows:
+        p = float(_f(r.get("week_chg_pct")) or 0.0)
+        sign = "+" if p >= 0 else "-"
+        lines.append(
+            f"{str(r.get('symbol') or '-'):<6} {_pct(p):>8}  {sign}{_bar(abs(p) / peak)}"
+        )
+    return lines
+
+
+def term_key_lines() -> list[str]:
+    lines = ["== Key / definitions =="]
+    for term, meaning in TERM_KEY:
+        lines.append(f"{term}: {meaning}")
+    return lines
+
+
+def _drawing_equity_line(daily_rows: list[dict[str, Any]], width: float, height: float):
+    from reportlab.graphics.shapes import Circle, Drawing, Line, PolyLine, Rect, String
+    from reportlab.lib import colors
+
+    d = Drawing(width, height)
+    d.add(
+        Rect(
+            0,
+            0,
+            width,
+            height,
+            fillColor=colors.HexColor("#f8fafc"),
+            strokeColor=colors.HexColor("#cbd5e1"),
+            strokeWidth=0.4,
+        )
+    )
+    pts: list[tuple[int, float]] = []
+    for i, r in enumerate(daily_rows):
+        c = _f(r.get("close"))
+        if c is not None:
+            pts.append((i, c))
+    if not pts:
+        d.add(
+            String(
+                width / 2,
+                height / 2,
+                "no equity points",
+                textAnchor="middle",
+                fontSize=8,
+                fillColor=colors.HexColor("#64748b"),
+            )
+        )
+        return d
+    vals = [v for _, v in pts]
+    lo, hi = min(vals), max(vals)
+    pad = (hi - lo) * 0.12 if hi != lo else max(abs(hi) * 0.01, 1.0)
+    lo -= pad
+    hi += pad
+    left, right, bottom, top = 50, width - 10, 22, height - 16
+    n = max(len(daily_rows) - 1, 1)
+
+    def xy(i: int, v: float) -> tuple[float, float]:
+        x = left + (i / n) * (right - left)
+        y = bottom + ((v - lo) / (hi - lo)) * (top - bottom)
+        return x, y
+
+    for k in range(4):
+        frac = k / 3.0
+        y = bottom + frac * (top - bottom)
+        v = lo + frac * (hi - lo)
+        d.add(Line(left, y, right, y, strokeColor=colors.HexColor("#e2e8f0"), strokeWidth=0.3))
+        d.add(String(4, y - 3, f"${v:,.0f}", fontSize=6.5, fillColor=colors.HexColor("#64748b")))
+    flat: list[float] = []
+    for i, v in pts:
+        x, y = xy(i, v)
+        flat.extend([x, y])
+    if len(pts) >= 2:
+        d.add(PolyLine(flat, strokeColor=colors.HexColor("#1e3a5f"), strokeWidth=1.6))
+    for i, v in pts:
+        x, y = xy(i, v)
+        d.add(
+            Circle(
+                x,
+                y,
+                3,
+                fillColor=colors.HexColor("#2563eb"),
+                strokeColor=colors.white,
+                strokeWidth=0.6,
+            )
+        )
+    for i, r in enumerate(daily_rows):
+        x, _ = xy(i, lo)
+        d.add(
+            String(
+                x,
+                6,
+                str(r.get("weekday") or ""),
+                textAnchor="middle",
+                fontSize=7,
+                fillColor=colors.HexColor("#334155"),
+            )
+        )
+    d.add(
+        String(
+            left,
+            height - 12,
+            "Equity close (ET)",
+            fontSize=7.5,
+            fillColor=colors.HexColor("#1e3a5f"),
+        )
+    )
+    return d
+
+
+def _drawing_pl_bars(daily_rows: list[dict[str, Any]], width: float, height: float):
+    from reportlab.graphics.shapes import Drawing, Line, Rect, String
+    from reportlab.lib import colors
+
+    d = Drawing(width, height)
+    d.add(
+        Rect(
+            0,
+            0,
+            width,
+            height,
+            fillColor=colors.HexColor("#f8fafc"),
+            strokeColor=colors.HexColor("#cbd5e1"),
+            strokeWidth=0.4,
+        )
+    )
+    pcts = [_f(r.get("pl_pct")) for r in daily_rows]
+    have = [p for p in pcts if p is not None]
+    left, right, bottom, top = 50, width - 10, 22, height - 16
+    if not have:
+        d.add(
+            String(
+                width / 2,
+                height / 2,
+                "no day P/L",
+                textAnchor="middle",
+                fontSize=8,
+                fillColor=colors.HexColor("#64748b"),
+            )
+        )
+        return d
+    mn, mx = min(have), max(have)
+    if mn > 0:
+        mn = 0.0
+    if mx < 0:
+        mx = 0.0
+    pad = max(abs(mx), abs(mn), 0.2) * 0.18
+    mn -= pad
+    mx += pad
+    span = mx - mn or 1.0
+
+    def y_of(p: float) -> float:
+        return bottom + ((p - mn) / span) * (top - bottom)
+
+    zero = y_of(0.0)
+    d.add(Line(left, zero, right, zero, strokeColor=colors.HexColor("#94a3b8"), strokeWidth=0.5))
+    count = max(len(daily_rows), 1)
+    bar_w = (right - left) / count * 0.5
+    for i, r in enumerate(daily_rows):
+        p = pcts[i]
+        x = left + (i + 0.5) / count * (right - left)
+        d.add(
+            String(
+                x,
+                6,
+                str(r.get("weekday") or ""),
+                textAnchor="middle",
+                fontSize=7,
+                fillColor=colors.HexColor("#334155"),
+            )
+        )
+        if p is None:
+            continue
+        y1 = y_of(p)
+        top_y = max(zero, y1)
+        bot_y = min(zero, y1)
+        color = colors.HexColor("#16a34a") if p >= 0 else colors.HexColor("#dc2626")
+        d.add(
+            Rect(
+                x - bar_w / 2,
+                bot_y,
+                bar_w,
+                max(top_y - bot_y, 1.2),
+                fillColor=color,
+                strokeColor=None,
+            )
+        )
+        label_y = top_y + 3 if p >= 0 else bot_y - 9
+        d.add(
+            String(
+                x,
+                label_y,
+                f"{p:+.2f}%",
+                textAnchor="middle",
+                fontSize=6.5,
+                fillColor=color,
+            )
+        )
+    d.add(
+        String(
+            left,
+            height - 12,
+            "Day P/L %",
+            fontSize=7.5,
+            fillColor=colors.HexColor("#1e3a5f"),
+        )
+    )
+    return d
+
+
+def _drawing_holdings(holdings: list[dict[str, Any]], width: float, height: float, *, limit: int = 8):
+    from reportlab.graphics.shapes import Drawing, Line, Rect, String
+    from reportlab.lib import colors
+
+    rows = [h for h in holdings if _f(h.get("week_chg_pct")) is not None][:limit]
+    d = Drawing(width, height)
+    d.add(
+        Rect(
+            0,
+            0,
+            width,
+            height,
+            fillColor=colors.HexColor("#f8fafc"),
+            strokeColor=colors.HexColor("#cbd5e1"),
+            strokeWidth=0.4,
+        )
+    )
+    left, right, top = 58, width - 12, height - 16
+    if not rows:
+        d.add(
+            String(
+                width / 2,
+                height / 2,
+                "no holdings",
+                textAnchor="middle",
+                fontSize=8,
+                fillColor=colors.HexColor("#64748b"),
+            )
+        )
+        return d
+    peak = max((abs(float(_f(r.get("week_chg_pct")) or 0.0)) for r in rows), default=1.0) or 1.0
+    row_h = min(18.0, (top - 10) / max(len(rows), 1))
+    mid = (left + right) / 2
+    d.add(Line(mid, 8, mid, top - 4, strokeColor=colors.HexColor("#94a3b8"), strokeWidth=0.4))
+    for i, r in enumerate(rows):
+        p = float(_f(r.get("week_chg_pct")) or 0.0)
+        y = top - 8 - (i + 1) * row_h
+        bar_max = (right - left) / 2 * 0.92
+        bw = bar_max * (abs(p) / peak)
+        color = colors.HexColor("#16a34a") if p >= 0 else colors.HexColor("#dc2626")
+        if p >= 0:
+            d.add(Rect(mid, y, bw, row_h * 0.55, fillColor=color, strokeColor=None))
+        else:
+            d.add(Rect(mid - bw, y, bw, row_h * 0.55, fillColor=color, strokeColor=None))
+        d.add(
+            String(
+                6,
+                y + 1,
+                str(r.get("symbol") or "-"),
+                fontSize=7,
+                fillColor=colors.HexColor("#334155"),
+            )
+        )
+        d.add(
+            String(
+                right,
+                y + 1,
+                _pct(p),
+                textAnchor="end",
+                fontSize=6.5,
+                fillColor=color,
+            )
+        )
+    d.add(
+        String(
+            left,
+            height - 12,
+            "Holdings week %",
+            fontSize=7.5,
+            fillColor=colors.HexColor("#1e3a5f"),
+        )
+    )
+    return d
 
 
 def _xml(s: Any) -> str:
@@ -746,6 +1198,7 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
     from reportlab.lib.units import inch
     from reportlab.platypus import (
         HRFlowable,
+        KeepTogether,
         Paragraph,
         SimpleDocTemplate,
         Spacer,
@@ -860,7 +1313,31 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
     story.append(
         grid(day_rows, [0.7 * inch, 1.1 * inch, 1.1 * inch, 1.1 * inch, 0.9 * inch, 1.3 * inch, 1.0 * inch])
     )
+    highlights = week_highlights(data)
+    if highlights:
+        story.append(Paragraph("Week highlights", h))
+        for line in highlights:
+            story.append(Paragraph(_xml(line), body))
+    daily_for_charts = [r for r in (data.get("daily_rows") or []) if isinstance(r, dict)]
+    chart_w = 7.2 * inch
+    chart_bits: list[Any] = [
+        Paragraph("Charts", h),
+        Paragraph(
+            "Equity close line, day P/L bars, holdings week %. Character versions of the same "
+            "charts are in the email body.",
+            note,
+        ),
+        _drawing_equity_line(daily_for_charts, chart_w, 2.05 * inch),
+        Spacer(1, 8),
+        _drawing_pl_bars(daily_for_charts, chart_w, 1.85 * inch),
+    ]
     holdings = data.get("holding_daily") or []
+    if holdings:
+        chart_bits += [
+            Spacer(1, 8),
+            _drawing_holdings(holdings, chart_w, 2.15 * inch),
+        ]
+    story.append(KeepTogether(chart_bits))
     if holdings:
         story.append(Paragraph("Holdings daily", h))
         h_rows = [["Symbol", "Last", "Day %", "Week %"]]
@@ -901,21 +1378,26 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
             pdt_rows.append([day, pdt_map.get(day)])
         story.append(grid(pdt_rows, [3.6 * inch, 3.6 * inch]))
     story.append(Paragraph("Positions", h))
-    pos_rows = [["Symbol", "Qty", "Price", "Mkt value", "Cost", "Unrealized"]]
+    mv_total = _f(data.get("market_value"))
+    pos_rows = [["Symbol", "Qty", "Price", "Mkt value", "Wt %", "Cost", "Unrealized"]]
     for row in data.get("positions") or []:
+        w = _weight_of(row, mv_total)
         pos_rows.append(
             [
                 row.get("symbol"),
                 row.get("quantity"),
                 _usd(row.get("price")),
                 _usd(row.get("market_value")),
+                f"{w:.1f}%" if w is not None else "-",
                 _usd(row.get("cost_basis")),
                 _usd(row.get("unrealized_pl")),
             ]
         )
     if len(pos_rows) == 1:
-        pos_rows.append(["(none)", "-", "-", "-", "-", "-"])
-    story.append(grid(pos_rows, [1.0 * inch, 0.9 * inch, 1.1 * inch, 1.3 * inch, 1.1 * inch, 1.3 * inch]))
+        pos_rows.append(["(none)", "-", "-", "-", "-", "-", "-"])
+    story.append(
+        grid(pos_rows, [0.85 * inch, 0.7 * inch, 0.95 * inch, 1.15 * inch, 0.7 * inch, 0.95 * inch, 1.15 * inch])
+    )
     story.append(
         Paragraph(
             f"Open orders ({data.get('open_order_count') or 0} of {data.get('order_count') or 0} listed) · "
@@ -969,6 +1451,11 @@ def build_summary_pdf(data: dict[str, Any], path: Path) -> Path:
     if data.get("regime_summary"):
         story.append(Paragraph("Regime", h))
         story.append(Paragraph(_xml(data.get("regime_summary")), body))
+    story.append(Paragraph("Key / definitions", h))
+    key_rows = [["Term", "Meaning"]]
+    for term, meaning in TERM_KEY:
+        key_rows.append([term, meaning])
+    story.append(grid(key_rows, [2.0 * inch, 5.2 * inch]))
     story += [
         Spacer(1, 10),
         Paragraph("No tokens / account_id_key in this PDF. Generated on GROMIT live runtime.", note),

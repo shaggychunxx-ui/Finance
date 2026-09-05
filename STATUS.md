@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** PHONE
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -42,9 +42,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
-- [ ] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
+- [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 
 ## Done
+
+- [x] **GROMIT (PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms):** Sent to self via taskbar Chrome Default Gmail. Weekly PDF + body: ET week 2026-08-31–09-04, highlights, character `#` charts, vector graphs (equity line / day P/L bars / holdings week %), 16 positions with weight %, 35 open orders, 20-term key. Equity $3,955.34 week -4.06% day -1.06%. Ink 0.24, PDF 74,711 bytes attached. Helper `tools/send_etrade_trader_summary_email.py`. Tests `test_etrade_trader_summary.py` 10 passed. Task `tasks/done/060-weekly-summary-charts-key.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: what is fusion %?):** Fusion is **not** a hit-rate percent. In the agent-info mail, **Fus ×** is a **vote-weight multiplier** (typical 0.55–1.25). Acc 43.4% is walk-forward hit rate; fusion 0.924 on dca-strategy means that vote counts at 0.924× a full vote — not 92.4% accuracy. Built from walk-forward acc, then recent misses / blame / edge; boost list +12%. Live blend weight (after personality/floors): dca-strategy **1.04**; weak names like equity-tracker **0.0** (acc 32.5% below 38% exclude). Ensemble Fusion group Acc is `-` because market-predictor blends others, no directional Acc. Legend added to next agent-info PDF. Task `tasks/done/059-what-is-fusion-pct.md`. **Act on: none**.
 
@@ -119,7 +121,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
 - [x] **GROMIT** what is fusion %?
-- [ ] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
+- [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 
 ## Blockers
 
@@ -155,5 +157,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: why is the data missing for Thursday? → done 2026-09-04 (task **057**). Thu history gap: plan-fail + publish_quotes off on 8/26 live worker. Filled $3,918.68 from marks; weekly email resent.
 - PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
 - PHONE: what is fusion %? → answered 2026-09-05 (task **059**). Fusion = vote-weight ×, not hit-rate %.
-- PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → done 2026-09-05 (task **060**). Charts + term key emailed.
 
