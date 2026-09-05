@@ -1,8 +1,8 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-04
-**Updated by:** GROMIT
-**Active owner:** GROMIT
+**Updated by:** PHONE
+**Active owner:** none
 **Act on:** GROMIT
 
 ## NOTIFY
@@ -36,7 +36,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [ ] **GROMIT** no content in email l. send detailed pdf
+- [x] **GROMIT** no content in email l. send detailed pdf
+- [ ] **GROMIT** send detailed weekly summary email. include daily info
 
 ## Done
 
@@ -99,7 +100,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [ ] **GROMIT** no content in email l. send detailed pdf
+- [x] **GROMIT** no content in email l. send detailed pdf
+- [ ] **GROMIT** send detailed weekly summary email. include daily info
 
 ## Blockers
 
@@ -130,4 +132,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: Re enteing Oath sould be autmatic → done 2026-08-26 (task **052**). Auto OAuth LIVE STATUS OK.
 - PHONE: send etrade trader summary to self in email → done 2026-09-04 (task **055**). First Chrome pass was empty body; full-text follow-up sent. Phone asked for a detailed PDF next.
 - PHONE: no content in email l. send detailed pdf → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: send detailed weekly summary email. include daily info → Act on GROMIT (GROMIT delegates host-local work)
 
