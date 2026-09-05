@@ -5,7 +5,11 @@ Reads the GROMIT live runtime (%USERPROFILE%\\Finance), never the git clone.
 Send order:
   1) Gmail API if ~/.gmail-link token has gmail.send
   2) Chrome Default Gmail compose (CDP if Chrome was started with 9222,
-     else clipboard + Ctrl+Enter)
+     else compose URL with body= + clipboard paste + Ctrl+Enter)
+
+Never click Send on an empty compose. A prior run showed Gmail
+"Message sent" with only the subject filled (Gemini "Help me write"
+placeholder). Body ink-ratio must pass before Send.
 
 Usage (live venv):
   python tools/send_etrade_trader_summary_email.py
@@ -15,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
 import json
 import os
 import socket
@@ -342,6 +347,63 @@ def format_subject(data: dict[str, Any]) -> str:
     return f"E*TRADE trader summary {data.get('generated_at', '')}  equity {eq}  day {dpl}"
 
 
+MAX_COMPOSE_URL = 6500
+BODY_INK_MIN = 0.12
+
+
+def compose_url(to: str, subject: str, body: str) -> str:
+    """Gmail compose deep-link. Include body= when the URL stays short enough."""
+    base = (
+        "https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=1&to="
+        + urllib.parse.quote(to)
+        + "&su="
+        + urllib.parse.quote(subject[:120])
+    )
+    encoded_body = urllib.parse.quote(body)
+    candidate = base + "&body=" + encoded_body
+    if len(candidate) <= MAX_COMPOSE_URL:
+        return candidate
+    return base
+
+
+def body_ink_ratio(image: Any, *, y0_frac: float = 0.30, y1_frac: float = 0.78) -> float:
+    """Fraction of non-near-white pixels in the compose body band."""
+    try:
+        w, h = image.size
+    except Exception:
+        return 0.0
+    y0 = max(0, int(h * y0_frac))
+    y1 = min(h, int(h * y1_frac))
+    if w < 10 or y1 <= y0:
+        return 0.0
+    x0, x1 = int(w * 0.08), int(w * 0.92)
+    if x1 <= x0:
+        return 0.0
+    band = image.crop((x0, y0, x1, y1)).resize((80, 48))
+    ink = 0
+    total = 0
+    for px in band.getdata():
+        r, g, b = px[:3]
+        total += 1
+        if r < 235 or g < 235 or b < 235:
+            ink += 1
+    return ink / total if total else 0.0
+
+
+def body_looks_filled(image: Any) -> bool:
+    # Empty Gmail compose (placeholder "Help me write") measured ~0.03 ink.
+    return body_ink_ratio(image) >= BODY_INK_MIN
+
+
+def _tap_escape() -> None:
+    user32 = ctypes.windll.user32
+    vk = 0x1B
+    keyup = 0x0002
+    user32.keybd_event(vk, 0, 0, 0)
+    time.sleep(0.04)
+    user32.keybd_event(vk, 0, keyup, 0)
+
+
 def _token_has_send(path: Path) -> bool:
     raw = _load_json(path)
     scopes = raw.get("scopes") or []
@@ -560,12 +622,7 @@ def _cdp_pages() -> list[dict[str, Any]]:
 
 
 def send_via_chrome_cdp(to: str, subject: str, body: str) -> dict[str, Any]:
-    compose = (
-        "https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=1&to="
-        + urllib.parse.quote(to)
-        + "&su="
-        + urllib.parse.quote(subject[:120])
-    )
+    compose = compose_url(to, subject, body)
     started = False
     from open_chrome_url import chrome_running
 
@@ -685,6 +742,7 @@ def _find_gmail_send_button(image) -> Any:
 
 def send_via_chrome_keys(to: str, subject: str, body: str, debug_dir: Path) -> dict[str, Any]:
     from chrome_oauth_ui import (
+        VK_RETURN,
         VK_V,
         click_window,
         foreground,
@@ -695,59 +753,62 @@ def send_via_chrome_keys(to: str, subject: str, body: str, debug_dir: Path) -> d
     from open_chrome_url import open_url_chrome
 
     debug_dir.mkdir(parents=True, exist_ok=True)
-    compose_wins, gmail_wins = _gmail_windows()
-    opened = {"ok": True, "reused": True}
-    if not compose_wins:
-        compose = (
-            "https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=1&to="
-            + urllib.parse.quote(to)
-            + "&su="
-            + urllib.parse.quote(subject[:120])
-        )
-        opened = open_url_chrome(compose)
-        if not opened.get("ok"):
-            return {"ok": False, "error": f"open chrome: {opened}"}
-        for _ in range(40):
-            compose_wins, gmail_wins = _gmail_windows()
-            if compose_wins or gmail_wins:
-                break
-            time.sleep(0.4)
-    win = (compose_wins or gmail_wins or [None])[0]
+    # Always open a fresh compose with body= so we do not reuse an empty tab.
+    url = compose_url(to, subject, body)
+    opened = open_url_chrome(url)
+    if not opened.get("ok"):
+        return {"ok": False, "error": f"open chrome: {opened}"}
+    win = None
+    for _ in range(40):
+        compose_wins, gmail_wins = _gmail_windows()
+        win = (compose_wins or gmail_wins or [None])[0]
+        if win is not None:
+            break
+        time.sleep(0.4)
     if win is None:
         return {"ok": False, "error": "no Chrome Gmail window"}
-    if not write_clipboard_text(body):
-        return {"ok": False, "error": "clipboard write failed"}
     foreground(win)
-    time.sleep(1.2)
-    # Body is the large white area under To/Subject, above the Send pill.
-    click_window(win, max(win.width // 2, 80), int(win.height * 0.48))
-    time.sleep(0.25)
-    tap_ctrl_key(ord("A"))
-    time.sleep(0.12)
-    tap_ctrl_key(VK_V)
-    time.sleep(0.6)
+    time.sleep(2.4)
+    _tap_escape()
+    time.sleep(0.2)
     img = screenshot_window(win)
+    ink = body_ink_ratio(img)
+    if not body_looks_filled(img):
+        if not write_clipboard_text(body):
+            return {"ok": False, "error": "clipboard write failed", "ink": ink}
+        # Click deep in the white body, below Gemini "Press / for Help me write".
+        click_window(win, max(win.width // 2, 80), int(win.height * 0.58))
+        time.sleep(0.35)
+        tap_ctrl_key(VK_V)
+        time.sleep(0.9)
+        img = screenshot_window(win)
+        ink = body_ink_ratio(img)
     before = debug_dir / "gmail_trader_summary_before_send.png"
     img.save(before)
-    box = _find_gmail_send_button(img)
-    if box is None:
+    if not body_looks_filled(img):
         return {
             "ok": False,
-            "error": "Send button not found",
+            "error": "compose body empty (refusing to send subject-only mail)",
             "window": win.title,
             "screenshot": str(before),
+            "ink": ink,
+            "opened": opened,
         }
-    click_window(win, box.cx, box.cy)
-    time.sleep(2.8)
+    tap_ctrl_key(VK_RETURN)
+    time.sleep(1.4)
     after_path = debug_dir / "gmail_trader_summary_send.png"
     try:
         after = screenshot_window(win)
-        after.save(after_path)
         still = _find_gmail_send_button(after)
+        if still is not None:
+            click_window(win, still.cx, still.cy)
+            time.sleep(2.2)
+            after = screenshot_window(win)
+            still = _find_gmail_send_button(after)
+        after.save(after_path)
     except Exception:
         still = None
         after_path = None
-    # Sent if the compose pill is gone or the window title dropped Compose.
     compose_after, _ = _gmail_windows()
     sent = still is None or not compose_after
     return {
@@ -756,8 +817,9 @@ def send_via_chrome_keys(to: str, subject: str, body: str, debug_dir: Path) -> d
         "window": win.title,
         "screenshot": str(after_path) if after_path else str(before),
         "before": str(before),
+        "ink": ink,
         "opened": opened,
-        "error": None if sent else "compose still open after Send click",
+        "error": None if sent else "compose still open after Send",
     }
 
 
@@ -796,7 +858,10 @@ def main(argv: list[str] | None = None) -> int:
         print(body)
         return 0
     result = send_summary(args.to, subject, body, root / "output" / "chrome-oauth-debug")
-    print(json.dumps({k: v for k, v in result.items() if k != "opened"}, default=str))
+    safe = {k: v for k, v in result.items() if k != "opened"}
+    print(json.dumps(safe, default=str))
+    result_path = root / "output" / "etrade_trader_summary_send.json"
+    result_path.write_text(json.dumps(safe, indent=2, default=str) + "\n", encoding="utf-8")
     if not result.get("ok"):
         print("SEND FAIL", result.get("error"), file=sys.stderr)
         return 1

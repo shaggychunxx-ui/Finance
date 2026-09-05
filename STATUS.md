@@ -1,8 +1,8 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-04
-**Updated by:** PHONE
-**Active owner:** none
+**Updated by:** GROMIT
+**Active owner:** GROMIT
 **Act on:** GROMIT
 
 ## NOTIFY
@@ -36,10 +36,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [x] **GROMIT** send etrade trader summary to self in email
 - [ ] **GROMIT** no content in email l. send detailed pdf
 
 ## Done
+
+- [x] **GROMIT (PHONE: send etrade trader summary to self in email):** Sent to self via taskbar Chrome Default Gmail. Full body (16 positions, 35 open orders, next-session brief). Equity $3,955.34 day -0.58%. Earlier Chrome pass was subject-only ("Message sent" + empty Gemini placeholder); now compose URL includes `body=` and Send is refused unless body ink-ratio ≥ 0.12. Helper `tools/send_etrade_trader_summary_email.py`. Tests `test_etrade_trader_summary.py` 4 passed. Task `tasks/done/055-etrade-trader-summary-email.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: etrader phone app. no orders are displayed):** Empty Orders tab was a display bug, not a dead book. Live #8804 has **35 OPEN** (SOFI/MBAI/LYNX… stop-limits) + recent fills. Bridge **v1.6.4** flattens nested E*TRADE OrderDetail so cards have symbol/action/status (was all `-`). Phone **v1.6.55** loads Orders from GROMIT like Positions (was gated on phone-native login). Phone: **Get app update**, then Refresh. Task `tasks/done/054-etrader-orders-displayed.md`. **Act on: none**.
 
@@ -98,7 +99,6 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (GitStatus):** Reconnect check — pull Finance STATUS, Send `gitstatus-data-probe-gromit`, then `data connection OK` or `FAIL`. Never Act on PHONE.
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
-- [x] **GROMIT** send etrade trader summary to self in email
 - [ ] **GROMIT** no content in email l. send detailed pdf
 
 ## Blockers
@@ -128,6 +128,6 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - Phone LAN: GROMIT `/health` `phone_hint` is `http://192.168.1.177:8787` (2026-09-03). Token in live config only. Bridge **v1.6.4**.
 - PHONE: why are there no orders? → answered 2026-08-26 (task **051**). 0 submitted: bullish-gate stale plan + PDT 6/3 + closed/OAuth.
 - PHONE: Re enteing Oath sould be autmatic → done 2026-08-26 (task **052**). Auto OAuth LIVE STATUS OK.
-- PHONE: send etrade trader summary to self in email → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: send etrade trader summary to self in email → done 2026-09-04 (task **055**). First Chrome pass was empty body; full-text follow-up sent. Phone asked for a detailed PDF next.
 - PHONE: no content in email l. send detailed pdf → Act on GROMIT (GROMIT delegates host-local work)
 

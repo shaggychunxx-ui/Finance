@@ -12,7 +12,12 @@ TOOLS = ROOT / "tools"
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
-from send_etrade_trader_summary_email import format_subject, format_text  # noqa: E402
+from send_etrade_trader_summary_email import (  # noqa: E402
+    body_looks_filled,
+    compose_url,
+    format_subject,
+    format_text,
+)
 
 
 SAMPLE = {
@@ -103,3 +108,26 @@ def test_subject_has_equity_and_day_pl() -> None:
     assert "$3,955.34" in sub
     assert "day" in sub.lower()
     assert "SHOULD_NOT_APPEAR" not in sub
+
+
+def test_compose_url_includes_body() -> None:
+    url = compose_url("shaggychunxx@gmail.com", "E*TRADE trader summary", "== Positions ==\nUMC qty 44")
+    assert "mail.google.com" in url
+    assert "view=cm" in url
+    assert "to=shaggychunxx" in url
+    assert "body=" in url
+    assert "Positions" in url
+
+
+def test_body_looks_filled_rejects_blank_compose() -> None:
+    from PIL import Image
+
+    blank = Image.new("RGB", (974, 523), (255, 255, 255))
+    assert body_looks_filled(blank) is False
+    filled = Image.new("RGB", (974, 523), (255, 255, 255))
+    px = filled.load()
+    for y in range(180, 420):
+        for x in range(80, 900):
+            if (x + y) % 3 == 0:
+                px[x, y] = (32, 32, 32)
+    assert body_looks_filled(filled) is True
