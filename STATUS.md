@@ -38,7 +38,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [x] **GROMIT** no content in email l. send detailed pdf
 - [x] **GROMIT** send detailed weekly summary email. include daily info
-- [ ] **GROMIT** there was no attachment in email
+- [x] **GROMIT** there was no attachment in email
+- [ ] **GROMIT** why is the data missing for Thursday?
 
 ## Done
 
@@ -103,7 +104,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [x] **GROMIT** no content in email l. send detailed pdf
 - [x] **GROMIT** send detailed weekly summary email. include daily info
-- [ ] **GROMIT** there was no attachment in email
+- [x] **GROMIT** there was no attachment in email
+- [ ] **GROMIT** why is the data missing for Thursday?
 
 ## Blockers
 
@@ -136,4 +138,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: no content in email l. send detailed pdf → Act on GROMIT (GROMIT delegates host-local work)
 - PHONE: send detailed weekly summary email. include daily info → Act on GROMIT (GROMIT delegates host-local work)
 - PHONE: there was no attachment in email → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: why is the data missing for Thursday? → Act on GROMIT (GROMIT delegates host-local work)
 
