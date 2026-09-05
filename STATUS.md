@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
 **Last updated:** 2026-09-05
-**Updated by:** PHONE
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -45,9 +45,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
 - [x] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
-- [ ] **GROMIT** remove 3/5 rule
+- [x] **GROMIT** remove 3/5 rule
 
 ## Done
+
+- [x] **GROMIT (PHONE: remove 3/5 rule):** **House 3/5 is off.** Worker no longer blocks after 3 day trades in 5 sessions (`trade_guards.pdt_enabled` default False; live config too). FINRA/E*TRADE PDT was already gone Jun 2026. Cash still T+1 / GFV / freeriding; cash BP ~$126. Day-sleeve `max_positions: 3` is a separate size cap. Swing plan still stuck on the bullish gate. Market closed; next RTH Tue 2026-09-08. Worker pid 68032 Connected production. Tests 13 passed. Task `tasks/done/063-remove-3-5-rule.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: is that rule set by us? e trade says it's no more pdp limits):** **Yes — the 3/5 cap is ours.** E*TRADE is right: FINRA PDT is **gone** (Notice 26-10, effective 2026-06-04; E*TRADE 2026-06-09). No PDT designation, no day-trade count, no $25k PDT min. Our worker still enforces a **house** 3/5 in `trade_guards.py` (live config has no override). Account is **CASH** — PDT was always margin-only, so the broker never applied it here. Cash still T+1 / GFV / freeriding; cash BP ~$126. Did not lift the house cap from this Send. Task `tasks/done/062-pdt-rule-is-ours.md`. **Act on: none**.
 
@@ -131,11 +133,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms
 - [x] **GROMIT** does the pdp rule still apply? or can we start day trading?
 - [x] **GROMIT** is that rule set by us? e trade says it's no more pdp limits
-- [ ] **GROMIT** remove 3/5 rule
+- [x] **GROMIT** remove 3/5 rule
 
 ## Blockers
 
-- **House 3/5 day-trade cap** — **ours**, not current FINRA/E*TRADE PDT (repealed Jun 2026; E*TRADE 2026-06-09). Equity $3,955; used 3/3 Mon 2026-08-31 (MRNA, SOFI, BRVE). Next RTH **Tue 2026-09-08** those roll off (0/3). Cash still T+1 / GFV; cash BP ~$126. Did not lift the house cap.
+- **Cash T+1 / GFV / freeriding** — house 3/5 cap **off** (phone 2026-09-05). FINRA/E*TRADE PDT already gone Jun 2026. Equity $3,955; cash BP ~$126. Day-sleeve `max_positions: 3` is a size limit, not PDT.
 - **Swing plan bullish gate** — portfolio rebuild fails (risk-off / not enough bullish affordable names). Stale plan 2026-08-20. Do not lower the gate from a why-Send.
 - **US market closed (off-RTH)** — LIVE flags on; no submit until next RTH **and** OAuth.
 - **Gmail OAuth token missing** on retired AI-CODING (`token.json`) — not GROMIT trading.
@@ -170,5 +172,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send another weekly summary. go into more detail. use chars and graphs. a key with definition of terms → done 2026-09-05 (task **060**). Charts + term key emailed.
 - PHONE: does the pdp rule still apply? or can we start day trading? → answered 2026-09-05 (task **061**). House 3/5 still on; 3/3 until Tue 9/8.
 - PHONE: is that rule set by us? e trade says it's no more pdp limits → answered 2026-09-05 (task **062**). Yes, house software. FINRA/E*TRADE PDT gone Jun 2026. Cash T+1/GFV remains. Cap not lifted.
-- PHONE: remove 3/5 rule → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: remove 3/5 rule → done 2026-09-05 (task **063**). House 3/5 off (`pdt_enabled` false). Cash T+1/GFV remains.
 

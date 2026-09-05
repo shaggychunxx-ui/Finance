@@ -126,6 +126,13 @@
     "max_trade_usd": 750.0,
     "min_trade_usd": 75.0
   },
+  "trade_guards": {
+    "enabled": true,
+    "pdt_enabled": false,
+    "pdt_equity_threshold_usd": 25000.0,
+    "pdt_max_day_trades_5d": 3,
+    "buying_power_buffer_pct": 2.0
+  },
   "pipeline_benchmark": {
     "enabled": true,
     "target_trials": 2500,

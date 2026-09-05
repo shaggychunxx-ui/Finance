@@ -307,7 +307,8 @@ def test_format_has_character_charts_highlights_and_term_key() -> None:
     assert "#" in text
     assert "Best day" in text
     assert "Worst day" in text
-    assert "PDT used" in text
+    assert "PDT count" in text
+    assert "house 3/5 cap off" in text
     assert "Source: marks:" in text
     assert "Pattern Day Trader" in text
     assert "SHOULD_NOT_APPEAR" not in text

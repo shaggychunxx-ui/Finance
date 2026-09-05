@@ -765,7 +765,7 @@ TERM_KEY: list[tuple[str, str]] = [
     ("Source: snapshot", "Latest broker snapshot used as that day's close."),
     ("Source: marks", "Gap fill: same lots times that day's last marks. Qty assumed unchanged."),
     ("Source: missing", "No close (no marks, or lots changed that session so fill was skipped)."),
-    ("PDT", "House Pattern Day Trader-style cap (our software, not current FINRA/E*TRADE): day trades in the last 5 sessions. 3/3 blocks the day sleeve. Cash still T+1 / GFV."),
+    ("PDT", "Informational count of same-day round-trips in the last 5 sessions. The house Pattern Day Trader-style 3/5 cap is off (phone 2026-09-05). Not current FINRA/E*TRADE PDT. Cash still T+1 / GFV."),
     ("Stop / Limit", "Protective sell prices on open orders (stop triggers; limit is the cap)."),
     ("dry_run", "Worker may propose tickets but will not submit them."),
     ("live_trading + auto_execute", "Live tickets allowed when dry_run is off and the worker is not paused."),
@@ -839,8 +839,7 @@ def week_highlights(data: dict[str, Any]) -> list[str]:
             f"(implied cash/debit {_usd(eq - mv_total)})"
         )
     pdt = int(data.get("pdt_count") or 0)
-    extra = " — day-trade sleeve blocked" if pdt >= 3 else ""
-    lines.append(f"PDT used {pdt}/3 in last 5 sessions{extra}")
+    lines.append(f"PDT count {pdt} in last 5 sessions (house 3/5 cap off)")
     daily_g = data.get("daily") or {}
     weekly_g = data.get("weekly") or {}
     if daily_g.get("target_pct") is not None:

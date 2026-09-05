@@ -1,10 +1,10 @@
-"""Pre-preview guards: buying power and house day-trade cap.
+"""Pre-preview guards: buying power and optional house day-trade cap.
 
-The 3-in-5 day-trade limit is **ours**, not current FINRA/E*TRADE PDT.
+The old 3-in-5 day-trade limit was **ours**, not current FINRA/E*TRADE PDT.
 FINRA Notice 26-10 (effective 2026-06-04; E*TRADE 2026-06-09) eliminated
-the pattern-day-trader designation, the $25k count, and day-trade tracking.
-Cash accounts were never under PDT. This cap stays as a house risk control
-unless config disables it. Cash still has T+1 settlement / GFV / freeriding.
+the pattern-day-trader designation. Phone Send 2026-09-05 removed the house
+3/5 cap (`pdt_enabled` default False). Set `trade_guards.pdt_enabled` true
+to restore it. Cash still has T+1 settlement / GFV / freeriding.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ ET_TZ = ZoneInfo("America/New_York")
 
 DEFAULT_TRADE_GUARDS = {
     "enabled": True,
+    "pdt_enabled": False,
     "pdt_equity_threshold_usd": 25000.0,
     "pdt_max_day_trades_5d": 3,
     "buying_power_buffer_pct": 2.0,
@@ -324,17 +325,20 @@ def apply_pdt_guard(
 ) -> dict[str, Any]:
     threshold = float(settings.get("pdt_equity_threshold_usd", DEFAULT_TRADE_GUARDS["pdt_equity_threshold_usd"]))
     max_trades = int(settings.get("pdt_max_day_trades_5d", DEFAULT_TRADE_GUARDS["pdt_max_day_trades_5d"]))
+    pdt_enabled = bool(settings.get("pdt_enabled", DEFAULT_TRADE_GUARDS["pdt_enabled"]))
     session_date = session_date or _session_date()
     as_of = _parse_date(session_date) or datetime.now(ET_TZ).date()
     tracker = tracker if tracker is not None else load_pdt_tracker()
 
     current = count_day_trades_in_window(tracker, as_of=as_of)
-    if total_equity >= threshold:
+    if (not pdt_enabled) or total_equity >= threshold:
         return {
             "pdt_applies": False,
+            "pdt_enabled": pdt_enabled,
             "equity_usd": round(total_equity, 2),
             "day_trades_5d": current,
             "blocked_day_trades": 0,
+            "max_day_trades_5d": max_trades if pdt_enabled else None,
         }
 
     opening_qty = ensure_opening_positions(tracker, session_date, positions)
@@ -379,6 +383,7 @@ def apply_pdt_guard(
 
     return {
         "pdt_applies": True,
+        "pdt_enabled": True,
         "equity_usd": round(total_equity, 2),
         "day_trades_5d": current,
         "reserved_day_trades": reserved,
@@ -395,7 +400,7 @@ def apply_trade_guards_to_plan(
     day_state: dict[str, Any] | None = None,
     config_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Block orders that violate buying power or PDT rules before E*TRADE preview."""
+    """Block orders that violate buying power or (if enabled) the house day-trade cap."""
     guard_settings = settings or load_trade_guard_settings(config_path)
     if not guard_settings.get("enabled", True):
         return {"enabled": False}

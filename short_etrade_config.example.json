@@ -39,6 +39,7 @@
   },
   "trade_guards": {
     "enabled": true,
+    "pdt_enabled": false,
     "pdt_equity_threshold_usd": 25000.0,
     "pdt_max_day_trades_5d": 3,
     "buying_power_buffer_pct": 5.0,
