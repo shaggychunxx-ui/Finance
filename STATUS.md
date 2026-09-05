@@ -37,7 +37,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [x] **GROMIT** no content in email l. send detailed pdf
-- [ ] **GROMIT** send detailed weekly summary email. include daily info
+- [x] **GROMIT** send detailed weekly summary email. include daily info
+- [ ] **GROMIT** there was no attachment in email
 
 ## Done
 
@@ -101,7 +102,8 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [ ] **PHONE (E*TRADE Trader app):** Setup → Base URL `http://192.168.1.177:8787` (GROMIT `/health` `phone_hint`; Wi‑Fi DHCP can change) + bridge token from GROMIT live config only → Test. Same Wi‑Fi as GROMIT.
 - [ ] **BOXONE:** Stop all Finance/E*TRADE workers + disable related scheduled tasks (gsw **061**). No trading on BOXONE.
 - [x] **GROMIT** no content in email l. send detailed pdf
-- [ ] **GROMIT** send detailed weekly summary email. include daily info
+- [x] **GROMIT** send detailed weekly summary email. include daily info
+- [ ] **GROMIT** there was no attachment in email
 
 ## Blockers
 
@@ -133,4 +135,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: send etrade trader summary to self in email → done 2026-09-04 (task **055**). First Chrome pass was empty body; full-text follow-up sent. Phone asked for a detailed PDF next.
 - PHONE: no content in email l. send detailed pdf → Act on GROMIT (GROMIT delegates host-local work)
 - PHONE: send detailed weekly summary email. include daily info → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: there was no attachment in email → Act on GROMIT (GROMIT delegates host-local work)
 
