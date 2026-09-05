@@ -1,9 +1,9 @@
 # Status / Handoff — Finance
 
-**Last updated:** 2026-09-04
-**Updated by:** PHONE
+**Last updated:** 2026-09-05
+**Updated by:** GROMIT
 **Active owner:** none
-**Act on:** GROMIT
+**Act on:** none
 
 ## NOTIFY
 
@@ -41,9 +41,11 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** there was no attachment in email
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
-- [ ] **GROMIT** what is fusion %?
+- [x] **GROMIT** what is fusion %?
 
 ## Done
+
+- [x] **GROMIT (PHONE: what is fusion %?):** Fusion is **not** a hit-rate percent. In the agent-info mail, **Fus ×** is a **vote-weight multiplier** (typical 0.55–1.25). Acc 43.4% is walk-forward hit rate; fusion 0.924 on dca-strategy means that vote counts at 0.924× a full vote — not 92.4% accuracy. Built from walk-forward acc, then recent misses / blame / edge; boost list +12%. Live blend weight (after personality/floors): dca-strategy **1.04**; weak names like equity-tracker **0.0** (acc 32.5% below 38% exclude). Ensemble Fusion group Acc is `-` because market-predictor blends others, no directional Acc. Legend added to next agent-info PDF. Task `tasks/done/059-what-is-fusion-pct.md`. **Act on: none**.
 
 - [x] **GROMIT (PHONE: send email of details agent info):** Sent to self via taskbar Chrome Default Gmail. Agent-info PDF + body: catalog 76 / learning 73 / phone 83, walk-forward acc (live scored 0), groups, boost 8 / cut none, top dca-strategy 43.4%, full agent table, current risk-guardrail BEARISH calls. Ink 0.21, PDF 119,809 bytes attached. Helper `tools/send_agent_info_email.py`. Tests `test_agent_info_email.py` 6 passed. Task `tasks/done/058-agent-info-email.md`. **Act on: none**.
 
@@ -115,7 +117,7 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - [x] **GROMIT** there was no attachment in email
 - [x] **GROMIT** why is the data missing for Thursday?
 - [x] **GROMIT** send email of details agent info
-- [ ] **GROMIT** what is fusion %?
+- [x] **GROMIT** what is fusion %?
 
 ## Blockers
 
@@ -150,5 +152,5 @@ Finance phone bus → **GROMIT**. **Dropshipping** canonical under `dropshipping
 - PHONE: there was no attachment in email → done 2026-09-04 (task **056** follow-up). PDF attached via clipboard_hdrop.
 - PHONE: why is the data missing for Thursday? → done 2026-09-04 (task **057**). Thu history gap: plan-fail + publish_quotes off on 8/26 live worker. Filled $3,918.68 from marks; weekly email resent.
 - PHONE: send email of details agent info → done 2026-09-05 (task **058**). Agent PDF emailed; live scored rows still 0.
-- PHONE: what is fusion %? → Act on GROMIT (GROMIT delegates host-local work)
+- PHONE: what is fusion %? → answered 2026-09-05 (task **059**). Fusion = vote-weight ×, not hit-rate %.
 

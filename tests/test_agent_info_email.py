@@ -176,6 +176,8 @@ def test_format_includes_agents_groups_and_calls() -> None:
     assert "BULLISH" in text
     assert "XLE" in text
     assert "live scored rows 0" in text.lower() or "Live scored rows 0" in text
+    assert "vote-weight multiplier" in text
+    assert "not a percent" in text
     assert "SHOULD_NOT_APPEAR" not in text
 
 
@@ -213,6 +215,8 @@ def test_pdf_has_agents_and_strips_secrets(tmp_path: Path) -> None:
     assert "equity-tracker" in text
     assert "SHOULD_NOT_APPEAR" not in text
     assert "walk-forward" in text.lower() or "Walk-forward" in text or "walk-forward" in text
+    assert "vote-weight multiplier" in text
+    assert "Fus" in text
 
 
 def test_gather_from_tmp_files(tmp_path: Path) -> None:

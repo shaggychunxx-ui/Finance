@@ -455,6 +455,11 @@ def format_text(data: dict[str, Any]) -> str:
             "Note: live 24h labels are still 0 — accuracy/edge below are walk-forward "
             "benchmark + sticky live_accuracy, not matured live trades."
         ),
+        (
+            "Fusion (Fus ×) is a vote-weight multiplier, not a percent. "
+            "1.000 = full vote (typical 0.55–1.25). Acc is walk-forward hit rate. "
+            "Ensemble Fusion (market-predictor) has no directional Acc — it blends others."
+        ),
         "",
         "== Pipeline ==",
         (
@@ -635,6 +640,12 @@ def build_agent_info_pdf(data: dict[str, Any], path: Path) -> Path:
             "benchmark plus sticky live_accuracy — not matured live trades.",
             body,
         ),
+        Paragraph(
+            "Fusion (Fus ×) is a vote-weight multiplier, not a percent. "
+            "1.000 = full vote (typical 0.55–1.25). Acc is the walk-forward hit rate. "
+            "Ensemble Fusion (market-predictor) has no directional Acc — it blends other agents.",
+            body,
+        ),
         Paragraph("Pipeline", h),
         Paragraph(
             f"Last { _xml(pipe.get('last_cycle') or '-') } "
@@ -679,7 +690,7 @@ def build_agent_info_pdf(data: dict[str, Any], path: Path) -> Path:
         g_rows.append(["(none)", "-", "-", "-", "-", "-"])
     story.append(grid(g_rows, [1.9 * inch, 0.5 * inch, 0.8 * inch, 0.8 * inch, 1.1 * inch, 2.1 * inch]))
     story.append(Paragraph("Top agents", h))
-    t_rows = [["Agent", "Acc", "Edge", "Fusion", "Posture", "Horizon"]]
+    t_rows = [["Agent", "Acc", "Edge", "Fus ×", "Posture", "Horizon"]]
     for a in data.get("top_agents") or []:
         t_rows.append(
             [
@@ -724,7 +735,7 @@ def build_agent_info_pdf(data: dict[str, Any], path: Path) -> Path:
         c_rows.append(["(none)", "-", "-", "NEUTRAL or learning_suppressed"])
     story.append(grid(c_rows[:25], [1.6 * inch, 0.9 * inch, 1.6 * inch, 3.1 * inch]))
     story.append(Paragraph("All agents", h))
-    a_rows = [["Agent", "Acc", "Live", "Proxy", "Edge", "Fus", "Posture", "Group"]]
+    a_rows = [["Agent", "Acc", "Live", "Proxy", "Edge", "Fus ×", "Posture", "Group"]]
     for r in data.get("agents") or []:
         a_rows.append(
             [
